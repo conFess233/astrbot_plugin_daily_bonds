@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>今日姻缘 · 管理</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ASTRBOT PLUGIN</p>
+          <h1 id="page-title">今日姻缘 · 管理</h1>
+          <p class="muted">配置、查看运行概况与管理作用域</p>
+        </div>
+        <button id="refresh" class="button secondary" type="button">刷新数据</button>
+      </header>
+
+      <nav class="tabs" aria-label="管理页面">
+        <button class="tab active" type="button" data-tab="overview">运行概况</button>
+        <button class="tab" type="button" data-tab="settings">配置管理</button>
+        <button class="tab" type="button" data-tab="catalog">角色目录</button>
+        <button class="tab" type="button" data-tab="data">数据查询</button>
+      </nav>
+      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+      <section id="overview-panel" class="panel">
+        <div class="section-heading">
+          <div>
+            <h2>运行概况</h2>
+            <p class="muted">汇总当前插件实例的数据，不包含其他插件。</p>
+          </div>
+        </div>
+        <div id="overview-cards" class="metric-grid" aria-live="polite"></div>
+        <p id="period-summary" class="muted period-summary"></p>
+        <section class="card scope-card">
+          <h3>已记录的机器人与群</h3>
+          <div id="scope-list" class="scope-list" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section id="catalog-panel" class="panel" hidden>
+        <div class="section-heading">
+          <div>
+            <h2>角色与角色池</h2>
+            <p class="muted">编辑不会改写既有关系快照。删除会先显示影响并要求确认。</p>
+          </div>
+          <button id="catalog-refresh" class="button secondary" type="button">刷新目录</button>
+        </div>
+        <div class="catalog-layout">
+          <section class="card catalog-list-card">
+            <label class="field" for="character-search"><span>搜索角色</span><input id="character-search" type="search" /></label>
+            <div id="character-list" class="catalog-list" aria-live="polite"></div>
+            <h3>角色池</h3>
+            <div id="pool-list" class="catalog-list" aria-live="polite"></div>
+          </section>
+          <section class="editor-card catalog-editor">
+            <h3 id="character-form-title">新建角色</h3>
+            <div class="form-grid">
+              <label class="field"><span>ID（新建后固定）</span><input id="character-id" maxlength="64" /></label>
+              <label class="field"><span>名称</span><input id="character-name" maxlength="120" /></label>
+              <label class="field"><span>性别</span><select id="character-gender"><option value="female">女</option><option value="male">男</option><option value="unspecified">未指定</option></select></label>
+              <label class="field"><span>别名（逗号分隔）</span><input id="character-aliases" /></label>
+            </div>
+            <label class="check-field"><input id="character-enabled" type="checkbox" checked /> 启用抽取</label>
+            <label class="field"><span>头像与立绘图片</span><input id="character-image" type="file" accept="image/*" /></label>
+            <div id="character-images" class="image-gallery" aria-live="polite"></div>
+            <label class="field"><span>角色池</span><div id="character-pools" class="check-list"></div></label>
+            <div class="actions">
+              <button id="new-character" class="button secondary" type="button">新建</button>
+              <div class="action-end">
+                <button id="delete-character" class="button secondary" type="button" disabled>软删除</button>
+                <button id="save-character" class="button primary" type="button">保存角色</button>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="editor-card pool-editor">
+          <div class="editor-meta"><h3>角色池编辑</h3><button id="new-pool" class="button secondary" type="button">新建角色池</button></div>
+          <div class="form-grid">
+            <label class="field"><span>ID</span><input id="pool-id" maxlength="64" /></label>
+            <label class="field"><span>名称</span><input id="pool-name" maxlength="120" /></label>
+            <label class="field"><span>抽取类型</span><select id="pool-mode"><option value="wife">女角色</option><option value="husband">男角色</option></select></label>
+          </div>
+          <p id="pool-revision" class="hint">新建的角色池默认不启用；需在配置管理中选择。</p>
+          <div class="actions"><button id="delete-pool" class="button secondary" type="button" disabled>软删除角色池</button><button id="save-pool" class="button primary" type="button">保存角色池</button></div>
+        </div>
+        <div class="editor-card import-card">
+          <h3>导入角色包</h3>
+          <p class="hint">支持 JSON（图片使用公网 HTTP/HTTPS URL）或 ZIP（根 manifest.json 与 images/ 原图）。预检会检查图片、大小、路径与冲突；同 ID 默认跳过。</p>
+          <div class="form-grid">
+            <label class="field"><span>JSON 或 ZIP 文件</span><input id="import-file" type="file" accept=".json,.zip,application/json,application/zip" /></label>
+            <label class="field"><span>同 ID 角色图片</span><select id="import-image-strategy"><option value="append">追加并按哈希去重</option><option value="replace">替换图片组</option></select></label>
+          </div>
+          <div class="actions">
+            <button id="import-preview" class="button secondary" type="button">上传并预检</button>
+            <button id="import-commit" class="button primary" type="button" disabled>确认导入</button>
+          </div>
+          <div id="import-report" class="import-report" aria-live="polite">选择角色包后开始预检。</div>
+        </div>
+        <div class="editor-card maintenance-card">
+          <h3>导出、备份与恢复</h3>
+          <p class="hint">角色包只包含选中角色池及其素材。完整备份包含一致性数据库快照和插件素材；恢复会先自动备份当前数据，并覆盖当前插件数据。</p>
+          <div class="form-grid">
+            <label class="field"><span>导出角色池（可多选）</span><select id="export-pools" multiple size="5"></select></label>
+            <label class="field"><span>完整备份文件</span><input id="restore-file" type="file" accept=".zip,application/zip" /></label>
+          </div>
+          <div class="actions">
+            <button id="export-create" class="button secondary" type="button">生成角色包</button>
+            <button id="backup-create" class="button secondary" type="button">立即完整备份</button>
+            <button id="restore-preview" class="button secondary" type="button">上传并预检恢复</button>
+            <button id="restore-commit" class="button danger" type="button" disabled>确认恢复并覆盖</button>
+          </div>
+          <div id="maintenance-report" class="import-report" aria-live="polite">导出或备份完成后会显示作业与下载信息。恢复必须先上传并预检。</div>
+          <div id="restore-scope-mappings" class="form-grid" hidden></div>
+        </div>
+      </section>
+
+      <section id="data-panel" class="panel" hidden>
+        <div class="section-heading">
+          <div><h2>关系、配额与统计查询</h2><p class="muted">所有查询限定在选定的机器人与群作用域。</p></div>
+        </div>
+        <div class="editor-card">
+          <div class="form-grid">
+            <label class="field"><span>作用域</span><select id="data-scope"></select></label>
+            <label class="field"><span>用户 ID（可选）</span><input id="data-user" inputmode="numeric" /></label>
+            <label class="field"><span>玩法</span><select id="data-mode"><option value="wife">女角色</option><option value="husband">男角色</option><option value="member">群友</option></select></label>
+            <label class="field"><span>活跃度窗口（天）</span><input id="data-window" type="number" min="1" max="365" value="7" /></label>
+          </div>
+          <div class="query-actions">
+            <button class="button secondary" data-query="relationships" type="button">今日关系</button>
+            <button class="button secondary" data-query="quota" type="button">用户配额</button>
+            <button class="button secondary" data-query="intimacy" type="button">亲密度</button>
+            <button class="button secondary" data-query="activity" type="button">活跃度</button>
+            <button class="button secondary" data-query="invites" type="button">赠送邀请</button>
+            <button class="button secondary" data-query="history" type="button">操作历史</button>
+          </div>
+          <pre id="query-result" class="query-result" aria-live="polite">选择作用域后点击查询。</pre>
+        </div>
+        <div class="editor-card correction-card">
+          <h3>管理员纠错（预检后提交）</h3>
+          <div class="form-grid">
+            <label class="field"><span>操作类型</span><select id="correction-action">
+              <option value="relationship_end">解除指定关系</option><option value="credit_grant">补发抽取资格</option>
+              <option value="intimacy_set">设置有向亲密度</option><option value="activity_set">设置活跃度时间桶</option>
+              <option value="counter_reset">重置指定日计数</option>
+            </select></label>
+            <label class="field"><span>理由</span><input id="correction-reason" maxlength="500" /></label>
+          </div>
+          <label class="field"><span>目标参数（JSON）</span><textarea id="correction-spec" spellcheck="false"></textarea></label>
+          <div class="actions correction-actions">
+            <button id="correction-preview" class="button secondary" type="button">预览差异</button>
+            <button id="correction-commit" class="button primary" type="button" disabled>确认提交</button>
+          </div>
+          <pre id="correction-result" class="query-result" aria-live="polite">修改前会检查目标、理由及配置版本。</pre>
+        </div>
+      </section>
+
+      <section id="settings-panel" class="panel" hidden>
+        <div class="section-heading">
+          <div>
+            <h2>配置管理</h2>
+            <p class="muted">先选择全局配置或具体群。群配置按全局值生成稀疏覆盖。</p>
+          </div>
+        </div>
+        <label class="field scope-field" for="scope-select">
+          <span>编辑范围</span>
+          <select id="scope-select">
+            <option value="global">全局</option>
+          </select>
+        </label>
+        <div class="editor-card">
+          <div class="editor-meta">
+            <div>
+              <h3 id="editor-title">全局配置</h3>
+              <p id="revision" class="muted">正在读取版本…</p>
+            </div>
+            <span id="dirty-indicator" class="status-pill">已保存</span>
+          </div>
+          <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
+          <p id="editor-help" class="hint">每项可单独编辑；群配置可逐项选择继承全局或覆盖。草稿仅在保存后写入，并由服务端统一校验。</p>
+          <div class="actions">
+            <button id="discard" class="button secondary" type="button" disabled>放弃草稿</button>
+            <div class="action-end">
+              <button id="preview" class="button secondary" type="button">校验草稿</button>
+              <button id="save" class="button primary" type="button">保存配置</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <dialog id="image-preview" class="image-preview" aria-label="角色图预览">
+      <button id="image-preview-close" class="button secondary" type="button">关闭预览</button>
+      <img id="image-preview-content" alt="" />
+      <p id="image-preview-caption" class="muted"></p>
+    </dialog>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

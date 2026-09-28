@@ -1,0 +1,14 @@
+{
+  "enabled": {
+    "type": "bool",
+    "default": true,
+    "description": "插件启动开关。关闭时不会打开插件数据库。",
+    "hint": "这是 AstrBot 宿主开关；玩法总开关保存在插件数据库中。"
+  },
+  "web_admin_users": {
+    "type": "text",
+    "default": "",
+    "description": "允许进入今日姻缘管理页的 AstrBot Dashboard 用户名，每行一个。",
+    "hint": "只有列出的 Dashboard 登录账号可以查看或修改本插件数据；群管理员身份不会授予后台权限。"
+  }
+}

@@ -1,0 +1,248 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "access": {
+    "groups": {
+      "mode": "unrestricted",
+      "ids": []
+    },
+    "users": {
+      "mode": "unrestricted",
+      "ids": []
+    },
+    "extra_bot_ids": []
+  },
+  "reset": {
+    "timezone": "Asia/Shanghai",
+    "time": "00:00"
+  },
+  "commands": {
+    "allow_bare": true,
+    "allow_leading_bot_mention": true,
+    "allow_host_prefix": true,
+    "extra_prefixes": [],
+    "cooldown_seconds": 3,
+    "keywords": {
+      "draw_wife": [
+        "今日老婆"
+      ],
+      "draw_husband": [
+        "今日老公"
+      ],
+      "draw_member": [
+        "娶群友"
+      ],
+      "steal_wife": [
+        "抢老婆"
+      ],
+      "steal_husband": [
+        "抢老公"
+      ],
+      "steal_member": [
+        "抢群友"
+      ],
+      "gift_wife": [
+        "送老婆"
+      ],
+      "gift_husband": [
+        "送老公"
+      ],
+      "gift_member": [
+        "送群友"
+      ],
+      "divorce_character": [
+        "离婚"
+      ],
+      "divorce_wife": [
+        "离婚老婆"
+      ],
+      "divorce_husband": [
+        "离婚老公"
+      ],
+      "divorce_member": [
+        "踹群友"
+      ],
+      "list_characters": [
+        "老婆列表"
+      ],
+      "list_members": [
+        "群友列表"
+      ],
+      "rank_intimacy": [
+        "亲密度排行"
+      ],
+      "rank_activity": [
+        "活跃度排行"
+      ],
+      "gift_accept": [
+        "接受赠送"
+      ],
+      "gift_reject": [
+        "拒绝赠送"
+      ],
+      "gift_cancel": [
+        "取消赠送"
+      ]
+    }
+  },
+  "modes": {
+    "wife": {
+      "enabled": true,
+      "capacity": 1,
+      "steal_enabled": true,
+      "steal_attempt_limit": 3,
+      "steal_cooldown_seconds": 60,
+      "steal_probability": 0.3,
+      "stolen_limit": 1,
+      "gift_enabled": true,
+      "gift_mode": "direct",
+      "gift_timeout_seconds": 60,
+      "divorce_enabled": true,
+      "divorce_limit": 1,
+      "pool_ids": [
+        "wuwa_wife"
+      ]
+    },
+    "husband": {
+      "enabled": true,
+      "capacity": 1,
+      "steal_enabled": true,
+      "steal_attempt_limit": 3,
+      "steal_cooldown_seconds": 60,
+      "steal_probability": 0.3,
+      "stolen_limit": 1,
+      "gift_enabled": true,
+      "gift_mode": "direct",
+      "gift_timeout_seconds": 60,
+      "divorce_enabled": true,
+      "divorce_limit": 1,
+      "pool_ids": [
+        "wuwa_husband"
+      ]
+    },
+    "member": {
+      "enabled": true,
+      "capacity": 1,
+      "steal_enabled": true,
+      "steal_attempt_limit": 3,
+      "steal_cooldown_seconds": 60,
+      "steal_probability": 0.3,
+      "stolen_limit": 1,
+      "gift_enabled": true,
+      "gift_mode": "direct",
+      "gift_timeout_seconds": 60,
+      "divorce_enabled": true,
+      "divorce_limit": 1
+    }
+  },
+  "statistics": {
+    "intimacy_enabled": true,
+    "activity_enabled": true,
+    "mention_active_points": 2,
+    "mention_passive_points": 1,
+    "poke_active_points": 2,
+    "poke_passive_points": 1,
+    "activity_window_days": 7
+  },
+  "weights": {
+    "base": 1.0,
+    "per_intimacy_point": 0.01,
+    "maximum": 5.0,
+    "activity_floor": 0.2,
+    "activity_full_messages": 50
+  },
+  "display": {
+    "pagination_enabled": true,
+    "page_size": 10,
+    "intimacy_rank_mode": "personal",
+    "intimacy_rank_enabled": true,
+    "activity_rank_enabled": true
+  },
+  "members": {
+    "cache_ttl_seconds": 300
+  },
+  "messages": {
+    "results": {
+      "draw_wife": "娶到老婆：{name}",
+      "draw_husband": "娶到老公：{name}",
+      "draw_member": "娶到群友：{name}",
+      "capacity_full": "持有名额已满：{names}",
+      "no_draw_quota": "今天的普通抽取额度已用完",
+      "no_candidate": "当前没有可抽取对象",
+      "steal_failed": "抢夺失败；配偶保留原关系",
+      "stolen": "抢夺成功",
+      "divorced": "关系已解除，你获得一次补抽资格",
+      "gifted": "赠送完成",
+      "invite_created": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
+      "gift_accepted": "赠送已接受",
+      "invite_rejected": "已拒绝赠送",
+      "invite_cancelled": "已取消赠送",
+      "invite_expired": "赠送邀请已过期",
+      "invite_invalidated": "赠送邀请已失效",
+      "invite_not_owned": "你无权处理这条邀请",
+      "steal_cooldown": "抢夺冷却中",
+      "steal_limit": "本周期抢夺尝试次数已用完",
+      "target_protected": "该持有者本周期已受抢夺保护",
+      "divorce_limit": "本周期解除关系次数已用完",
+      "relationship_not_found": "没有找到可处理的关系",
+      "invalid_target": "目标无效",
+      "no_target_relationship": "目标没有可抢夺的关系",
+      "mode_disabled": "这个玩法当前已关闭",
+      "invalid_probability": "抢夺概率配置无效",
+      "invalid_timeout": "赠送超时配置无效",
+      "invite_already_pending": "该关系已有待处理赠送邀请，编号 {invite_id}",
+      "invite_limit": "待处理赠送邀请已达上限 {limit}",
+      "invite_invalid": "赠送邀请已无效",
+      "unknown_result": "操作未完成：{code}"
+    },
+    "errors": {
+      "syntax_error": "{detail}",
+      "operation_error": "{detail}",
+      "mode_closed": "这个玩法当前已关闭。",
+      "command_cooldown": "指令冷却中，请在 {remaining_seconds} 秒后重试。",
+      "steal_disabled": "这个玩法当前不允许抢夺。",
+      "steal_target_required": "请 @ 一位当前群内且允许参与的持有者。",
+      "steal_relation_ambiguous": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。",
+      "gift_disabled": "这个玩法当前不允许赠送。",
+      "gift_target_required": "请 @ 一位当前群内且允许参与的接收者。",
+      "gift_relation_ambiguous": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
+      "divorce_ambiguous": "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。",
+      "divorce_disabled": "这个玩法当前不允许解除关系。",
+      "divorce_relation_missing": "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。",
+      "invite_multiple": "你有多条待处理赠送，请在命令后填写邀请编号。",
+      "invite_none": "没有可处理的待赠送邀请。",
+      "invite_invalid_id": "邀请编号无效或不属于当前群。",
+      "rank_intimacy_disabled": "亲密度排行当前已关闭。",
+      "rank_activity_disabled": "活跃度排行当前已关闭。",
+      "activity_disabled": "活跃度统计已关闭；当前保留历史排行。",
+      "page_out_of_range": "页码超出范围；共 {pages} 页。",
+      "list_empty": "{title}：当前没有关系。"
+    },
+    "notifications": {
+      "restart_invalidated": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
+      "invite_expired": "以下赠送邀请已超时：{invite_ids}"
+    }
+  },
+  "history": {
+    "retention_days": 30
+  },
+  "resources": {
+    "http_timeout_seconds": 15,
+    "image_max_bytes": 10485760,
+    "image_max_pixels": 24000000,
+    "import_max_bytes": 209715200,
+    "import_max_entries": 5000,
+    "import_max_expanded_bytes": 524288000,
+    "render_width": 1000,
+    "render_max_height": 8000,
+    "render_concurrency": 2,
+    "text_chunk_chars": 1500,
+    "send_interval_seconds": 1.0,
+    "pending_invites_per_user": 20,
+    "avatar_cache_ttl_seconds": 86400,
+    "avatar_cache_max_entries": 5000,
+    "dedupe_retention_days": 30,
+    "backup_keep_count": 5,
+    "download_concurrency": 4
+  }
+}
