@@ -19,7 +19,7 @@ _MODES = ("wife", "husband", "member")
 _ACTIONS = (
     "draw_wife", "draw_husband", "draw_member", "steal_wife", "steal_husband",
     "steal_member", "gift_wife", "gift_husband", "gift_member", "divorce_character",
-    "divorce_wife", "divorce_husband", "divorce_member", "list_characters",
+    "divorce_wife", "divorce_husband", "divorce_member", "list_characters", "list_husband",
     "list_members", "rank_intimacy", "rank_activity", "gift_accept", "gift_reject",
     "gift_cancel",
 )
@@ -120,6 +120,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         for field in ("enabled", "steal_enabled", "gift_enabled", "divorce_enabled"):
             _boolean(config, f"modes.{mode}.{field}")
         _integer(config, f"modes.{mode}.capacity", 1, 100)
+        _integer(config, f"modes.{mode}.steal_slot_capacity", 0, 100)
         for field in ("steal_attempt_limit", "stolen_limit", "divorce_limit"):
             _integer(config, f"modes.{mode}.{field}", 0, 100000)
         for field in ("steal_cooldown_seconds", "gift_timeout_seconds"):

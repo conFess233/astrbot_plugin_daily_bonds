@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from ..models import Scope, StorageError
 from .settings import default_config, effective_config, merge_sparse, validate_config
 
-_SCHEMA_VERSION = 6
+_SCHEMA_VERSION = 7
 _NAMESPACE = uuid.UUID("1dc04dd2-af4f-4585-b350-0aa574597b9f")
 
 
@@ -278,10 +278,11 @@ class SQLiteStorage:
         snapshot_id: str,
         capacity: int,
         now: int,
+        slot_kind: str = "normal",
     ) -> str:
         """在当前事务中统一检查容量、自配偶和 subject 唯一归属。"""
 
-        if mode not in {"wife", "husband", "member"} or capacity < 1:
+        if mode not in {"wife", "husband", "member"} or capacity < 1 or slot_kind not in {"normal", "steal"}:
             raise StorageError("玩法或持有容量无效。")
         if mode == "member":
             if subject_kind != "member" or owner_id == subject_id:
@@ -304,16 +305,16 @@ class SQLiteStorage:
         if snapshot is None or snapshot["subject_kind"] != subject_kind or snapshot["subject_id"] != subject_id:
             raise StorageError("关系对象与不可变快照不匹配。")
         count = connection.execute(
-            "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND state='active'",
-            (scope_id, period_id, mode, owner_id),
+            "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind=? AND state='active'",
+            (scope_id, period_id, mode, owner_id, slot_kind),
         ).fetchone()["amount"]
         if int(count) >= capacity:
             raise StorageError("持有名额已满。")
         relation_id = str(uuid.uuid4())
         connection.execute(
-            """INSERT INTO relationships(id,scope_id,period_id,mode,owner_id,subject_kind,subject_id,snapshot_id,state,acquired_at)
-               VALUES(?,?,?,?,?,?,?,?, 'active',?)""",
-            (relation_id, scope_id, period_id, mode, owner_id, subject_kind, subject_id, snapshot_id, now),
+            """INSERT INTO relationships(id,scope_id,period_id,mode,owner_id,subject_kind,subject_id,snapshot_id,state,acquired_at,slot_kind)
+               VALUES(?,?,?,?,?,?,?,?, 'active',?,?)""",
+            (relation_id, scope_id, period_id, mode, owner_id, subject_kind, subject_id, snapshot_id, now, slot_kind),
         )
         return relation_id
 
@@ -327,6 +328,7 @@ class SQLiteStorage:
             migration_dir / "004_catalog_admin.sql",
             migration_dir / "005_admin_correction_preflights.sql",
             migration_dir / "006_period_resets.sql",
+            migration_dir / "007_steal_slots.sql",
         ]
         checksums = [hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files]
         try:

@@ -194,7 +194,7 @@ class CommandRuntime:
             return None
         mode_config = config["modes"][mode]
         lifecycle_actions = {"divorce_character", "divorce_wife", "divorce_husband", "divorce_member", "gift_accept", "gift_reject", "gift_cancel"}
-        if not mode_config["enabled"] and command.action not in {"list_characters", "list_members", "rank_intimacy", "rank_activity", *lifecycle_actions}:
+        if not mode_config["enabled"] and command.action not in {"list_characters", "list_husband", "list_members", "rank_intimacy", "rank_activity", *lifecycle_actions}:
             return render_message(config, "errors", "mode_closed")
 
         cooldown_seconds = config["commands"]["cooldown_seconds"]
@@ -308,7 +308,7 @@ class CommandRuntime:
 
     async def _query_or_action(self, **values: Any) -> str | RuntimeReply | None:
         command: ParsedCommand = values["command"]
-        if command.action in {"list_characters", "list_members"}:
+        if command.action in {"list_characters", "list_husband", "list_members"}:
             return await self._list_relationships(
                 values["scope_id"], values["period_id"], values["mode"], values["command"].page,
                 values["config"]["display"]["page_size"], values["config"]["display"]["pagination_enabled"],
@@ -338,6 +338,7 @@ class CommandRuntime:
                 probability=mode_config["steal_probability"], attempt_limit=mode_config["steal_attempt_limit"],
                 cooldown_seconds=mode_config["steal_cooldown_seconds"],
                 target_protection_limit=mode_config["stolen_limit"], relation_id=relation_id,
+                steal_slot_capacity=mode_config["steal_slot_capacity"],
                 event_key=values["event_key"], payload_hash=values["payload_hash"],
                 config_revision=values["revision"], now=values["now"],
             )
@@ -379,6 +380,8 @@ class CommandRuntime:
                     for item in matches
                 )
                 return f"{render_message(config, 'errors', 'divorce_ambiguous')}\n{candidates}"
+            if matches[0]["slot_kind"] == "steal":
+                return render_message(config, "results", "relationship_locked")
             mode = str(matches[0]["mode"])
             relation_id = str(matches[0]["id"])
             mode_config = config["modes"][mode]
@@ -427,7 +430,7 @@ class CommandRuntime:
         marks = ",".join("?" for _ in modes)
         with self.storage._lock:
             rows = self.storage._connection().execute(
-                f"""SELECT r.id,r.mode,r.subject_id,s.name,s.aliases_json,
+                f"""SELECT r.id,r.mode,r.subject_id,r.slot_kind,s.name,s.aliases_json,
                            m.nickname,m.card
                     FROM relationships r
                     JOIN subject_snapshots s ON s.id=r.snapshot_id
@@ -444,14 +447,14 @@ class CommandRuntime:
             if target_user_id is not None:
                 selected = row["mode"] == "member" and str(row["subject_id"]) == target_user_id
             elif query is None:
-                selected = True
+                selected = row["slot_kind"] == "normal"
             else:
                 names = {str(row["name"]), *json.loads(row["aliases_json"])}
                 if row["mode"] == "member":
                     names.update(str(row[key]) for key in ("nickname", "card") if row[key])
                 selected = str(row["subject_id"]) == normalized or query in names
             if selected:
-                matches.append({key: str(row[key]) for key in ("id", "mode", "subject_id", "name")})
+                matches.append({key: str(row[key]) for key in ("id", "mode", "subject_id", "name", "slot_kind")})
         return matches
 
     async def _resolve_relation(
@@ -657,10 +660,10 @@ class CommandRuntime:
         if resources is None:
             resources = config["resources"]
         with self.storage._lock:
-            modes = ("wife", "husband") if mode == "wife" else (mode,)
+            modes = (mode,)
             marks = ",".join("?" for _ in modes)
             rows = self.storage._connection().execute(
-                """SELECT r.mode,r.owner_id,r.subject_id,s.id AS snapshot_id,s.name,s.subject_kind,
+                """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,s.id AS snapshot_id,s.name,s.subject_kind,
                           (SELECT GROUP_CONCAT(mb.relative_path,'|') FROM snapshot_images si
                            JOIN media_blobs mb ON mb.hash=si.media_hash WHERE si.snapshot_id=s.id) AS image_paths
                    FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id
@@ -676,7 +679,7 @@ class CommandRuntime:
             }
         mode_labels = {"wife": "老婆", "husband": "老公", "member": "群友"}
         entries = [
-            f"[{mode_labels[str(row['mode'])]}] {members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}"
+            f"[{mode_labels[str(row['mode'])]}{'·抢夺' if row['slot_kind'] == 'steal' else ''}] {members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}"
             for row in rows
         ]
         owner_ids = list(dict.fromkeys(str(row["owner_id"]) for row in rows))
@@ -687,13 +690,13 @@ class CommandRuntime:
         card_rows = [
             CardRow(
                 primary=f"{members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}",
-                secondary=f"{mode_labels[str(row['mode'])]} · {row['subject_kind']}",
+                secondary=f"{mode_labels[str(row['mode'])]} · {'抢夺' if row['slot_kind'] == 'steal' else '普通'} · {row['subject_kind']}",
                 image_path=self._snapshot_image_path(row["image_paths"]),
                 avatar_path=avatars.get(str(row["owner_id"])),
             )
             for row in rows
         ]
-        title = {"wife": "老婆/老公列表", "husband": "老公列表", "member": "群友配偶列表"}[mode]
+        title = {"wife": "老婆列表", "husband": "老公列表", "member": "群友配偶列表"}[mode]
         if not entries:
             return await self._reply_with_card(render_message(config, "errors", "list_empty", title=title), title, ())
         if not pagination_enabled:
@@ -811,6 +814,8 @@ class CommandRuntime:
         if code == "CAPACITY_FULL":
             names = "、".join(str(item["name"]) for item in data.get("relationships", ()))
             return render_message(config, "results", "capacity_full", names=names)
+        if code == "STEAL_SLOT_FULL":
+            return render_message(config, "results", "steal_slot_full", role={"wife": "老婆", "husband": "老公", "member": "群友"}[mode])
         key = code.lower()
         if key in config["messages"]["results"]:
             return render_message(config, "results", key,

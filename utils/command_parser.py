@@ -152,7 +152,7 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
     if action in {"draw_wife", "draw_husband", "draw_member"}:
         _no_suffix(action, suffix)
         return ParsedCommand(action)
-    if action in {"list_characters", "list_members", "rank_intimacy", "rank_activity"}:
+    if action in {"list_characters", "list_husband", "list_members", "rank_intimacy", "rank_activity"}:
         if not suffix:
             return ParsedCommand(action)
         if not _PAGE.fullmatch(suffix):

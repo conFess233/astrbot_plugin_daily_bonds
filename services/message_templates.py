@@ -14,6 +14,7 @@ _REQUIRED = {
     "messages.results.draw_husband": {"name"},
     "messages.results.draw_member": {"name"},
     "messages.results.capacity_full": {"names"},
+    "messages.results.steal_slot_full": {"role"},
     "messages.results.invite_created": {"invite_id", "accept_keyword"},
     "messages.errors.page_out_of_range": {"pages"},
     "messages.notifications.invite_expired": {"invite_ids"},

@@ -37,7 +37,9 @@ class AdminQueryService:
                 f"SELECT COUNT(*) FROM relationships r JOIN periods p ON p.id=r.period_id AND p.scope_id=r.scope_id JOIN subject_snapshots ss ON ss.id=r.snapshot_id WHERE {clause}", args
             ).fetchone()[0])
             rows = db.execute(
-                f"""SELECT r.id,r.period_id,r.mode,r.owner_id,r.subject_kind,r.subject_id,r.state,r.acquired_at,r.ended_at,
+                f"""SELECT r.id,r.period_id,r.mode,r.owner_id,r.subject_kind,r.subject_id,r.slot_kind,
+                           CASE r.slot_kind WHEN 'steal' THEN '抢夺' ELSE '普通' END AS slot_label,
+                           r.state,r.acquired_at,r.ended_at,
                            r.end_reason,r.version,ss.name AS snapshot_name,ss.source_revision,p.starts_at,p.ends_at,
                            COALESCE((SELECT GROUP_CONCAT(si.media_hash,char(31)) FROM snapshot_images si WHERE si.snapshot_id=ss.id),'') AS image_hashes
                     FROM relationships r JOIN periods p ON p.id=r.period_id AND p.scope_id=r.scope_id
@@ -65,7 +67,11 @@ class AdminQueryService:
                 (scope_id, period_id, mode, user_id),
             ).fetchone()
             active = int(db.execute(
-                "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND state='active'",
+                "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='normal' AND state='active'",
+                (scope_id, period_id, mode, user_id),
+            ).fetchone()[0])
+            stolen = int(db.execute(
+                "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='steal' AND state='active'",
                 (scope_id, period_id, mode, user_id),
             ).fetchone()[0])
             credits = db.execute(
@@ -80,7 +86,9 @@ class AdminQueryService:
         credit_rows = [dict(row) for row in credits]
         available = sum(int(row["amount"]) for row in credit_rows if row["state"] == "available")
         capacity = int(settings["capacity"])
-        counter_value.update({"active_relationships": active, "capacity": capacity, "normal_quota_remaining": max(0, capacity - int(counter_value["normal_draws"])),
+        counter_value.update({"active_relationships": active, "active_steal_relationships": stolen,
+                              "steal_slot_capacity": int(settings["steal_slot_capacity"]),
+                              "capacity": capacity, "normal_quota_remaining": max(0, capacity - int(counter_value["normal_draws"])),
                               "available_redraw_credits": available, "redraw_credits": credit_rows,
                               "pending_invites_sent": sent, "pending_invites_received": received})
         return {"scope_id": scope_id, "period": dict(period), "mode": mode, "user_id": user_id, "data": counter_value, "config_revision": revision}

@@ -27,8 +27,12 @@ class AdminCorrectionService:
         scope_id = payload.get("scope_id")
         if isinstance(scope_id, bool) or not isinstance(scope_id, int) or scope_id < 1:
             raise ValueError("scope_id 必须是插件内的整数作用域。")
-        reason = self._text(payload.get("reason"), "纠错理由", 500)
         spec = self._normalize_spec(action, payload)
+        if action in {"period_reset_relations", "period_reset_counters"} and not payload.get("reason"):
+            label = "重置关系" if action == "period_reset_relations" else "重置每日数据"
+            reason = f"管理员{label}：群作用域 {scope_id}，玩法 {spec['mode']}"
+        else:
+            reason = self._text(payload.get("reason"), "纠错理由", 500)
         config_revision = self._config_revision(scope_id)
         with self.storage.transaction() as db:
             if db.execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,)).fetchone() is None:
@@ -121,7 +125,7 @@ class AdminCorrectionService:
             params = (scope_id, period) if mode == "all" else (scope_id, period, mode)
             if action == "period_reset_relations":
                 rows = db.execute(
-                    f"SELECT id,mode,owner_id,subject_id,version FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql} ORDER BY id",
+                    f"SELECT id,mode,owner_id,subject_id,slot_kind,version FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql} ORDER BY id",
                     params,
                 ).fetchall()
                 invite_count = int(db.execute(
@@ -129,7 +133,10 @@ class AdminCorrectionService:
                          AND relationship_id IN (SELECT id FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql})""",
                     (*params[:2], *params),
                 ).fetchone()[0])
-                before = {"period_id": period, "active_relationships": len(rows), "pending_invites_retained": invite_count,
+                before = {"period_id": period, "active_relationships": len(rows),
+                          "normal_relationships": sum(row["slot_kind"] == "normal" for row in rows),
+                          "steal_slot_relationships": sum(row["slot_kind"] == "steal" for row in rows),
+                          "pending_invites_retained": invite_count,
                           "fingerprint": self._rows_hash(rows)}
                 after = {"period_id": period, "active_relationships": 0, "pending_invites_retained": invite_count,
                          "normal_draws_unchanged": True, "redraw_credits_unchanged": True}
@@ -144,7 +151,7 @@ class AdminCorrectionService:
                          "redraw_credits_unchanged": True}
             return f"{period}:{mode}", before, after
         if action == "relationship_end":
-            row = db.execute("SELECT id,period_id,mode,owner_id,state,version,ended_at,end_reason FROM relationships WHERE id=? AND scope_id=?", (spec["relationship_id"], scope_id)).fetchone()
+            row = db.execute("SELECT id,period_id,mode,owner_id,slot_kind,state,version,ended_at,end_reason FROM relationships WHERE id=? AND scope_id=?", (spec["relationship_id"], scope_id)).fetchone()
             if row is None or row["state"] != "active":
                 raise ValueError("关系不存在或已结束。")
             before = dict(row)

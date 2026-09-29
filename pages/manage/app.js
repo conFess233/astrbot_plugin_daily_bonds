@@ -73,12 +73,20 @@ const notice = $("#notice");
 const imagePreviewCache = new Map();
 
 function showNotice(message, kind = "success") {
-  notice.hidden = false;
-  notice.className = `notice ${kind}`;
-  notice.textContent = message;
-  notice.classList.remove("notice-in");
-  void notice.offsetWidth;
-  notice.classList.add("notice-in");
+  const item = document.createElement("div");
+  item.className = `notification ${kind}`;
+  item.setAttribute("role", kind === "error" ? "alert" : "status");
+  const body = document.createElement("span");
+  body.textContent = message;
+  const close = document.createElement("button");
+  close.type = "button";
+  close.className = "notification-close";
+  close.setAttribute("aria-label", "关闭通知");
+  close.textContent = "×";
+  close.addEventListener("click", () => item.remove());
+  item.append(body, close);
+  notice.prepend(item);
+  if (kind !== "error") window.setTimeout(() => item.remove(), 4000);
 }
 
 function setBusy(value) {
@@ -127,7 +135,7 @@ function renderScopes() {
   const previousDataScope = state.dataScopeId;
   dataScope.replaceChildren();
   state.periodResetPlan = null;
-  $("#period-reset-commit").disabled = true;
+  if ($("#period-reset-dialog").open) $("#period-reset-dialog").close();
   if (!state.scopes.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
@@ -570,7 +578,7 @@ async function loadConfig() {
 
 async function refreshAll() {
   setBusy(true);
-  notice.hidden = true;
+  notice.replaceChildren();
   try {
     await loadScopes();
     await loadOverview();
@@ -981,6 +989,7 @@ document.querySelectorAll("button[data-query]").forEach((button) => button.addEv
     $("#query-result").textContent = JSON.stringify(result.data ?? result, null, 2);
   } catch (error) {
     $("#query-result").textContent = error.message || "查询失败。";
+    showNotice(error.message || "查询失败。", "error");
   }
 }));
 $("#data-scope").addEventListener("change", () => {
@@ -988,7 +997,7 @@ $("#data-scope").addEventListener("change", () => {
   state.correctionPlan = null;
   $("#correction-commit").disabled = true;
   state.periodResetPlan = null;
-  $("#period-reset-commit").disabled = true;
+  if ($("#period-reset-dialog").open) $("#period-reset-dialog").close();
   loadOverview().catch((error) => showNotice(error.message, "error"));
 });
 
@@ -1016,10 +1025,12 @@ $("#correction-preview").addEventListener("click", async () => {
     state.correctionPlan = result.data;
     $("#correction-result").textContent = JSON.stringify(result.data, null, 2);
     $("#correction-commit").disabled = false;
+    showNotice("纠错预览已生成。", "success");
   } catch (error) {
     state.correctionPlan = null;
     $("#correction-result").textContent = error.message || "纠错预检失败。";
     $("#correction-commit").disabled = true;
+    showNotice(error.message || "纠错预检失败。", "error");
   }
 });
 $("#correction-commit").addEventListener("click", async () => {
@@ -1033,19 +1044,31 @@ $("#correction-commit").addEventListener("click", async () => {
     });
     $("#correction-result").textContent = JSON.stringify(result.data || result, null, 2);
     state.correctionPlan = null;
+    showNotice("纠错已提交。", "success");
   } catch (error) {
     $("#correction-result").textContent = error.message || "纠错提交失败，请重新预检。";
     state.correctionPlan = null;
+    showNotice(error.message || "纠错提交失败，请重新预检。", "error");
   }
 });
 
 function clearPeriodResetPlan() {
   state.periodResetPlan = null;
-  $("#period-reset-commit").disabled = true;
+  $("#period-reset-confirm").disabled = true;
 }
 
-for (const selector of ["#period-reset-mode", "#period-reset-reason"]) {
-  $(selector).addEventListener("input", clearPeriodResetPlan);
+$("#period-reset-mode").addEventListener("change", clearPeriodResetPlan);
+
+const resetModeLabels = { wife: "老婆", husband: "老公", member: "娶群友", all: "全部玩法" };
+
+function periodResetSummary(plan) {
+  const mode = resetModeLabels[$("#period-reset-mode").value];
+  const scope = state.scopes.find((item) => String(item.id) === String(plan.scope_id));
+  const group = scope ? `群 ${scope.group_id}` : `群作用域 ${plan.scope_id}`;
+  if (plan.action === "period_reset_relations") {
+    return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将结束 ${plan.before.active_relationships} 段关系（普通 ${plan.before.normal_relationships}，抢夺槽位 ${plan.before.steal_slot_relationships}）。\n保留 ${plan.before.pending_invites_retained} 个待处理赠送、每日计数、补抽资格、历史和统计。`;
+  }
+  return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将清零 ${plan.before.counter_rows} 条每日计数记录。\n保留关系、补抽资格、待处理赠送、历史和统计。`;
 }
 
 async function previewPeriodReset(action) {
@@ -1054,39 +1077,42 @@ async function previewPeriodReset(action) {
     if (!$("#data-scope").value) throw new Error("请先选择群作用域。");
     const result = await apiPost("admin/preview", {
       action,
-      scope_id: $("#data-scope").value,
+      scope_id: Number($("#data-scope").value),
       mode: $("#period-reset-mode").value,
-      reason: $("#period-reset-reason").value.trim(),
     });
     state.periodResetPlan = result.data;
-    $("#period-reset-result").textContent = JSON.stringify(result.data, null, 2);
-    $("#period-reset-commit").disabled = false;
+    $("#period-reset-dialog-title").textContent = action === "period_reset_relations" ? "确认重置关系" : "确认重置每日数据";
+    $("#period-reset-summary").textContent = periodResetSummary(result.data);
+    $("#period-reset-confirm").disabled = false;
+    $("#period-reset-dialog").showModal();
   } catch (error) {
-    $("#period-reset-result").textContent = error.message || "重置预检失败。";
+    showNotice(error.message || "重置预检失败。", "error");
   }
 }
 
 $("#period-reset-relations-preview").addEventListener("click", () => previewPeriodReset("period_reset_relations"));
 $("#period-reset-counters-preview").addEventListener("click", () => previewPeriodReset("period_reset_counters"));
-$("#period-reset-commit").addEventListener("click", async () => {
+$("#period-reset-cancel").addEventListener("click", () => $("#period-reset-dialog").close());
+$("#period-reset-dialog").addEventListener("close", clearPeriodResetPlan);
+$("#period-reset-confirm").addEventListener("click", async () => {
   const plan = state.periodResetPlan;
   if (!plan) return;
   const operation = plan.action === "period_reset_relations" ? "重置关系" : "重置每日数据";
-  if (!window.confirm(`将对群作用域 ${plan.scope_id} 执行${operation}（${plan.target}）。\n预览：${JSON.stringify(plan.before)}\n继续吗？`)) return;
-  $("#period-reset-commit").disabled = true;
+  $("#period-reset-confirm").disabled = true;
   try {
-    const result = await apiPost("admin/commit", {
+    await apiPost("admin/commit", {
       preflight_id: plan.preflight_id,
       expected_revision: plan.config_revision,
       request_id: crypto.randomUUID(),
     });
-    $("#period-reset-result").textContent = JSON.stringify(result.data || result, null, 2);
+    $("#period-reset-dialog").close();
     showNotice(`${operation}已完成。`);
-    clearPeriodResetPlan();
   } catch (error) {
-    $("#period-reset-result").textContent = error.message || "重置失败，请重新预检。";
-    clearPeriodResetPlan();
+    $("#period-reset-dialog").close();
+    showNotice(error.message || "重置失败，请重新预检。", "error");
+    return;
   }
+  loadOverview().catch((error) => showNotice(error.message || "概况刷新失败。", "error"));
 });
 
 function renderImportPreview(data) {

@@ -25,7 +25,7 @@
         <button class="tab" type="button" data-tab="catalog">角色目录</button>
         <button class="tab" type="button" data-tab="data">数据查询</button>
       </nav>
-      <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+      <div id="notice" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
       <section id="overview-panel" class="panel">
         <div class="section-heading">
@@ -160,16 +160,12 @@
         <div class="editor-card correction-card">
           <h3>重置当前周期数据</h3>
           <p class="hint">作用于上方选定的群。两个操作互不附带对方的修改；历史、统计、补抽资格和待处理赠送均保留。关系结束后，绑定它的赠送若被接受才会提示失效。</p>
-          <div class="form-grid">
-            <label class="field"><span>玩法</span><select id="period-reset-mode"><option value="wife">老婆</option><option value="husband">老公</option><option value="member">娶群友</option><option value="all">全部玩法</option></select></label>
-            <label class="field"><span>操作理由</span><input id="period-reset-reason" maxlength="500" /></label>
-          </div>
+          <label class="field scope-field"><span>玩法</span><select id="period-reset-mode"><option value="wife">老婆</option><option value="husband">老公</option><option value="member">娶群友</option><option value="all">全部玩法</option></select></label>
           <div class="actions correction-actions">
-            <button id="period-reset-relations-preview" class="button secondary" type="button">预览重置关系</button>
-            <button id="period-reset-counters-preview" class="button secondary" type="button">预览重置每日数据</button>
-            <button id="period-reset-commit" class="button danger" type="button" disabled>确认执行</button>
+            <button id="period-reset-relations-preview" class="button secondary" type="button">重置关系…</button>
+            <button id="period-reset-counters-preview" class="button secondary" type="button">重置每日数据…</button>
           </div>
-          <pre id="period-reset-result" class="query-result" aria-live="polite">选择群与玩法，填写理由后预览影响。</pre>
+          <p class="hint">点击操作后将展示影响范围，再决定是否执行。</p>
         </div>
       </section>
 
@@ -211,6 +207,15 @@
       <button id="image-preview-close" class="button secondary" type="button">关闭预览</button>
       <img id="image-preview-content" alt="" />
       <p id="image-preview-caption" class="muted"></p>
+    </dialog>
+    <dialog id="period-reset-dialog" class="confirm-dialog" aria-labelledby="period-reset-dialog-title">
+      <h3 id="period-reset-dialog-title">确认重置</h3>
+      <p class="muted">请核对当前群、玩法和受影响数量。</p>
+      <pre id="period-reset-summary" class="query-result"></pre>
+      <div class="actions correction-actions">
+        <button id="period-reset-cancel" class="button secondary" type="button">取消</button>
+        <button id="period-reset-confirm" class="button danger" type="button">确认执行</button>
+      </div>
     </dialog>
     <script type="module" src="./app.js"></script>
   </body>

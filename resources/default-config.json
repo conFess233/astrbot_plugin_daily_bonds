@@ -66,6 +66,9 @@
       "list_characters": [
         "老婆列表"
       ],
+      "list_husband": [
+        "老公列表"
+      ],
       "list_members": [
         "群友列表"
       ],
@@ -91,6 +94,7 @@
       "enabled": true,
       "capacity": 1,
       "steal_enabled": true,
+      "steal_slot_capacity": 1,
       "steal_attempt_limit": 3,
       "steal_cooldown_seconds": 60,
       "steal_probability": 0.3,
@@ -108,6 +112,7 @@
       "enabled": true,
       "capacity": 1,
       "steal_enabled": true,
+      "steal_slot_capacity": 1,
       "steal_attempt_limit": 3,
       "steal_cooldown_seconds": 60,
       "steal_probability": 0.3,
@@ -125,6 +130,7 @@
       "enabled": true,
       "capacity": 1,
       "steal_enabled": true,
+      "steal_slot_capacity": 1,
       "steal_attempt_limit": 3,
       "steal_cooldown_seconds": 60,
       "steal_probability": 0.3,
@@ -168,6 +174,9 @@
       "draw_husband": "娶到老公：{name}",
       "draw_member": "娶到群友：{name}",
       "capacity_full": "持有名额已满：{names}",
+      "steal_slot_full": "你今天已经抢过{role}啦～",
+      "relationship_locked": "抢夺槽位关系今日不可解除或赠送。",
+      "steal_slot_locked": "对方的抢夺槽位关系今日不可再次抢夺。",
       "capacity_full_single_wife": "你今日已有老婆啦，请明日再来。",
       "capacity_full_single_husband": "你今日已有老公啦，请明日再来。",
       "no_draw_quota": "今天的普通抽取额度已用完",

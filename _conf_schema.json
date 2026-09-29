@@ -241,6 +241,14 @@
                 ],
                 "hint": "触发词列表，每项为一条关键词。"
               },
+              "list_husband": {
+                "type": "list",
+                "description": "老公列表关键词",
+                "default": [
+                  "老公列表"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
               "list_members": {
                 "type": "list",
                 "description": "群友列表关键词",
@@ -315,6 +323,12 @@
                 "type": "bool",
                 "description": "允许抢夺",
                 "default": true
+              },
+              "steal_slot_capacity": {
+                "type": "int",
+                "description": "每日抢夺槽位数量",
+                "default": 1,
+                "hint": "0 表示沿用普通持有容量。"
               },
               "steal_attempt_limit": {
                 "type": "int",
@@ -398,6 +412,12 @@
                 "description": "允许抢夺",
                 "default": true
               },
+              "steal_slot_capacity": {
+                "type": "int",
+                "description": "每日抢夺槽位数量",
+                "default": 1,
+                "hint": "0 表示沿用普通持有容量。"
+              },
               "steal_attempt_limit": {
                 "type": "int",
                 "description": "抢夺尝试次数上限",
@@ -479,6 +499,12 @@
                 "type": "bool",
                 "description": "允许抢夺",
                 "default": true
+              },
+              "steal_slot_capacity": {
+                "type": "int",
+                "description": "每日抢夺槽位数量",
+                "default": 1,
+                "hint": "0 表示沿用普通持有容量。"
               },
               "steal_attempt_limit": {
                 "type": "int",
@@ -682,6 +708,21 @@
                 "type": "text",
                 "description": "持有名额已满",
                 "default": "持有名额已满：{names}"
+              },
+              "steal_slot_full": {
+                "type": "text",
+                "description": "抢夺槽位已满",
+                "default": "你今天已经抢过{role}啦～"
+              },
+              "relationship_locked": {
+                "type": "text",
+                "description": "抢夺关系不可解除或赠送",
+                "default": "抢夺槽位关系今日不可解除或赠送。"
+              },
+              "steal_slot_locked": {
+                "type": "text",
+                "description": "抢夺关系不可再次被抢",
+                "default": "对方的抢夺槽位关系今日不可再次抢夺。"
               },
               "capacity_full_single_wife": {
                 "type": "text",

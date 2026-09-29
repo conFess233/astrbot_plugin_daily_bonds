@@ -95,11 +95,13 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .button.primary { background: var(--accent); color: #fff; }
 .button.primary:hover:not(:disabled) { background: var(--accent-hover); }
 .button.secondary { border-color: var(--line); background: var(--surface); color: var(--text); }
-.notice { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); line-height: 1.5; }
-.notice.notice-in { animation: notice-in .28s ease both; }
+.button.danger { background: var(--danger); color: #fff; }
+.notification-stack { position: fixed; top: 20px; right: 20px; z-index: 1000; display: grid; gap: 10px; width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+.notification { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 12px 30px rgb(24 17 53 / 16%); line-height: 1.5; overflow-wrap: anywhere; pointer-events: auto; animation: notice-in .28s ease both; }
+.notification-close { flex: none; border: 0; padding: 0 2px; background: transparent; color: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
 @keyframes notice-in { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: none; } }
-.notice.error { border-color: color-mix(in srgb, var(--danger), transparent 55%); color: var(--danger); }
-.notice.success { border-color: color-mix(in srgb, var(--success), transparent 55%); color: var(--success); }
+.notification.error { border-color: color-mix(in srgb, var(--danger), transparent 55%); color: var(--danger); }
+.notification.success { border-color: color-mix(in srgb, var(--success), transparent 55%); color: var(--success); }
 .catalog-layout { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.6fr); gap: 16px; align-items: start; }
 .catalog-list-card, .catalog-editor, .pool-editor { padding: 18px; }
 .catalog-list { display: grid; gap: 7px; margin: 12px 0 24px; max-height: 420px; overflow: auto; }
@@ -122,6 +124,10 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .image-preview > button { display: block; margin-left: auto; }
 .image-preview img { display: block; width: 100%; max-height: calc(100vh - 130px); margin: 12px auto; object-fit: contain; }
 .image-preview p { overflow-wrap: anywhere; }
+.confirm-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); border: 1px solid var(--line); border-radius: 14px; padding: 22px; background: var(--surface); color: var(--text); }
+.confirm-dialog[open] { animation: dialog-in .22s ease both; }
+.confirm-dialog::backdrop { background: rgb(10 8 25 / 75%); animation: fade-in .2s ease both; }
+.confirm-dialog .query-result { min-height: 0; max-height: min(50vh, 400px); margin: 14px 0; }
 .config-sections { display: grid; gap: 18px; }
 .config-tabs { display: flex; gap: 8px; margin: 16px 0; padding: 0 0 9px; overflow-x: auto; border-bottom: 1px solid var(--line); scrollbar-width: thin; }
 .config-tab { flex: 0 0 auto; padding: 8px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--surface-soft); cursor: pointer; transition: color .18s ease, background .18s ease, border-color .18s ease; }
