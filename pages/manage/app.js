@@ -220,7 +220,7 @@ const CONFIG_LABELS = {
   steal_probability: "抢夺成功率（%）", stolen_limit: "被抢次数上限",
   gift_enabled: "允许赠送", gift_mode: "赠送方式", gift_timeout_seconds: "赠送确认超时（秒）",
   divorce_enabled: "允许离婚或踹群友", divorce_limit: "离婚或踹群友次数上限",
-  pool_ids: "启用的角色池 ID", intimacy_enabled: "记录亲密度", activity_enabled: "记录活跃度",
+  pool_ids: "启用的角色池", intimacy_enabled: "记录亲密度", activity_enabled: "记录活跃度",
   mention_active_points: "主动 @ 加分", mention_passive_points: "被 @ 加分",
   poke_active_points: "主动戳一戳加分", poke_passive_points: "被戳一戳加分",
   activity_window_days: "活跃度窗口（天）", base: "基础权重",
@@ -261,8 +261,8 @@ const CONFIG_HINTS = {
   "access.users.ids": "每行一个 QQ 数字 ID；空白名单会拒绝全部用户。",
   "access.extra_bot_ids": "每行一个机器人 QQ 数字 ID。",
   "commands.extra_prefixes": "每行一个字面前缀。",
-  "modes.wife.pool_ids": "每行一个角色池 ID；空列表表示无候选池。",
-  "modes.husband.pool_ids": "每行一个角色池 ID；空列表表示无候选池。",
+  "modes.wife.pool_ids": "每个角色池独立开关；全部关闭时没有可抽取角色。群级覆盖关闭时继承全局开关。",
+  "modes.husband.pool_ids": "每个角色池独立开关；全部关闭时没有可抽取角色。群级覆盖关闭时继承全局开关。",
   "modes.wife.steal_attempt_limit": "0 表示不限次数。",
   "modes.husband.steal_attempt_limit": "0 表示不限次数。",
   "modes.member.steal_attempt_limit": "0 表示不限次数。",
@@ -328,6 +328,64 @@ function configLabel(path) {
   return name;
 }
 
+function isPoolConfig(path) {
+  return path === "modes.wife.pool_ids" || path === "modes.husband.pool_ids";
+}
+
+function renderPoolPicker(card, input) {
+  const path = input.dataset.configPath;
+  const mode = path.split(".")[1];
+  const ids = input.value.split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
+  const available = state.pools.filter((pool) => pool.mode === mode);
+  const picker = card.querySelector(".pool-picker");
+  picker.replaceChildren();
+  for (const pool of available) {
+    const label = document.createElement("label");
+    label.className = "pool-option";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.value = pool.id;
+    check.checked = ids.includes(pool.id);
+    check.disabled = input.disabled;
+    const name = document.createElement("span");
+    name.textContent = `${pool.name} · ${pool.character_count} 个角色`;
+    const id = document.createElement("small");
+    id.textContent = pool.id;
+    label.append(check, name, id);
+    picker.append(label);
+  }
+  for (const id of ids.filter((item) => !available.some((pool) => pool.id === item))) {
+    const label = document.createElement("label");
+    label.className = "pool-option pool-option-missing";
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.value = id;
+    check.checked = true;
+    check.disabled = input.disabled;
+    const name = document.createElement("span");
+    name.textContent = `未找到角色池 · ${id}`;
+    label.append(check, name);
+    picker.append(label);
+  }
+  if (!picker.children.length) {
+    const empty = document.createElement("small");
+    empty.className = "config-note";
+    empty.textContent = "暂无此玩法的角色池，请先在角色目录创建或同步。";
+    picker.append(empty);
+  }
+}
+
+function setPoolPickerValue(card, input, ids) {
+  input.value = ids.join("\n");
+  renderPoolPicker(card, input);
+}
+
+function refreshPoolPickers() {
+  for (const input of configFields.querySelectorAll("[data-config-path]")) {
+    if (isPoolConfig(input.dataset.configPath)) renderPoolPicker(input.closest(".config-field"), input);
+  }
+}
+
 function renderConfigFields() {
   configFields.replaceChildren();
   configTabs.replaceChildren();
@@ -367,7 +425,11 @@ function renderConfigFields() {
     const globalOnly = configIsGlobalOnly(path);
     const overridden = state.scopeId !== "global" && hasConfigAt(state.savedOverride, path);
     let input;
-    if (Array.isArray(value)) {
+    if (isPoolConfig(path)) {
+      input = document.createElement("input");
+      input.type = "hidden";
+      input.value = value.join("\n");
+    } else if (Array.isArray(value)) {
       input = document.createElement("textarea");
       input.rows = Math.min(Math.max(value.length + 1, 2), 5);
       input.value = value.join("\n");
@@ -397,6 +459,19 @@ function renderConfigFields() {
     input.setAttribute("aria-label", configLabel(path));
     label.append(title, input);
     card.append(label);
+    if (isPoolConfig(path)) {
+      const picker = document.createElement("div");
+      picker.className = "pool-picker";
+      picker.setAttribute("role", "group");
+      picker.setAttribute("aria-label", configLabel(path));
+      picker.addEventListener("change", (event) => {
+        if (!event.target.matches('input[type="checkbox"]')) return;
+        const selected = [...picker.querySelectorAll('input[type="checkbox"]:checked')].map((check) => check.value);
+        input.value = selected.join("\n");
+        picker.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      card.append(picker);
+    }
     if (state.scopeId !== "global" && !globalOnly) {
       const override = document.createElement("label");
       override.className = "config-override";
@@ -409,10 +484,12 @@ function renderConfigFields() {
         input.disabled = !toggle.checked;
         if (!toggle.checked) {
           const globalValue = configAt(state.globalConfig, path);
-          if (Array.isArray(globalValue)) input.value = globalValue.join("\n");
+          if (isPoolConfig(path)) setPoolPickerValue(card, input, globalValue);
+          else if (Array.isArray(globalValue)) input.value = globalValue.join("\n");
           else if (input.type === "checkbox") input.checked = globalValue;
           else input.value = path.endsWith(".steal_probability") ? String(globalValue * 100) : String(globalValue);
         }
+        if (isPoolConfig(path)) renderPoolPicker(card, input);
         card.classList.toggle("inherited", !toggle.checked);
         updateDirtyState();
       });
@@ -426,6 +503,7 @@ function renderConfigFields() {
       badge.textContent = path === "schema_version" ? "只读" : "仅全局设置";
       card.append(badge);
     }
+    if (isPoolConfig(path)) renderPoolPicker(card, input);
     const variableNames = MESSAGE_VARIABLES[path.split(".").at(-1)];
     const hint = CONFIG_HINTS[path] ||
       (path.startsWith("messages.") ? `最多 500 字；${MESSAGE_REQUIRED.has(path.split(".").at(-1)) ? "必填变量" : "可用变量"}：${variableNames || "无"}。使用 {{ 和 }} 表示大括号。` :
@@ -506,7 +584,8 @@ function showConfigError(message) {
   error.textContent = message;
   error.hidden = false;
   selectConfigGroup(configGroup(path));
-  input.focus();
+  if (isPoolConfig(path)) input.closest(".config-field").querySelector('.pool-picker input:not(:disabled)')?.focus();
+  else input.focus();
 }
 
 async function describeConfigConflict() {
@@ -583,6 +662,7 @@ async function refreshAll() {
   try {
     await loadScopes();
     await loadOverview();
+    state.pools = (await apiGet("pools")).data;
     await loadConfig();
     showNotice("数据已刷新。", "success");
   } catch (error) {
@@ -876,6 +956,7 @@ async function loadCatalog() {
   state.characters = characters.data.items;
   state.pools = pools.data;
   renderCatalog();
+  refreshPoolPickers();
 }
 
 async function loadCharacter(id) {
