@@ -1,0 +1,29 @@
+{
+  "id": "pgr:32655",
+  "name": "布丽姬特",
+  "aliases": [
+    "布丽姬特·耀炎"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "32655"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d1/49t17c5530761xcoo4hpeo45ddkjrm1.png",
+      "sha256": "cd3697b6c97d52febd5580891294262e0886950967d80ae78bbf913f67807073",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 463506,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

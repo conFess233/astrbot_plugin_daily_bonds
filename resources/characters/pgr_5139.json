@@ -1,0 +1,29 @@
+{
+  "id": "pgr:5139",
+  "name": "尼尔·9S",
+  "aliases": [
+    "尼尔·9S"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "5139"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/82/84yoqubexbfsr4d9572y68jgpbn62x5.png",
+      "sha256": "ed6db425b2797a99386f9186be7f440d61f74ab4b056822b4ffab4d00aaf33ba",
+      "width": 1024,
+      "height": 1008,
+      "bytes": 396685,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

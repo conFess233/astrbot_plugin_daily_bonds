@@ -1,0 +1,29 @@
+{
+  "id": "pgr:5138",
+  "name": "尼尔·A2",
+  "aliases": [
+    "尼尔·A2"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "5138"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/82/nygp941oclho1pgas3ldn7rnxjafszo.png",
+      "sha256": "dd79ee800029d6d669933046799ff530e3bf5609f425b14c23e67007090b400f",
+      "width": 1008,
+      "height": 982,
+      "bytes": 684048,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

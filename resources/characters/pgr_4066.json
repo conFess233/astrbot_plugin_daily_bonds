@@ -1,0 +1,40 @@
+{
+  "id": "pgr:4066",
+  "name": "露娜",
+  "aliases": [
+    "露娜·银冕",
+    "露娜·终焉"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "4066",
+    "31801"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/5/5f/6mgu2n2rj3gincxo9ti1befggn26rvo.png",
+      "sha256": "2a887e94848f483148f02a598173985b219c5c35480a0e7cb82d2ad29ccc18d6",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 1166302,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/2/2a/4cyp4ert4eqq9t0drhfolka0lvov4g9.png",
+      "sha256": "ea5e91aa7c4121fd04141a96e1117e2b6c9e4baa7c4ce3f1e610bab56913a0b3",
+      "width": 1920,
+      "height": 1080,
+      "bytes": 773403,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

@@ -1,0 +1,40 @@
+{
+  "id": "pgr:2517",
+  "name": "艾拉",
+  "aliases": [
+    "艾拉·溢彩",
+    "艾拉·万华"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "2517",
+    "26939"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d8/qx9uiequi9a4yg8sohpa8ja3e0sbix1.png",
+      "sha256": "3870f2156a577729337cea4a34b031191daf2cbd45f4956dd6a7e6bb9e050885",
+      "width": 767,
+      "height": 675,
+      "bytes": 425880,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/e/ed/r9i1nycewf9x25n718dcg45u4s806x9.png",
+      "sha256": "7a3fac0ed0a792086c471f023debccc4ef1cba0111be3532b565882944e86797",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 685831,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

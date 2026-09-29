@@ -1,0 +1,29 @@
+{
+  "id": "pgr:38669",
+  "name": "维罗妮卡",
+  "aliases": [
+    "维罗妮卡·铮骨"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "38669"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/72/43s5m37caqaovf814mhv3m6szsnea1m.png",
+      "sha256": "bd27230260b2ec6a8295bde5779cf763a0a3674fadd8082f1dea6e59b679c642",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1388385,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

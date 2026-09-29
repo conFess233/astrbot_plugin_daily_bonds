@@ -1,0 +1,51 @@
+{
+  "id": "pgr:785",
+  "name": "神威",
+  "aliases": [
+    "神威·重能",
+    "神威·暗能",
+    "神威·不落日"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "785",
+    "791",
+    "40421"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/c/c9/97836t6aubl9z0wzor8mdmxawb96ztv.png",
+      "sha256": "240a29b515bd70682aed8098f6c564e5100a6793233f9728ab724ac101041415",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 526926,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d1/1cwxsj3dm5wtpce9bd99xhxy0ulgqaz.png",
+      "sha256": "553455fae8c9b6ae903803a1f7ec52a086af7a2fafb5703618782f4c5fa476c4",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 873064,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/f/f8/tpynl47rxg7m6wy3i1zr2b4tzo4f646.png",
+      "sha256": "305e1fd373ff1f39d50f3af624acd2f9c5f2f2fb9f304271e40802a7156dc57f",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1252705,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

@@ -1,0 +1,29 @@
+{
+  "id": "pgr:17941",
+  "name": "蒲牢",
+  "aliases": [
+    "蒲牢·华钟"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "17941"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/f/f2/kse8c7qlqvstxnduoikbqkup9lgb5iy.png",
+      "sha256": "7aa0f4ec76af48a2c0f843213ccc5a4b32c69a862cf79ae3f8461c44f362a30e",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 508673,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

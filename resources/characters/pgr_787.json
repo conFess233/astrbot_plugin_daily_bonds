@@ -1,0 +1,51 @@
+{
+  "id": "pgr:787",
+  "name": "渡边",
+  "aliases": [
+    "渡边·夜刃",
+    "渡边·夙星",
+    "渡边·尘铭"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "787",
+    "2514",
+    "30964"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/78/6gjbgumlv1278gbpqk64t0zf51ht5uz.png",
+      "sha256": "07a31953f4cfb25506bc8ff715e825b4efc8e0fe3cc5574365d62374efd4bfb0",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 670756,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/0/00/e63f5ddwgvhoqngswhlf725ggm1ux04.png",
+      "sha256": "7c1a8c6722cff8f92859829b4d5c448b3d10e4616fd09b860c38bf8c9859bf79",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 838593,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/77/dqqvkwdolwx6lpyu5whaasodzjkmnaw.png",
+      "sha256": "c28f619d5ebf70ac1eca9d2573097c09d41a859c4a310a096de4d993746d3d14",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 548009,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

@@ -1,0 +1,29 @@
+{
+  "id": "pgr:21440",
+  "name": "哈卡玛",
+  "aliases": [
+    "哈卡玛·隐星"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "21440"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/dc/5h528hqamcv5rzdiyfo6zh2mr4hp0m6.png",
+      "sha256": "d910cfcfa45c907e79d98845bc2278a7dfb7bf519c452804d5b2f69f91639690",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 622993,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

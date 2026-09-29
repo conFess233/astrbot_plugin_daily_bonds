@@ -1,0 +1,40 @@
+{
+  "id": "pgr:3676",
+  "name": "曲",
+  "aliases": [
+    "曲·雀翎",
+    "曲·启明"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "3676",
+    "31286"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/9/95/0aya0wyiksu6otdmnguw61oiuxs44e3.png",
+      "sha256": "a6a9eab9e688e0e0d98ac1aa76975755e07f13163c3f37c6121b52b8db8ccfa1",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 660090,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/f/f1/jy855wl5akfr4kqtl6sms9cppx25b55.png",
+      "sha256": "6df443f4da0f877a46e985fb9b3b2dd0d99b0db2bc9d5a8305f3c2c6653a8b58",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 840325,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

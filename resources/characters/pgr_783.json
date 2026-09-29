@@ -1,0 +1,62 @@
+{
+  "id": "pgr:783",
+  "name": "比安卡",
+  "aliases": [
+    "比安卡·零度",
+    "比安卡·真理",
+    "比安卡·深痕",
+    "比安卡·晖暮"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "783",
+    "2816",
+    "24304",
+    "37817"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/2/2b/1g134ynjb0d6ybh7ksztm09fmt8n764.png",
+      "sha256": "2df8c819bc618a01042e8bf42066ffb6d051e3ecd5f6277db87948a22ebd6d3a",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 337953,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/e/e8/a54szou1pa9e9xomteq7a0pv5wpwg3l.png",
+      "sha256": "dca75f2b964f4479ebec9c362f0454408b2a7dc1fafbb23c6d61a3232f7a5e5e",
+      "width": 450,
+      "height": 486,
+      "bytes": 169726,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/6/62/jh2onqu57ay2qp0e5wp2oz669vmab4n.png",
+      "sha256": "73cd3898f9997f6e90d874ea719682d2550baf4a47dd5855e8330e6ebba225a3",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 725469,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/80/fmwpdrm8befyipoqcb785blewzdcbq8.png",
+      "sha256": "20026cd1cae493ef03d4ce74bf9c29838e5fbffcf009bf5af6ce760474f0f771",
+      "width": 1174,
+      "height": 1080,
+      "bytes": 1081925,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

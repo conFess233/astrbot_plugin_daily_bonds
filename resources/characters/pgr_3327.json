@@ -1,0 +1,51 @@
+{
+  "id": "pgr:3327",
+  "name": "薇拉",
+  "aliases": [
+    "薇拉·瑰丽",
+    "薇拉·绯耀",
+    "薇拉·灼惘"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "3327",
+    "10221",
+    "37043"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/b/bf/6tg9m3uh57i5mv5h7ldb0jvy3z0mf33.png",
+      "sha256": "92e95c207ecf395b67f4aea2df4e2cbbcaada73b12461ff458bdf7d2343fd60c",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 636919,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/c/c3/91tcc8vo895brl5rsl8pa1t9cvcjuuh.png",
+      "sha256": "498b8292c28e2c7a55fd8094e520bec495904a311278598a184ea756bc83a02b",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 531169,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/c/c4/06g8ah0jwsuzaw59y1abt52b3ddj12k.png",
+      "sha256": "659f555994cfce8e3d3ebcdc6b5b9d6bb2b4224a982919a0a1957d3afd24034a",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1114857,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

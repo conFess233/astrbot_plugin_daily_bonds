@@ -1,0 +1,40 @@
+{
+  "id": "pgr:6702",
+  "name": "万事",
+  "aliases": [
+    "万事·明觉",
+    "万事·明晰梦"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "6702",
+    "33318"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/3/3a/a6oi0vmeez9ujtrangw5zei9ogh7mvk.png",
+      "sha256": "b23d64310006b2527dcb6c40b25edb0d4dcd8f8f1160dc90617a8b853b2dab2e",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 512277,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/4/40/9zgfpper3852g8htjppurya1dmyfnmi.png",
+      "sha256": "f45154f3f9e57b02f3d30084e4e67318efb933fc73a1c8d7c43bc700bf87a72d",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 841605,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

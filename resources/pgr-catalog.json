@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "pack_id": "pgr_builtin",
+  "pack_version": "2026.09.29",
+  "as_of": "2026-09-29",
+  "scope": "机体图鉴中的已上线可玩机体；同人物不同机体合并，保留各机体立绘；尼尔联动角色按个体区分",
+  "source": "https://wiki.biligame.com/zspms/机体图鉴",
+  "verification_note": "46个人物、84个机体立绘；URL、下载体积、SHA-256 与图鉴尺寸已核验。性别为人工维护字段；图像由玩家共建 WIKI 托管。"
+}

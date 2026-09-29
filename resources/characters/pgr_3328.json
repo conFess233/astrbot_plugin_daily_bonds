@@ -1,0 +1,29 @@
+{
+  "id": "pgr:3328",
+  "name": "卡穆",
+  "aliases": [
+    "卡穆·狂犬"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "3328"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/1/11/44ibsfur6nu1wc4lwq4xje80qbmbhrf.png",
+      "sha256": "f4858a3c560b643c45139d75bfa842c6c7fb9ee4424add7491cf08a5a6b6f315",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 697521,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

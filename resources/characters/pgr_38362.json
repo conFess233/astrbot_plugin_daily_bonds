@@ -1,0 +1,29 @@
+{
+  "id": "pgr:38362",
+  "name": "斜奏",
+  "aliases": [
+    "斜奏·裁律"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "38362"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/9/90/1rf89cczwiqixpr7c7nup3orowyfaxr.png",
+      "sha256": "2aa300d36a3da3a46a39a4b59670d221180beabaff9bc1fa9295919d3834791d",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1011170,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

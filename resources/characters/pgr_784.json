@@ -1,0 +1,62 @@
+{
+  "id": "pgr:784",
+  "name": "七实",
+  "aliases": [
+    "七实·风暴",
+    "七实·脉冲",
+    "七实·遥星之座",
+    "七实·芒星之迹"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "784",
+    "793",
+    "20773",
+    "34618"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/5/52/986y16thkuaul99kmzwur5sfda0ik94.png",
+      "sha256": "a1e80fdd56a01eb3cb6f03eb2249bbab2ff560b87c03ad670056041435c7ea11",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 404426,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/8b/4pdlmzpunyucs9b2aq7jjej317o0m8w.png",
+      "sha256": "388667f0a05d1167e277d44b015315b161007030f8ef9bd8c316f4bedbbc3741",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 422165,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/2/2b/aqbpqn4vuocjdabm8na7yieslyfgxyj.png",
+      "sha256": "3809c36fe15b416bcdfb6a6db8af774d3be05987bfd34be719aa21500dda8d96",
+      "width": 1024,
+      "height": 1024,
+      "bytes": 340963,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/4/48/4uuv376acf8y8c4ddj6tsq2dafg0c7w.png",
+      "sha256": "45987425cc2b2ebefe1ad91520734d5a025c17906e5df7f65e7d1d1a979b4bd3",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 817444,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

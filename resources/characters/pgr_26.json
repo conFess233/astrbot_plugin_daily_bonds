@@ -1,0 +1,95 @@
+{
+  "id": "pgr:26",
+  "name": "露西亚",
+  "aliases": [
+    "露西亚·黎明",
+    "露西亚·红莲",
+    "露西亚·深红之渊",
+    "露西亚·鸦羽",
+    "露西亚·深红囚影",
+    "露西亚·誓焰",
+    "露西亚·逆冕"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "26",
+    "781",
+    "2251",
+    "3113",
+    "28021",
+    "33733",
+    "41016"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/7f/gba7gi5yji25lufpcdt223on2ox3kx6.png",
+      "sha256": "138961a4eeac8090f9853d9d01b3ae494a7373b1ef20de67cc0c97b906d62c94",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 790527,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/a/ac/n8urfitp2nk5rhjqwsivmddtrwb4hsh.png",
+      "sha256": "21861152be9c8dea7a5686d4ff251daa065fc17f898c088fd21e6f868f765a32",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 560237,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/85/9o9vl9p21od2axez20lj3oatpdpsn6l.png",
+      "sha256": "9abd886aaf36b2e0d633abc051aa4e330e33b422d4a222df1febde035a066e39",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 633358,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/1/19/157x14tfm8s5fpr0laidcrq4evysjek.png",
+      "sha256": "ade03fe7c6bc21b943e37fbb2c4910d62e609f97a4ca708dc7faec512bd27638",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 494971,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/e/e2/r7q8mp2l639anqvlgsbxjeuh5oovcun.png",
+      "sha256": "acbb8cc5d98a8764b3bd93d5f1fd28f38d8d391f122aa9690ced6d18bee33ebe",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 514113,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/a/a3/a2qrbegu5uuxkbqivzpu67124qkwj1k.png",
+      "sha256": "378dcd17f583e2c8b2332dce53d68a8b64cab966d8dedf7809cd67cfc2233a36",
+      "width": 1024,
+      "height": 1096,
+      "bytes": 1014441,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/73/iql00wx01aglaoql1levuo71ps8lkti.png",
+      "sha256": "669fc0777e35017a9e26f52ff109459fe9832c825b6ae960005121c56d997e33",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1305126,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

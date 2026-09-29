@@ -1,0 +1,40 @@
+{
+  "id": "pgr:3498",
+  "name": "罗塞塔",
+  "aliases": [
+    "罗塞塔·凛冽",
+    "罗塞塔·极锋"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "3498",
+    "39797"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/3/36/2qwkz0wcq3xjajlpfqxhxhwjqsl3kms.png",
+      "sha256": "ce717af8f0838eef1d58025a306c38458f18a193b235f3db9e049444b7168d68",
+      "width": 1920,
+      "height": 1260,
+      "bytes": 851717,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/2/23/tul1qiitb5kj126eze91y2o4cxurtdo.png",
+      "sha256": "18f4897a7effec8b29b481a2fa290a7e9a5bd49e61e7edbc88ad0d85291a9169",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1350892,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

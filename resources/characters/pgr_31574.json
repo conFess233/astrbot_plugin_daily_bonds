@@ -1,0 +1,40 @@
+{
+  "id": "pgr:31574",
+  "name": "布偶熊",
+  "aliases": [
+    "布偶熊·觅语",
+    "布偶熊·骇影"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "31574",
+    "39187"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/f/f2/96z2btp2y8n7peihnrrqxq30jtzayxr.png",
+      "sha256": "fb12f1a1c48c6967cf828d3b0777b1d858a0f509dff53ee2304950dd45c7495d",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 501969,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/7c/hbv3xull598wjckn8sbw2ie6afka1i9.png",
+      "sha256": "930d5b4904752d459f73ef3929c04ddc15aae2e24616e15ab2102a74e8db7552",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 350349,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

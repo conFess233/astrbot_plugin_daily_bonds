@@ -1,0 +1,51 @@
+{
+  "id": "pgr:6243",
+  "name": "赛琳娜",
+  "aliases": [
+    "赛琳娜·岚音",
+    "赛琳娜·幻奏",
+    "赛琳娜·希声"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "6243",
+    "16656",
+    "35913"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/2/2b/6nnihfs66798hp80q7nhl7jdtntb3px.png",
+      "sha256": "33a9755e5d428a6a0667d0e5c7bbff31a1d157a24a8a7656cc04ca76797d66c0",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 517899,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/1/11/5vi0m5ciks9a2tvbzupxp2f7exgqe9z.png",
+      "sha256": "1b1d83e22b9bf0c3db00dfa7dcd4584a2857b38796337253d5d3425fba3fe48e",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 393238,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/f/f2/io3pd0jc37xf8c3dtlg4iqrf2pb2a3t.png",
+      "sha256": "07298bcb199354daa9d63aed2bcefc35e6aa99fcd0a2ffc7a371e31afa627b1e",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 759950,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

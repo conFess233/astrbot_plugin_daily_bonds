@@ -1,0 +1,29 @@
+{
+  "id": "pgr:35669",
+  "name": "莉莉丝",
+  "aliases": [
+    "莉莉丝·谬影"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "35669"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/a/a5/5vm3imzpioqkkfw8fgm74hjsmdmtbmy.png",
+      "sha256": "19c9aee3232efee1ecfcbf6e8341d71b559f154171f9372fbcc1c14acb81f951",
+      "width": 1056,
+      "height": 1168,
+      "bytes": 716648,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

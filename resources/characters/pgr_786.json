@@ -1,0 +1,62 @@
+{
+  "id": "pgr:786",
+  "name": "卡列尼娜",
+  "aliases": [
+    "卡列尼娜·爆裂",
+    "卡列尼娜·烬燃",
+    "卡列尼娜·辉晓",
+    "卡列尼娜·烬航"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "786",
+    "792",
+    "22157",
+    "41677"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/9/95/4kzirqo8ztd20r657q1xwyajuf2h7n2.png",
+      "sha256": "3151dade3c5edc55c6d73dcfff0d06d6e8e96b36f1fe400c6fc7bc55eda332a7",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 486427,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/archive/c/cd/20210705144227%21%E8%A7%92%E8%89%B2_%E5%8D%A1%E5%88%97%E5%B0%BC%E5%A8%9C_%E7%83%AC%E7%87%83_%E7%AB%8B%E7%BB%98.png",
+      "sha256": "483c11c5a21dfb3754926bfaf13a91bcd8220ab560b7582fb76919bb15cebcf0",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 464435,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d1/538ymbhhuh1mcwzdkaxw4xej5htsbt6.png",
+      "sha256": "08e87f6a06f71c7609757bd30c426dedc2d53715962c9414b916a43f8d037bac",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 636548,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/e/e8/fbgw7qwlauv4y6a8nz1k0kv09voe8qr.png",
+      "sha256": "ed7e30a4feed9ca9655d4f9c55cf3ef65c515395255cc3741fe3832e0fb9e637",
+      "width": 1304,
+      "height": 1080,
+      "bytes": 1291955,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

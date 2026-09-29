@@ -1,0 +1,29 @@
+{
+  "id": "pgr:2815",
+  "name": "苏菲亚",
+  "aliases": [
+    "苏菲亚·银牙"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "2815"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/e/ec/quu9itx8zgqeuxm3qanfea8ze5ip14p.png",
+      "sha256": "67470b33e4fc61a7d47e43757ca08d72fd1ea2374d3bf1c6787ab7690ea70e87",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 423209,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

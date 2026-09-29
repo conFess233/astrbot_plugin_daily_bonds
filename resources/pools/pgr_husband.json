@@ -1,0 +1,22 @@
+{
+  "id": "pgr_husband",
+  "name": "战双帕弥什·老公",
+  "mode": "husband",
+  "enabled_on_first_install": false,
+  "character_ids": [
+    "pgr:6702",
+    "pgr:37348",
+    "pgr:3328",
+    "pgr:5139",
+    "pgr:3664",
+    "pgr:2883",
+    "pgr:787",
+    "pgr:785",
+    "pgr:37318",
+    "pgr:12312",
+    "pgr:29493",
+    "pgr:22940",
+    "pgr:780",
+    "pgr:42361"
+  ]
+}

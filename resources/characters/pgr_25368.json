@@ -1,0 +1,29 @@
+{
+  "id": "pgr:25368",
+  "name": "邦比娜塔",
+  "aliases": [
+    "邦比娜塔·琉璃"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "25368"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/0/0d/qcorqpz34i1kf4167xycuwsgf37h42t.png",
+      "sha256": "831845708ae9b66f73bdb504063823656a773e2bdea67a63bfc95ba806f01613",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 544897,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

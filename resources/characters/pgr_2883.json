@@ -1,0 +1,40 @@
+{
+  "id": "pgr:2883",
+  "name": "库洛姆",
+  "aliases": [
+    "库洛姆·弧光",
+    "库洛姆·荣光"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "2883",
+    "7316"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/9/98/lmde1mwldve3561749d35w2envf5lw7.png",
+      "sha256": "e360c8e673c40322920b9bc9195965dcd754f177666a4a07c202c5f4d6626825",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 636916,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/c/cf/copdmreb1u3rpamkrpsw18bj91tsrca.png",
+      "sha256": "452da7ac2903bd42366073381e28e762a4be97c579aeb6bd35f54394435b003b",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 784697,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

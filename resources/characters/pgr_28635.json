@@ -1,0 +1,40 @@
+{
+  "id": "pgr:28635",
+  "name": "含英",
+  "aliases": [
+    "含英·清商",
+    "含英·檀心"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "28635",
+    "32836"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d7/0eiot5rfrbdd0p5bx708do802qr4kk3.png",
+      "sha256": "a2fc07e3fea31862c065297f938e644db7657e0a86d85acb87101b21b49ad408",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 443763,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/86/lzabulr4aa25cwaatd6gzqnlteztdnd.png",
+      "sha256": "94c78e4e83f20f470cfcde29b97d5dfaca16bf45b87489f79e95c124ca8b4635",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 673559,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

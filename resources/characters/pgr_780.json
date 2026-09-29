@@ -1,0 +1,51 @@
+{
+  "id": "pgr:780",
+  "name": "里",
+  "aliases": [
+    "里·异火",
+    "里·乱数",
+    "里·超刻"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "780",
+    "789",
+    "26200"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/79/gn53b82tfbunrgra9m6gfq65voge2jf.png",
+      "sha256": "db9f7602ef41497c58bf7f6bdd2b9e516bc837e7c8a84a3886ae9d2d4976a0ad",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 404440,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d3/cfgg0l7vyhv9ydefluzx7ffm27er83n.png",
+      "sha256": "0c5ebe1b1a70362095e24379903051a1c4b4ee0095d592db275559f1587dd286",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 641811,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/4/40/bpmkfo05znw6b13xh67y5l8c6folkgs.png",
+      "sha256": "ca4f621e23e0bfda3d2787453cda4d9064900125f02a036bbc1a1d938fbce690",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 877352,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

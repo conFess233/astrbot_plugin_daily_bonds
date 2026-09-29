@@ -1,0 +1,40 @@
+{
+  "id": "pgr:9001",
+  "name": "21号",
+  "aliases": [
+    "21号·XXI",
+    "21号·森息"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "9001",
+    "29081"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/88/gde1i18k0kjcyxvn6ed88doq7vbqihx.png",
+      "sha256": "2bcf9e803bc5b89252009910267c80afebb7d577c38ff1ab0e08592d18a00b47",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 523899,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/a/aa/odeda5czqxpow3pc3vtdb84di6oneuo.png",
+      "sha256": "41c8f703dcf8df612c900599d7186cfd7fb6dd4c2e09e6a2c482e2bf924dde9a",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 447939,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

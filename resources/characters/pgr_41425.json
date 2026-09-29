@@ -1,0 +1,29 @@
+{
+  "id": "pgr:41425",
+  "name": "海伦汀",
+  "aliases": [
+    "海伦汀·安魂"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "41425"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/b/be/eokapbx8f14d5g2s1elqg9lgqkxu88y.png",
+      "sha256": "f5d38efd9de0f89a496922ccd825285b798f2359894a1f58a2566043abd1a9db",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 960364,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

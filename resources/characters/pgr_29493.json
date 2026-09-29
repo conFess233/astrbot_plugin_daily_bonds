@@ -1,0 +1,29 @@
+{
+  "id": "pgr:29493",
+  "name": "诺克提",
+  "aliases": [
+    "诺克提·擎驱"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "29493"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/c/c0/ibzwgkhwtb1u5jsk5be371pvba6w4y5.png",
+      "sha256": "586ee92ad1394ac43d3335b17b0cad134b90bedba3b659bf0bffbb382a122600",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 578858,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

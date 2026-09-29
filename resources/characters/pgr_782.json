@@ -1,0 +1,73 @@
+{
+  "id": "pgr:782",
+  "name": "丽芙",
+  "aliases": [
+    "丽芙·蚀暗",
+    "丽芙·流光",
+    "丽芙·仰光",
+    "丽芙·极昼",
+    "丽芙·霁梦"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "782",
+    "788",
+    "790",
+    "13074",
+    "38825"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/7/7e/4nvrt8g8h4is3b13tsxw5262mqt591z.png",
+      "sha256": "7b7e756f6eee90fd284afbe8b8a0366b5f6b0424a08db3778c4394a5d3d0711d",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 575252,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/8/88/qhljiavtu2n7x1l05rqzmkh8ubr42zv.png",
+      "sha256": "0ce692b435501bb02cac411cef577ad31d0cddfb916045892d31c744c1a9ee10",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 510583,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/d/d7/25wy6xlldy2d7nxub20mbuvpi57rtu9.png",
+      "sha256": "27f68d8561cf10c9bda7f76b3a38d4f7ca097f8f940561af8f876f80e63398b6",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 509595,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/b/b7/ioapm11xp40z6626hn1pcol6notihec.png",
+      "sha256": "fdb495c350f6fd1f2b4130a002477bc3dc8b48d8417ac9644674824bad7a42d0",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 809123,
+      "kind": "wiki_character_art",
+      "edited": false
+    },
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/0/09/2eogbbmgjbvd8vi6prks1ojpbjd7gxg.png",
+      "sha256": "898c57850fbac124e84b921310e3f8c19dc1150f2697c3f29882954ecb83970a",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 1045163,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

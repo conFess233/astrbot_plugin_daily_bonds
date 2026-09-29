@@ -1,0 +1,29 @@
+{
+  "id": "pgr:12312",
+  "name": "罗兰",
+  "aliases": [
+    "罗兰·戏炎"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "12312"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/c/c1/3bmf4hs33xheovbgx17pdfsxbqil9p3.png",
+      "sha256": "49d2d7303fd245498eb84be42be841ccf9fff6d4872a206e4eb7d69bb03722a7",
+      "width": 1000,
+      "height": 1080,
+      "bytes": 585523,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}

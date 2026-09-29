@@ -1,0 +1,29 @@
+{
+  "id": "pgr:42361",
+  "name": "阿德莱德",
+  "aliases": [
+    "阿德莱德·破渊"
+  ],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；机体图鉴未提供可直接导入的性别字段",
+  "game": "战双帕弥什",
+  "source_role_ids": [
+    "42361"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_wiki_character_art",
+  "source_url": "https://wiki.biligame.com/zspms/机体图鉴",
+  "images": [
+    {
+      "source_url": "https://patchwiki.biligame.com/images/zspms/4/44/fdkp5ix50qb1jokj5yy3moktt2gwqjg.png",
+      "sha256": "f352277c1b4af1b0085feeb517293ccc38c6f3dd62c19e9f3b81dcacea149b1b",
+      "width": 1091,
+      "height": 1080,
+      "bytes": 999405,
+      "kind": "wiki_character_art",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-29"
+}
