@@ -24,6 +24,7 @@ from .admin_queries import AdminQueryService
 from .admin_corrections import AdminCorrectionService
 from .catalog_import import CatalogImportService
 from .maintenance import MaintenanceService
+from .host_config import HostConfigBridge
 from .storage import SQLiteStorage
 
 
@@ -33,7 +34,7 @@ PLUGIN_NAME = "astrbot_plugin_daily_bonds"
 class WebManager:
     """Register authenticated, revision-checked management APIs."""
 
-    def __init__(self, context: Any, storage: SQLiteStorage, plugin_config: Mapping[str, Any]) -> None:
+    def __init__(self, context: Any, storage: SQLiteStorage, host_config: HostConfigBridge) -> None:
         self.context = context
         self.storage = storage
         self.catalog = CatalogAdminService(storage, storage.database_path.parent / "media")
@@ -42,13 +43,7 @@ class WebManager:
         self.imports = CatalogImportService(storage, storage.database_path.parent)
         self.maintenance = MaintenanceService(storage, storage.database_path.parent)
         self.runtime_reset = None
-        configured = plugin_config.get("web_admin_users", "")
-        if isinstance(configured, str):
-            self.admin_users = frozenset(line.strip() for line in configured.splitlines() if line.strip())
-        elif isinstance(configured, (list, tuple)):
-            self.admin_users = frozenset(str(name).strip() for name in configured if str(name).strip())
-        else:
-            self.admin_users = frozenset()
+        self.host_config = host_config
 
     def register(self) -> None:
         routes = (
@@ -58,6 +53,7 @@ class WebManager:
             ("config/preview", self.preview_config, ["POST"], "Validate a configuration draft"),
             ("config/save", self.save_config, ["POST"], "Save a configuration draft"),
             ("characters", self.characters, ["GET"], "List catalog characters"),
+            ("character", self.character, ["GET"], "Read catalog character by ID"),
             ("characters/<character_id>", self.character, ["GET"], "Read catalog character"),
             ("characters/save", self.save_character, ["POST"], "Create or update catalog character"),
             ("characters/delete-preview", self.character_delete_preview, ["POST"], "Preview character deletion"),
@@ -161,11 +157,14 @@ class WebManager:
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
-    async def character(self, character_id: str):
+    async def character(self, character_id: str | None = None):
         _, denied = self._authorize()
         if denied:
             return denied
         try:
+            character_id = character_id or request.query.get("id")
+            if not isinstance(character_id, str) or not character_id.strip():
+                return self._error("INVALID_QUERY", "角色 ID 不能为空。", 400)
             data = self.catalog.get_character(character_id)
             if data is None:
                 return self._error("NOT_FOUND", "角色不存在。", 404)
@@ -713,6 +712,12 @@ class WebManager:
             ).hexdigest()
             replay = self.storage.get_settings_request_replay(scope_id, username, request_id.strip(), draft_hash)
             if replay is not None:
+                if scope_id is None:
+                    saved_global, saved_revision = self.storage.get_settings()
+                    try:
+                        self.host_config.mirror(saved_global, saved_revision)
+                    except Exception:
+                        return self._error("CONFIG_SYNC_FAILED", "全局配置已保存，但同步到 AstrBot 配置失败；请重试。", 503)
                 return json_response({
                     "ok": True,
                     "data": {
@@ -734,6 +739,11 @@ class WebManager:
                 request_id=request_id.strip(),
                 request_hash=draft_hash,
             )
+            if scope_id is None:
+                try:
+                    self.host_config.mirror(stored, revision)
+                except Exception:
+                    return self._error("CONFIG_SYNC_FAILED", "全局配置已保存，但同步到 AstrBot 配置失败；请重试。", 503)
             saved_request = self.storage.get_settings_request_replay(scope_id, username, request_id.strip(), draft_hash)
             global_revision = saved_request["global_revision"] if saved_request else revision
             return json_response({
@@ -762,8 +772,6 @@ class WebManager:
         username = request.username
         if not username:
             return None, self._error("UNAUTHENTICATED", "请先登录 AstrBot Dashboard。", 401)
-        if username not in self.admin_users:
-            return None, self._error("ACCESS_DENIED", "当前 Dashboard 用户没有本插件管理权限。", 403)
         return username, None
 
     def _query_scope_id(self) -> int | None:

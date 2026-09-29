@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
+    <div id="loading-progress" class="loading-progress" role="progressbar" aria-label="正在加载管理数据" hidden><span></span></div>
     <main class="shell">
       <header class="topbar">
         <div>
@@ -179,6 +180,7 @@
             </div>
             <span id="dirty-indicator" class="status-pill">已保存</span>
           </div>
+          <div id="config-tabs" class="config-tabs" role="tablist" aria-label="配置主题"></div>
           <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
           <p id="editor-help" class="hint">每项可单独编辑；群配置可逐项选择继承全局或覆盖。草稿仅在保存后写入，并由服务端统一校验。</p>
           <div class="actions">

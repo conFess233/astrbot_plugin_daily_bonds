@@ -570,7 +570,7 @@ class CommandRuntime:
             member_rows = self.storage._connection().execute(
                 "SELECT user_id,nickname,card FROM members WHERE scope_id=?", (values["scope_id"],)
             ).fetchall()
-        names = {str(row["user_id"]): str(row["card"] or row["nickname"] or row["user_id"]) for row in member_rows}
+        names = {str(row["user_id"]): str(row["nickname"] or row["card"] or row["user_id"]) for row in member_rows}
         page_size = config["display"]["page_size"]
         page = command.page or 1
         pages = max(1, (len(ranked) + page_size - 1) // page_size)
@@ -590,15 +590,22 @@ class CommandRuntime:
         for index, (source, target, score) in enumerate(selected, start=(page - 1) * page_size + 1 if config["display"]["pagination_enabled"] else 1):
             if command.action == "rank_intimacy":
                 subject = f"{names.get(source, source)} → {names.get(target, target)}" if global_directed else names.get(target, target)
+                qq_ids = f"{source} → {target}" if global_directed else target
             else:
                 subject = names.get(source, source)
-            lines.append(f"{index}. {subject}：{score}")
+                qq_ids = source
+            lines.append(f"{index}. {subject}（QQ {qq_ids}）：{score}")
             value_label = "亲密度" if command.action == "rank_intimacy" else "消息数"
             avatar = avatars.get(target if command.action == "rank_intimacy" and not global_directed else source)
             other_avatar = avatars.get(target) if command.action == "rank_intimacy" and global_directed else None
             card_rows.append(CardRow(
-                f"{index}. {subject}", f"{value_label}：{score}",
+                f"{index}. {subject}",
+                f"{value_label}：{score}" if command.action == "rank_intimacy" and global_directed else f"QQ {qq_ids} · {value_label}：{score}",
                 avatar_path=avatar, other_avatar_path=other_avatar,
+                avatar_user_id=target if command.action == "rank_intimacy" and not global_directed else source,
+                other_avatar_user_id=target if command.action == "rank_intimacy" and global_directed else "",
+                pair_names=(names.get(source, source), names.get(target, target)) if command.action == "rank_intimacy" and global_directed else None,
+                pair_rank=index if command.action == "rank_intimacy" and global_directed else 0,
             ))
         heading = f"{title} 第 {page}/{pages} 页" if config["display"]["pagination_enabled"] else title
         if command.page is not None and not config["display"]["pagination_enabled"]:

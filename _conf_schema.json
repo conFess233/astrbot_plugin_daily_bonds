@@ -2,13 +2,1060 @@
   "enabled": {
     "type": "bool",
     "default": true,
-    "description": "插件启动开关。关闭时不会打开插件数据库。",
-    "hint": "这是 AstrBot 宿主开关；玩法总开关保存在插件数据库中。"
+    "description": "启用插件",
+    "hint": "关闭后插件不启动。"
   },
-  "web_admin_users": {
-    "type": "text",
-    "default": "",
-    "description": "允许进入今日姻缘管理页的 AstrBot Dashboard 用户名，每行一个。",
-    "hint": "只有列出的 Dashboard 登录账号可以查看或修改本插件数据；群管理员身份不会授予后台权限。"
+  "settings": {
+    "type": "object",
+    "description": "全局业务配置",
+    "hint": "与今日姻缘管理页的全局配置同步；群级覆盖在管理页设置。",
+    "items": {
+      "schema_version": {
+        "type": "int",
+        "description": "配置格式版本",
+        "default": 1,
+        "invisible": true
+      },
+      "enabled": {
+        "type": "bool",
+        "description": "启用",
+        "default": true
+      },
+      "access": {
+        "type": "object",
+        "description": "群与名单",
+        "items": {
+          "groups": {
+            "type": "object",
+            "description": "群准入",
+            "items": {
+              "mode": {
+                "type": "string",
+                "description": "群准入模式",
+                "default": "unrestricted",
+                "options": [
+                  "unrestricted",
+                  "blacklist",
+                  "whitelist"
+                ]
+              },
+              "ids": {
+                "type": "list",
+                "description": "群身份名单",
+                "default": [],
+                "hint": "每行一个群身份 ID。"
+              }
+            }
+          },
+          "users": {
+            "type": "object",
+            "description": "用户准入",
+            "items": {
+              "mode": {
+                "type": "string",
+                "description": "用户准入模式",
+                "default": "unrestricted",
+                "options": [
+                  "unrestricted",
+                  "blacklist",
+                  "whitelist"
+                ]
+              },
+              "ids": {
+                "type": "list",
+                "description": "用户 QQ 名单",
+                "default": [],
+                "hint": "每行一个 QQ 数字 ID；空白名单会拒绝全部用户。"
+              }
+            }
+          },
+          "extra_bot_ids": {
+            "type": "list",
+            "description": "补充机器人 QQ 号",
+            "default": [],
+            "hint": "每行一个机器人 QQ 数字 ID。"
+          }
+        }
+      },
+      "reset": {
+        "type": "object",
+        "description": "每日重置",
+        "items": {
+          "timezone": {
+            "type": "string",
+            "description": "时区",
+            "default": "Asia/Shanghai"
+          },
+          "time": {
+            "type": "string",
+            "description": "重置时间",
+            "default": "00:00",
+            "hint": "使用 HH:mm 格式；旧周期结束后生效。"
+          }
+        }
+      },
+      "commands": {
+        "type": "object",
+        "description": "指令与触发",
+        "items": {
+          "allow_bare": {
+            "type": "bool",
+            "description": "允许裸关键词",
+            "default": true
+          },
+          "allow_leading_bot_mention": {
+            "type": "bool",
+            "description": "允许开头 @机器人",
+            "default": true
+          },
+          "allow_host_prefix": {
+            "type": "bool",
+            "description": "允许宿主命令前缀",
+            "default": true
+          },
+          "extra_prefixes": {
+            "type": "list",
+            "description": "额外命令前缀",
+            "default": [],
+            "hint": "每行一个字面前缀。"
+          },
+          "cooldown_seconds": {
+            "type": "int",
+            "description": "通用冷却（秒）",
+            "default": 3
+          },
+          "keywords": {
+            "type": "object",
+            "description": "指令关键词",
+            "items": {
+              "draw_wife": {
+                "type": "list",
+                "description": "抽老婆关键词",
+                "default": [
+                  "今日老婆"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "draw_husband": {
+                "type": "list",
+                "description": "抽老公关键词",
+                "default": [
+                  "今日老公"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "draw_member": {
+                "type": "list",
+                "description": "娶群友关键词",
+                "default": [
+                  "娶群友"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "steal_wife": {
+                "type": "list",
+                "description": "抢老婆关键词",
+                "default": [
+                  "抢老婆"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "steal_husband": {
+                "type": "list",
+                "description": "抢老公关键词",
+                "default": [
+                  "抢老公"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "steal_member": {
+                "type": "list",
+                "description": "抢群友关键词",
+                "default": [
+                  "抢群友"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "gift_wife": {
+                "type": "list",
+                "description": "送老婆关键词",
+                "default": [
+                  "送老婆"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "gift_husband": {
+                "type": "list",
+                "description": "送老公关键词",
+                "default": [
+                  "送老公"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "gift_member": {
+                "type": "list",
+                "description": "送群友关键词",
+                "default": [
+                  "送群友"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "divorce_character": {
+                "type": "list",
+                "description": "离婚关键词",
+                "default": [
+                  "离婚"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "divorce_wife": {
+                "type": "list",
+                "description": "离婚老婆关键词",
+                "default": [
+                  "离婚老婆"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "divorce_husband": {
+                "type": "list",
+                "description": "离婚老公关键词",
+                "default": [
+                  "离婚老公"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "divorce_member": {
+                "type": "list",
+                "description": "踹群友关键词",
+                "default": [
+                  "踹群友"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "list_characters": {
+                "type": "list",
+                "description": "老婆列表关键词",
+                "default": [
+                  "老婆列表"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "list_members": {
+                "type": "list",
+                "description": "群友列表关键词",
+                "default": [
+                  "群友列表"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "rank_intimacy": {
+                "type": "list",
+                "description": "亲密度排行关键词",
+                "default": [
+                  "亲密度排行"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "rank_activity": {
+                "type": "list",
+                "description": "活跃度排行关键词",
+                "default": [
+                  "活跃度排行"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "gift_accept": {
+                "type": "list",
+                "description": "接受赠送关键词",
+                "default": [
+                  "接受赠送"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "gift_reject": {
+                "type": "list",
+                "description": "拒绝赠送关键词",
+                "default": [
+                  "拒绝赠送"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              },
+              "gift_cancel": {
+                "type": "list",
+                "description": "取消赠送关键词",
+                "default": [
+                  "取消赠送"
+                ],
+                "hint": "触发词列表，每项为一条关键词。"
+              }
+            }
+          }
+        }
+      },
+      "modes": {
+        "type": "object",
+        "description": "玩法设置",
+        "items": {
+          "wife": {
+            "type": "object",
+            "description": "今日老婆",
+            "items": {
+              "enabled": {
+                "type": "bool",
+                "description": "启用玩法",
+                "default": true
+              },
+              "capacity": {
+                "type": "int",
+                "description": "每日容量",
+                "default": 1
+              },
+              "steal_enabled": {
+                "type": "bool",
+                "description": "允许抢夺",
+                "default": true
+              },
+              "steal_attempt_limit": {
+                "type": "int",
+                "description": "抢夺尝试次数上限",
+                "default": 3,
+                "hint": "0 表示不限次数。"
+              },
+              "steal_cooldown_seconds": {
+                "type": "int",
+                "description": "抢夺冷却（秒）",
+                "default": 60
+              },
+              "steal_probability": {
+                "type": "float",
+                "description": "抢夺成功率（%）",
+                "default": 0.3,
+                "hint": "输入 0 到 1 之间的小数，例如 0.3 表示 30%。"
+              },
+              "stolen_limit": {
+                "type": "int",
+                "description": "被抢次数上限",
+                "default": 1,
+                "hint": "0 表示不限次数。"
+              },
+              "gift_enabled": {
+                "type": "bool",
+                "description": "允许赠送",
+                "default": true
+              },
+              "gift_mode": {
+                "type": "string",
+                "description": "赠送方式",
+                "default": "direct",
+                "options": [
+                  "direct",
+                  "confirm"
+                ]
+              },
+              "gift_timeout_seconds": {
+                "type": "int",
+                "description": "赠送确认超时（秒）",
+                "default": 60
+              },
+              "divorce_enabled": {
+                "type": "bool",
+                "description": "允许离婚或踹群友",
+                "default": true
+              },
+              "divorce_limit": {
+                "type": "int",
+                "description": "离婚或踹群友次数上限",
+                "default": 1,
+                "hint": "0 表示不限次数。"
+              },
+              "pool_ids": {
+                "type": "list",
+                "description": "启用的角色池 ID",
+                "default": [
+                  "wuwa_wife"
+                ],
+                "hint": "每行一个角色池 ID；空列表表示无候选池。"
+              }
+            }
+          },
+          "husband": {
+            "type": "object",
+            "description": "今日老公",
+            "items": {
+              "enabled": {
+                "type": "bool",
+                "description": "启用玩法",
+                "default": true
+              },
+              "capacity": {
+                "type": "int",
+                "description": "每日容量",
+                "default": 1
+              },
+              "steal_enabled": {
+                "type": "bool",
+                "description": "允许抢夺",
+                "default": true
+              },
+              "steal_attempt_limit": {
+                "type": "int",
+                "description": "抢夺尝试次数上限",
+                "default": 3,
+                "hint": "0 表示不限次数。"
+              },
+              "steal_cooldown_seconds": {
+                "type": "int",
+                "description": "抢夺冷却（秒）",
+                "default": 60
+              },
+              "steal_probability": {
+                "type": "float",
+                "description": "抢夺成功率（%）",
+                "default": 0.3,
+                "hint": "输入 0 到 1 之间的小数，例如 0.3 表示 30%。"
+              },
+              "stolen_limit": {
+                "type": "int",
+                "description": "被抢次数上限",
+                "default": 1,
+                "hint": "0 表示不限次数。"
+              },
+              "gift_enabled": {
+                "type": "bool",
+                "description": "允许赠送",
+                "default": true
+              },
+              "gift_mode": {
+                "type": "string",
+                "description": "赠送方式",
+                "default": "direct",
+                "options": [
+                  "direct",
+                  "confirm"
+                ]
+              },
+              "gift_timeout_seconds": {
+                "type": "int",
+                "description": "赠送确认超时（秒）",
+                "default": 60
+              },
+              "divorce_enabled": {
+                "type": "bool",
+                "description": "允许离婚或踹群友",
+                "default": true
+              },
+              "divorce_limit": {
+                "type": "int",
+                "description": "离婚或踹群友次数上限",
+                "default": 1,
+                "hint": "0 表示不限次数。"
+              },
+              "pool_ids": {
+                "type": "list",
+                "description": "启用的角色池 ID",
+                "default": [
+                  "wuwa_husband"
+                ],
+                "hint": "每行一个角色池 ID；空列表表示无候选池。"
+              }
+            }
+          },
+          "member": {
+            "type": "object",
+            "description": "娶群友",
+            "items": {
+              "enabled": {
+                "type": "bool",
+                "description": "启用玩法",
+                "default": true
+              },
+              "capacity": {
+                "type": "int",
+                "description": "每日容量",
+                "default": 1
+              },
+              "steal_enabled": {
+                "type": "bool",
+                "description": "允许抢夺",
+                "default": true
+              },
+              "steal_attempt_limit": {
+                "type": "int",
+                "description": "抢夺尝试次数上限",
+                "default": 3,
+                "hint": "0 表示不限次数。"
+              },
+              "steal_cooldown_seconds": {
+                "type": "int",
+                "description": "抢夺冷却（秒）",
+                "default": 60
+              },
+              "steal_probability": {
+                "type": "float",
+                "description": "抢夺成功率（%）",
+                "default": 0.3,
+                "hint": "输入 0 到 1 之间的小数，例如 0.3 表示 30%。"
+              },
+              "stolen_limit": {
+                "type": "int",
+                "description": "被抢次数上限",
+                "default": 1,
+                "hint": "0 表示不限次数。"
+              },
+              "gift_enabled": {
+                "type": "bool",
+                "description": "允许赠送",
+                "default": true
+              },
+              "gift_mode": {
+                "type": "string",
+                "description": "赠送方式",
+                "default": "direct",
+                "options": [
+                  "direct",
+                  "confirm"
+                ]
+              },
+              "gift_timeout_seconds": {
+                "type": "int",
+                "description": "赠送确认超时（秒）",
+                "default": 60
+              },
+              "divorce_enabled": {
+                "type": "bool",
+                "description": "允许离婚或踹群友",
+                "default": true
+              },
+              "divorce_limit": {
+                "type": "int",
+                "description": "离婚或踹群友次数上限",
+                "default": 1,
+                "hint": "0 表示不限次数。"
+              }
+            }
+          }
+        }
+      },
+      "statistics": {
+        "type": "object",
+        "description": "统计",
+        "items": {
+          "intimacy_enabled": {
+            "type": "bool",
+            "description": "记录亲密度",
+            "default": true
+          },
+          "activity_enabled": {
+            "type": "bool",
+            "description": "记录活跃度",
+            "default": true
+          },
+          "mention_active_points": {
+            "type": "int",
+            "description": "主动 @ 加分",
+            "default": 2
+          },
+          "mention_passive_points": {
+            "type": "int",
+            "description": "被 @ 加分",
+            "default": 1
+          },
+          "poke_active_points": {
+            "type": "int",
+            "description": "主动戳一戳加分",
+            "default": 2
+          },
+          "poke_passive_points": {
+            "type": "int",
+            "description": "被戳一戳加分",
+            "default": 1
+          },
+          "activity_window_days": {
+            "type": "int",
+            "description": "活跃度窗口（天）",
+            "default": 7
+          }
+        }
+      },
+      "weights": {
+        "type": "object",
+        "description": "抽取权重",
+        "items": {
+          "base": {
+            "type": "float",
+            "description": "基础权重",
+            "default": 1.0
+          },
+          "per_intimacy_point": {
+            "type": "float",
+            "description": "每点亲密度增加权重",
+            "default": 0.01
+          },
+          "maximum": {
+            "type": "float",
+            "description": "最大权重",
+            "default": 5.0
+          },
+          "activity_floor": {
+            "type": "float",
+            "description": "零活跃权重系数",
+            "default": 0.2
+          },
+          "activity_full_messages": {
+            "type": "int",
+            "description": "满活跃消息数",
+            "default": 50
+          }
+        }
+      },
+      "display": {
+        "type": "object",
+        "description": "展示与排行",
+        "items": {
+          "pagination_enabled": {
+            "type": "bool",
+            "description": "启用分页",
+            "default": true
+          },
+          "page_size": {
+            "type": "int",
+            "description": "每页条数",
+            "default": 10
+          },
+          "intimacy_rank_mode": {
+            "type": "string",
+            "description": "亲密度排行范围",
+            "default": "personal",
+            "options": [
+              "personal",
+              "group_directed"
+            ]
+          },
+          "intimacy_rank_enabled": {
+            "type": "bool",
+            "description": "显示亲密度排行",
+            "default": true
+          },
+          "activity_rank_enabled": {
+            "type": "bool",
+            "description": "显示活跃度排行",
+            "default": true
+          }
+        }
+      },
+      "members": {
+        "type": "object",
+        "description": "群成员缓存",
+        "items": {
+          "cache_ttl_seconds": {
+            "type": "int",
+            "description": "缓存时间（秒）",
+            "default": 300
+          }
+        }
+      },
+      "messages": {
+        "type": "object",
+        "description": "群内消息",
+        "items": {
+          "results": {
+            "type": "object",
+            "description": "群内操作结果",
+            "items": {
+              "draw_wife": {
+                "type": "text",
+                "description": "抽到老婆",
+                "default": "娶到老婆：{name}"
+              },
+              "draw_husband": {
+                "type": "text",
+                "description": "抽到老公",
+                "default": "娶到老公：{name}"
+              },
+              "draw_member": {
+                "type": "text",
+                "description": "抽到群友",
+                "default": "娶到群友：{name}"
+              },
+              "capacity_full": {
+                "type": "text",
+                "description": "持有名额已满",
+                "default": "持有名额已满：{names}"
+              },
+              "no_draw_quota": {
+                "type": "text",
+                "description": "普通抽取额度用完",
+                "default": "今天的普通抽取额度已用完"
+              },
+              "no_candidate": {
+                "type": "text",
+                "description": "没有候选对象",
+                "default": "当前没有可抽取对象"
+              },
+              "steal_failed": {
+                "type": "text",
+                "description": "抢夺失败",
+                "default": "抢夺失败；配偶保留原关系"
+              },
+              "stolen": {
+                "type": "text",
+                "description": "抢夺成功",
+                "default": "抢夺成功"
+              },
+              "divorced": {
+                "type": "text",
+                "description": "解除关系成功",
+                "default": "关系已解除，你获得一次补抽资格"
+              },
+              "gifted": {
+                "type": "text",
+                "description": "赠送成功",
+                "default": "赠送完成"
+              },
+              "invite_created": {
+                "type": "text",
+                "description": "赠送邀请已创建",
+                "default": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。"
+              },
+              "gift_accepted": {
+                "type": "text",
+                "description": "赠送已接受",
+                "default": "赠送已接受"
+              },
+              "invite_rejected": {
+                "type": "text",
+                "description": "赠送已拒绝",
+                "default": "已拒绝赠送"
+              },
+              "invite_cancelled": {
+                "type": "text",
+                "description": "赠送已取消",
+                "default": "已取消赠送"
+              },
+              "invite_expired": {
+                "type": "text",
+                "description": "赠送邀请过期",
+                "default": "赠送邀请已过期"
+              },
+              "invite_invalidated": {
+                "type": "text",
+                "description": "赠送邀请失效",
+                "default": "赠送邀请已失效"
+              },
+              "invite_not_owned": {
+                "type": "text",
+                "description": "无权处理邀请",
+                "default": "你无权处理这条邀请"
+              },
+              "steal_cooldown": {
+                "type": "text",
+                "description": "抢夺冷却",
+                "default": "抢夺冷却中"
+              },
+              "steal_limit": {
+                "type": "text",
+                "description": "抢夺次数用完",
+                "default": "本周期抢夺尝试次数已用完"
+              },
+              "target_protected": {
+                "type": "text",
+                "description": "目标受保护",
+                "default": "该持有者本周期已受抢夺保护"
+              },
+              "divorce_limit": {
+                "type": "text",
+                "description": "解除关系次数用完",
+                "default": "本周期解除关系次数已用完"
+              },
+              "relationship_not_found": {
+                "type": "text",
+                "description": "关系不存在",
+                "default": "没有找到可处理的关系"
+              },
+              "invalid_target": {
+                "type": "text",
+                "description": "目标无效",
+                "default": "目标无效"
+              },
+              "no_target_relationship": {
+                "type": "text",
+                "description": "目标没有关系",
+                "default": "目标没有可抢夺的关系"
+              },
+              "mode_disabled": {
+                "type": "text",
+                "description": "玩法已关闭",
+                "default": "这个玩法当前已关闭"
+              },
+              "invalid_probability": {
+                "type": "text",
+                "description": "抢夺概率无效",
+                "default": "抢夺概率配置无效"
+              },
+              "invalid_timeout": {
+                "type": "text",
+                "description": "赠送超时无效",
+                "default": "赠送超时配置无效"
+              },
+              "invite_already_pending": {
+                "type": "text",
+                "description": "已有待处理邀请",
+                "default": "该关系已有待处理赠送邀请，编号 {invite_id}"
+              },
+              "invite_limit": {
+                "type": "text",
+                "description": "待处理邀请达到上限",
+                "default": "待处理赠送邀请已达上限 {limit}"
+              },
+              "invite_invalid": {
+                "type": "text",
+                "description": "邀请无效",
+                "default": "赠送邀请已无效"
+              },
+              "unknown_result": {
+                "type": "text",
+                "description": "其他操作结果",
+                "default": "操作未完成：{code}"
+              }
+            }
+          },
+          "errors": {
+            "type": "object",
+            "description": "群内错误提示",
+            "items": {
+              "syntax_error": {
+                "type": "text",
+                "description": "指令格式错误",
+                "default": "{detail}"
+              },
+              "operation_error": {
+                "type": "text",
+                "description": "操作错误",
+                "default": "{detail}"
+              },
+              "mode_closed": {
+                "type": "text",
+                "description": "玩法关闭",
+                "default": "这个玩法当前已关闭。"
+              },
+              "command_cooldown": {
+                "type": "text",
+                "description": "通用指令冷却",
+                "default": "指令冷却中，请在 {remaining_seconds} 秒后重试。"
+              },
+              "steal_disabled": {
+                "type": "text",
+                "description": "抢夺关闭",
+                "default": "这个玩法当前不允许抢夺。"
+              },
+              "steal_target_required": {
+                "type": "text",
+                "description": "抢夺目标无效",
+                "default": "请 @ 一位当前群内且允许参与的持有者。"
+              },
+              "steal_relation_ambiguous": {
+                "type": "text",
+                "description": "抢夺关系不明确",
+                "default": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。"
+              },
+              "gift_disabled": {
+                "type": "text",
+                "description": "赠送关闭",
+                "default": "这个玩法当前不允许赠送。"
+              },
+              "gift_target_required": {
+                "type": "text",
+                "description": "赠送目标无效",
+                "default": "请 @ 一位当前群内且允许参与的接收者。"
+              },
+              "gift_relation_ambiguous": {
+                "type": "text",
+                "description": "赠送关系不明确",
+                "default": "你没有唯一匹配的配偶；请使用准确名称或 #ID。"
+              },
+              "divorce_ambiguous": {
+                "type": "text",
+                "description": "离婚关系不明确",
+                "default": "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。"
+              },
+              "divorce_disabled": {
+                "type": "text",
+                "description": "解除关系关闭",
+                "default": "这个玩法当前不允许解除关系。"
+              },
+              "divorce_relation_missing": {
+                "type": "text",
+                "description": "解除关系未找到",
+                "default": "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。"
+              },
+              "invite_multiple": {
+                "type": "text",
+                "description": "有多条待处理邀请",
+                "default": "你有多条待处理赠送，请在命令后填写邀请编号。"
+              },
+              "invite_none": {
+                "type": "text",
+                "description": "没有待处理邀请",
+                "default": "没有可处理的待赠送邀请。"
+              },
+              "invite_invalid_id": {
+                "type": "text",
+                "description": "邀请编号无效",
+                "default": "邀请编号无效或不属于当前群。"
+              },
+              "rank_intimacy_disabled": {
+                "type": "text",
+                "description": "亲密度排行关闭",
+                "default": "亲密度排行当前已关闭。"
+              },
+              "rank_activity_disabled": {
+                "type": "text",
+                "description": "活跃度排行关闭",
+                "default": "活跃度排行当前已关闭。"
+              },
+              "activity_disabled": {
+                "type": "text",
+                "description": "活跃度统计关闭",
+                "default": "活跃度统计已关闭；当前保留历史排行。"
+              },
+              "page_out_of_range": {
+                "type": "text",
+                "description": "页码超出范围",
+                "default": "页码超出范围；共 {pages} 页。"
+              },
+              "list_empty": {
+                "type": "text",
+                "description": "关系列表为空",
+                "default": "{title}：当前没有关系。"
+              }
+            }
+          },
+          "notifications": {
+            "type": "object",
+            "description": "赠送与重启通知",
+            "items": {
+              "restart_invalidated": {
+                "type": "text",
+                "description": "重启后邀请失效",
+                "default": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。"
+              },
+              "invite_expired": {
+                "type": "text",
+                "description": "赠送邀请过期",
+                "default": "以下赠送邀请已超时：{invite_ids}"
+              }
+            }
+          }
+        }
+      },
+      "history": {
+        "type": "object",
+        "description": "历史记录",
+        "items": {
+          "retention_days": {
+            "type": "int",
+            "description": "历史保留天数",
+            "default": 30
+          }
+        }
+      },
+      "resources": {
+        "type": "object",
+        "description": "资源限制",
+        "items": {
+          "http_timeout_seconds": {
+            "type": "int",
+            "description": "HTTP 超时（秒）",
+            "default": 15
+          },
+          "image_max_bytes": {
+            "type": "int",
+            "description": "单图大小上限（字节）",
+            "default": 10485760
+          },
+          "image_max_pixels": {
+            "type": "int",
+            "description": "单图像素上限",
+            "default": 24000000
+          },
+          "import_max_bytes": {
+            "type": "int",
+            "description": "导入包大小上限（字节）",
+            "default": 209715200
+          },
+          "import_max_entries": {
+            "type": "int",
+            "description": "导入条目上限",
+            "default": 5000
+          },
+          "import_max_expanded_bytes": {
+            "type": "int",
+            "description": "导入解压上限（字节）",
+            "default": 524288000
+          },
+          "render_width": {
+            "type": "int",
+            "description": "渲染宽度（像素）",
+            "default": 1000
+          },
+          "render_max_height": {
+            "type": "int",
+            "description": "单图最大高度（像素）",
+            "default": 8000
+          },
+          "render_concurrency": {
+            "type": "int",
+            "description": "并发渲染数",
+            "default": 2
+          },
+          "text_chunk_chars": {
+            "type": "int",
+            "description": "文字分片字符数",
+            "default": 1500
+          },
+          "send_interval_seconds": {
+            "type": "float",
+            "description": "分片发送间隔（秒）",
+            "default": 1.0
+          },
+          "pending_invites_per_user": {
+            "type": "int",
+            "description": "每人待处理邀请上限",
+            "default": 20
+          },
+          "avatar_cache_ttl_seconds": {
+            "type": "int",
+            "description": "头像缓存时间（秒）",
+            "default": 86400
+          },
+          "avatar_cache_max_entries": {
+            "type": "int",
+            "description": "头像缓存人数上限",
+            "default": 5000
+          },
+          "dedupe_retention_days": {
+            "type": "int",
+            "description": "事件去重保留天数",
+            "default": 30
+          },
+          "backup_keep_count": {
+            "type": "int",
+            "description": "备份保留数量",
+            "default": 5
+          },
+          "download_concurrency": {
+            "type": "int",
+            "description": "并发下载数",
+            "default": 4
+          }
+        }
+      }
+    }
+  },
+  "_settings_revision": {
+    "type": "int",
+    "default": 0,
+    "description": "全局配置同步版本",
+    "invisible": true
   }
 }

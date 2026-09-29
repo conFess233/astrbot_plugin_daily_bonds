@@ -1,5 +1,23 @@
 const bridge = window.AstrBotPluginPage;
 const $ = (selector) => document.querySelector(selector);
+let activeRequests = 0;
+let progressTimer;
+
+async function withProgress(request) {
+  activeRequests += 1;
+  if (activeRequests === 1) {
+    progressTimer = window.setTimeout(() => { $("#loading-progress").hidden = false; }, 150);
+  }
+  try {
+    return await request();
+  } finally {
+    activeRequests -= 1;
+    if (activeRequests === 0) {
+      window.clearTimeout(progressTimer);
+      $("#loading-progress").hidden = true;
+    }
+  }
+}
 
 const state = {
   context: null,
@@ -9,6 +27,7 @@ const state = {
   globalConfig: null,
   savedOverride: {},
   savedSignature: "",
+  configGroup: "enabled",
   revision: 0,
   globalRevision: 0,
   busy: false,
@@ -35,18 +54,19 @@ function normalizeApiResponse(result) {
 }
 
 async function apiGet(endpoint, params) {
-  return normalizeApiResponse(await bridge.apiGet(endpoint, params));
+  return withProgress(async () => normalizeApiResponse(await bridge.apiGet(endpoint, params)));
 }
 
 async function apiPost(endpoint, body) {
-  return normalizeApiResponse(await bridge.apiPost(endpoint, body));
+  return withProgress(async () => normalizeApiResponse(await bridge.apiPost(endpoint, body)));
 }
 
 async function apiUpload(endpoint, file) {
-  return normalizeApiResponse(await bridge.upload(endpoint, file));
+  return withProgress(async () => normalizeApiResponse(await bridge.upload(endpoint, file)));
 }
 
 const configFields = $("#config-fields");
+const configTabs = $("#config-tabs");
 const scopeSelect = $("#scope-select");
 const notice = $("#notice");
 const imagePreviewCache = new Map();
@@ -55,6 +75,9 @@ function showNotice(message, kind = "success") {
   notice.hidden = false;
   notice.className = `notice ${kind}`;
   notice.textContent = message;
+  notice.classList.remove("notice-in");
+  void notice.offsetWidth;
+  notice.classList.add("notice-in");
 }
 
 function setBusy(value) {
@@ -269,6 +292,7 @@ function configLeaves(config, prefix = "") {
 }
 
 function configGroup(path) {
+  if (path === "schema_version") return "enabled";
   const parts = path.split(".");
   if (parts[0] === "messages") return parts.slice(0, 2).join(".");
   return parts[0] === "modes" ? parts.slice(0, 2).join(".") : parts[0];
@@ -294,6 +318,7 @@ function configLabel(path) {
 
 function renderConfigFields() {
   configFields.replaceChildren();
+  configTabs.replaceChildren();
   if (!state.savedConfig) return;
   const groups = new Map();
   for (const [path, value] of configLeaves(state.savedConfig)) {
@@ -301,13 +326,25 @@ function renderConfigFields() {
     if (!groups.has(group)) {
       const section = document.createElement("section");
       section.className = "config-group";
+      section.id = `config-group-${group.replaceAll(".", "-")}`;
+      section.setAttribute("role", "tabpanel");
       const heading = document.createElement("h4");
       heading.textContent = CONFIG_GROUPS[group] || group;
       const fields = document.createElement("div");
       fields.className = "config-grid";
       section.append(heading, fields);
       configFields.append(section);
-      groups.set(group, fields);
+      const tab = document.createElement("button");
+      tab.type = "button";
+      tab.className = "config-tab";
+      tab.setAttribute("role", "tab");
+      tab.dataset.configGroup = group;
+      tab.id = `config-tab-${group.replaceAll(".", "-")}`;
+      tab.setAttribute("aria-controls", section.id);
+      tab.textContent = CONFIG_GROUPS[group] || group;
+      section.setAttribute("aria-labelledby", tab.id);
+      configTabs.append(tab);
+      groups.set(group, { section, fields, tab });
     }
     const card = document.createElement("div");
     card.className = "config-field";
@@ -391,7 +428,21 @@ function renderConfigFields() {
     error.className = "config-error";
     error.hidden = true;
     card.append(error);
-    groups.get(group).append(card);
+    groups.get(group).fields.append(card);
+  }
+  if (!groups.has(state.configGroup)) state.configGroup = groups.has("enabled") ? "enabled" : groups.keys().next().value;
+  selectConfigGroup(state.configGroup);
+}
+
+function selectConfigGroup(group) {
+  state.configGroup = group;
+  for (const tab of configTabs.querySelectorAll("[data-config-group]")) {
+    const selected = tab.dataset.configGroup === group;
+    tab.setAttribute("aria-selected", String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  }
+  for (const section of configFields.querySelectorAll(".config-group")) {
+    section.hidden = section.id !== `config-group-${group.replaceAll(".", "-")}`;
   }
 }
 
@@ -442,6 +493,7 @@ function showConfigError(message) {
   const error = input.closest(".config-field").querySelector(".config-error");
   error.textContent = message;
   error.hidden = false;
+  selectConfigGroup(configGroup(path));
   input.focus();
 }
 
@@ -456,6 +508,16 @@ async function describeConfigConflict() {
 }
 
 async function loadOverview() {
+  const grid = $("#overview-cards");
+  if (!grid.children.length) {
+    for (let index = 0; index < 8; index += 1) {
+      const skeleton = document.createElement("div");
+      skeleton.className = "metric metric-skeleton";
+      skeleton.setAttribute("aria-hidden", "true");
+      skeleton.innerHTML = '<span class="skeleton"></span><span class="skeleton"></span>';
+      grid.append(skeleton);
+    }
+  }
   const scopeId = $("#data-scope").value;
   const result = await apiGet("overview", scopeId ? { scope_id: scopeId } : {});
   const metrics = [
@@ -468,7 +530,6 @@ async function loadOverview() {
     ["配置版本", result.data.scope_revision ?? result.data.global_revision],
     ["已录入角色", result.data.catalog.characters],
   ];
-  const grid = $("#overview-cards");
   grid.replaceChildren();
   for (const [labelText, value] of metrics) {
     const card = document.createElement("article");
@@ -591,6 +652,21 @@ $(".tabs").addEventListener("click", (event) => {
   $("#data-panel").hidden = tab.dataset.tab !== "data";
   if (tab.dataset.tab === "catalog") loadCatalog().catch((error) => showNotice(error.message, "error"));
 });
+configTabs.addEventListener("click", (event) => {
+  const tab = event.target.closest("button[data-config-group]");
+  if (tab) selectConfigGroup(tab.dataset.configGroup);
+});
+configTabs.addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const tabs = [...configTabs.querySelectorAll("button[data-config-group]")];
+  const current = tabs.findIndex((tab) => tab.dataset.configGroup === state.configGroup);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
+    (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  if (!tabs[next]) return;
+  event.preventDefault();
+  selectConfigGroup(tabs[next].dataset.configGroup);
+  tabs[next].focus();
+});
 $("#refresh").addEventListener("click", () => {
   if (isConfigDirty() && !window.confirm("当前配置草稿尚未保存。刷新并放弃草稿吗？")) return;
   refreshAll();
@@ -682,7 +758,7 @@ async function loadCatalog() {
 }
 
 async function loadCharacter(id) {
-  const response = await apiGet(`characters/${encodeURIComponent(id)}`);
+  const response = await apiGet("character", { id });
   const item = response.data;
   $("#character-form-title").textContent = `编辑角色 · ${item.name}`;
   $("#character-id").value = item.id;

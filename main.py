@@ -10,8 +10,9 @@ from astrbot.api import AstrBotConfig, logger
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.event.filter import EventMessageType, event_message_type
+from astrbot.api.message_components import Image, Plain
 
-from .services.settings import default_config
+from .services.host_config import HostConfigBridge
 from .services.catalog import CatalogService
 from .services.storage import SQLiteStorage
 from .services.access import AccessService
@@ -48,16 +49,8 @@ class DailyBondsPlugin(Star):
         storage = SQLiteStorage(data_dir / "state.sqlite3")
         try:
             await asyncio.to_thread(storage.open)
-            _, revision = storage.get_settings()
-            if revision == 0:
-                storage.save_settings(
-                    None,
-                    default_config(),
-                    expected_revision=0,
-                    now=int(time.time()),
-                    updated_by="system:initialize",
-                )
-            settings, _ = storage.get_settings()
+            host_config = HostConfigBridge(self.config, storage)
+            settings = host_config.reconcile()
             catalog = CatalogService(
                 storage,
                 Path(__file__).parent / "resources" / "wuwa-characters.json",
@@ -65,7 +58,7 @@ class DailyBondsPlugin(Star):
             )
             await asyncio.to_thread(catalog.seed_builtin_catalog, int(time.time()))
             self._storage = storage
-            web_manager = WebManager(self.context, storage, self.config)
+            web_manager = WebManager(self.context, storage, host_config)
             web_manager.register()
             self._web_manager = web_manager
             notifications = NotificationService(self.context, storage)
@@ -114,9 +107,10 @@ class DailyBondsPlugin(Star):
                 yield event.plain_result(response.text)
                 return
             try:
-                yield event.plain_result(response.text)
-                for image_path in response.image_paths:
-                    yield event.image_result(str(image_path))
+                chain = ([Plain(response.text)] if response.text else []) + [
+                    Image.fromFileSystem(str(image_path)) for image_path in response.image_paths
+                ]
+                yield event.chain_result(chain)
             finally:
                 for image_path in response.cleanup_paths:
                     image_path.unlink(missing_ok=True)

@@ -1,4 +1,4 @@
-"""Pillow-based list cards with a plain-text fallback when no CJK font exists."""
+"""Pillow-based list cards with a bundled CJK font."""
 
 from __future__ import annotations
 
@@ -19,6 +19,10 @@ class CardRow:
     image_path: Path | None = None
     avatar_path: Path | None = None
     other_avatar_path: Path | None = None
+    avatar_user_id: str = ""
+    other_avatar_user_id: str = ""
+    pair_names: tuple[str, str] | None = None
+    pair_rank: int = 0
 
 
 class CardRenderer:
@@ -75,13 +79,25 @@ class CardRenderer:
             top = 118 + index * self.ROW_HEIGHT
             if index % 2 == 0:
                 draw.rounded_rectangle((32, top, self.WIDTH - 32, top + 62), radius=12, fill=(250, 249, 254))
+            if row.pair_names is not None:
+                draw.text((38, top + 18), f"{row.pair_rank}.", font=primary_font, fill=self.INK)
+                _draw_avatar(image, row.avatar_path, (83, top + 9, 129, top + 55), row.avatar_user_id, secondary_font)
+                draw.text((140, top + 8), _fit_text(draw, row.pair_names[0], primary_font, 155), font=primary_font, fill=self.INK)
+                draw.text((140, top + 39), row.avatar_user_id, font=secondary_font, fill=self.MUTED)
+                draw.text((300, top + 18), "→", font=primary_font, fill=self.MUTED)
+                _draw_avatar(image, row.other_avatar_path, (338, top + 9, 384, top + 55), row.other_avatar_user_id, secondary_font)
+                draw.text((395, top + 8), _fit_text(draw, row.pair_names[1], primary_font, 155), font=primary_font, fill=self.INK)
+                draw.text((395, top + 39), row.other_avatar_user_id, font=secondary_font, fill=self.MUTED)
+                draw.text((610, top + 19), _fit_text(draw, row.secondary, primary_font, 310), font=primary_font, fill=self.ACCENT)
+                continue
             text_left = self.PADDING
-            if row.avatar_path is not None:
-                _draw_avatar(image, row.avatar_path, (38, top + 10, 84, top + 56))
+            if row.avatar_path is not None or row.avatar_user_id:
+                _draw_avatar(image, row.avatar_path, (38, top + 10, 84, top + 56), row.avatar_user_id, secondary_font)
                 text_left = 96
-            if row.other_avatar_path is not None:
-                _draw_avatar(image, row.other_avatar_path, (62, top + 10, 108, top + 56))
-                text_left = 120
+            if row.other_avatar_path is not None or row.other_avatar_user_id:
+                draw.text((85, top + 20), "→", font=secondary_font, fill=self.MUTED)
+                _draw_avatar(image, row.other_avatar_path, (108, top + 10, 154, top + 56), row.other_avatar_user_id, secondary_font)
+                text_left = 166
             if row.image_path is not None:
                 _draw_thumbnail(image, row.image_path, (842, top + 4, 922, top + 58))
             available_width = (830 if row.image_path is not None else self.WIDTH - self.PADDING) - text_left
@@ -96,12 +112,14 @@ class CardRenderer:
 def _find_cjk_font() -> str | None:
     candidates = (
         os.environ.get("DAILY_BONDS_CJK_FONT"),
+        str(Path(__file__).resolve().parent.parent / "resources" / "fonts" / "NotoSansSC-wght.ttf"),
         "C:/Windows/Fonts/msyh.ttc",
         "C:/Windows/Fonts/simhei.ttf",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
         "/usr/share/fonts/truetype/arphic/ukai.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
     )
     return next((font for font in candidates if font and Path(font).is_file()), None)
 
@@ -119,9 +137,14 @@ def _draw_thumbnail(canvas: Image.Image, source_path: Path, box: tuple[int, int,
         return
 
 
-def _draw_avatar(canvas: Image.Image, source_path: Path, box: tuple[int, int, int, int]) -> None:
+def _draw_avatar(
+    canvas: Image.Image, source_path: Path | None, box: tuple[int, int, int, int],
+    user_id: str = "", font: ImageFont.FreeTypeFont | None = None,
+) -> None:
     left, top, right, bottom = box
     try:
+        if source_path is None:
+            raise OSError("QQ avatar unavailable")
         with Image.open(source_path) as opened:
             avatar = opened.convert("RGBA")
         avatar = ImageOps.fit(avatar, (right - left, bottom - top), method=Image.Resampling.LANCZOS)
@@ -129,7 +152,15 @@ def _draw_avatar(canvas: Image.Image, source_path: Path, box: tuple[int, int, in
         ImageDraw.Draw(mask).ellipse((0, 0, avatar.width - 1, avatar.height - 1), fill=255)
         canvas.paste(avatar, (left, top), mask)
     except (OSError, ValueError, Image.DecompressionBombError):
-        return
+        if not user_id or font is None:
+            return
+        draw = ImageDraw.Draw(canvas)
+        draw.ellipse(box, fill=(229, 225, 250))
+        label = user_id[-2:]
+        bounds = draw.textbbox((0, 0), label, font=font)
+        draw.text((left + (right - left - (bounds[2] - bounds[0])) / 2,
+                   top + (bottom - top - (bounds[3] - bounds[1])) / 2 - bounds[1]),
+                  label, font=font, fill=(89, 76, 176))
 
 
 def _fit_text(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont, max_width: int) -> str:
