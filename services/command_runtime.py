@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import random
 import time
 import uuid
@@ -13,6 +12,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from astrbot.api import logger
 
 from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
 from ..models import CommandSyntaxError, ParsedCommand, Scope, StorageError
@@ -727,7 +728,7 @@ class CommandRuntime:
         try:
             images = await asyncio.to_thread(self.renderer.render, title, rows, cache_key=str(uuid.uuid4()))
         except Exception:
-            logging.getLogger(__name__).exception("Failed to render a list card; returning its text version")
+            logger.exception("Failed to render a list card; returning its text version")
             images = ()
         return RuntimeReply(text, images, images)
 
@@ -793,7 +794,7 @@ class CommandRuntime:
                 max_entries=resources["avatar_cache_max_entries"],
             )
         except Exception:
-            logging.getLogger(__name__).exception("Failed to load member avatar; returning text")
+            logger.exception("Failed to load member avatar; returning text")
             return {}
 
     def _snapshot_image_path(self, image_paths: str | None) -> Path | None:

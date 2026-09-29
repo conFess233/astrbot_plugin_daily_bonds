@@ -1,5 +1,11 @@
 # 更新日志
 
+## [0.1.8] - 2026-09-29
+
+### 修复
+
+- `services/command_runtime.py` 不再导入 Python 内置 `logging`，日志记录器统一改用 `astrbot.api` 的 `logger`，符合插件上架规范。
+
 ## [0.1.7] - 2026-09-29
 
 ### 新增

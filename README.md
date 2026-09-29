@@ -3,7 +3,7 @@
 <p align="center">不止要老公/老婆，还要香香软软的群友😋</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.6-blue" alt="版本 0.1.7">
+  <img src="https://img.shields.io/badge/version-0.1.8-blue" alt="版本 0.1.8">
   <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上">
   <img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证">
