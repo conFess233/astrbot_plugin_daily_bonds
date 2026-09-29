@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1508",
+  "name": "千咲",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1508"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/ba81bbe33358b2f73201b58f51df43bb.png",
+      "sha256": "ff969be56925490f711aab83100560b4b8732878dc245b2f6b1983f7ecf67596",
+      "width": 696,
+      "height": 960,
+      "bytes": 396454,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

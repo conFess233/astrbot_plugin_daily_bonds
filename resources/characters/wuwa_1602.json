@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1602",
+  "name": "丹瑾",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1602"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/5b341b6f1c5e1f43640081bed20ef61c.png",
+      "sha256": "ed9d90969ed49708745d1ac19085f9dca761bb402dbf75e95013149b9aea531c",
+      "width": 696,
+      "height": 960,
+      "bytes": 303278,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

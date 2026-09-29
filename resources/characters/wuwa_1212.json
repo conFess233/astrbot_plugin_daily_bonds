@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1212",
+  "name": "景燃",
+  "aliases": [],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1212"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/a424a39132444fd097ba1a57f3588a2a/7ba64e1c268d88cf24c5e6e63f7449a3.png",
+      "sha256": "34d1784f8361e14aaa2fd2ed4944162d6841a1d80deeb791d40c08b138836e94",
+      "width": 696,
+      "height": 960,
+      "bytes": 477698,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

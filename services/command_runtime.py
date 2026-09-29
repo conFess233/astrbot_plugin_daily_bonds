@@ -682,17 +682,25 @@ class CommandRuntime:
             f"[{mode_labels[str(row['mode'])]}{'·抢夺' if row['slot_kind'] == 'steal' else ''}] {members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}"
             for row in rows
         ]
-        owner_ids = list(dict.fromkeys(str(row["owner_id"]) for row in rows))
+        avatar_ids = list(dict.fromkeys(
+            user_id for row in rows
+            for user_id in ([str(row["owner_id"]), str(row["subject_id"])] if mode == "member" else [str(row["owner_id"])])
+        ))
         avatars = await self.avatar_cache.get_many(
-            owner_ids, ttl_seconds=resources["avatar_cache_ttl_seconds"],
+            avatar_ids, ttl_seconds=resources["avatar_cache_ttl_seconds"],
             max_entries=resources["avatar_cache_max_entries"],
         ) if self.renderer.has_cjk_font else {}
         card_rows = [
             CardRow(
                 primary=f"{members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}",
                 secondary=f"{mode_labels[str(row['mode'])]} · {'抢夺' if row['slot_kind'] == 'steal' else '普通'} · {row['subject_kind']}",
-                image_path=self._snapshot_image_path(row["image_paths"]),
+                image_path=self._snapshot_image_path(row["image_paths"]) if mode != "member" else None,
                 avatar_path=avatars.get(str(row["owner_id"])),
+                avatar_user_id=str(row["owner_id"]),
+                other_avatar_path=avatars.get(str(row["subject_id"])) if mode == "member" else None,
+                other_avatar_user_id=str(row["subject_id"]) if mode == "member" else "",
+                pair_names=(members.get(str(row["owner_id"]), str(row["owner_id"])),
+                            members.get(str(row["subject_id"]), str(row["name"]))) if mode == "member" else None,
             )
             for row in rows
         ]

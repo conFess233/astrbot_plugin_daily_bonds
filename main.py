@@ -53,7 +53,7 @@ class DailyBondsPlugin(Star):
             settings = host_config.reconcile()
             catalog = CatalogService(
                 storage,
-                Path(__file__).parent / "resources" / "wuwa-characters.json",
+                Path(__file__).parent / "resources",
                 data_dir / "media",
             )
             await asyncio.to_thread(catalog.seed_builtin_catalog, int(time.time()))

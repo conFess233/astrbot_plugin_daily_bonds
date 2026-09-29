@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1503",
+  "name": "维里奈",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1503"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/deb60fc64c2de8328301b889518f593f.png",
+      "sha256": "0c5f785488ad7bf93262a829191418fd56bf52245f86fef4c065c8590b8bd043",
+      "width": 696,
+      "height": 960,
+      "bytes": 299316,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

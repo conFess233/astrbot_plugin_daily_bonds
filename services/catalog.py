@@ -27,6 +27,27 @@ _ALLOWED_HOSTS = frozenset({"guide-res.aki-game.net"})
 _IMAGE_FORMATS = {"PNG": ("png", "image/png"), "JPEG": ("jpg", "image/jpeg"), "WEBP": ("webp", "image/webp")}
 
 
+def load_catalog_directory(root: Path) -> dict[str, Any]:
+    """Read the packaged one-file-per-entity catalog."""
+
+    metadata = json.loads((root / "catalog.json").read_text(encoding="utf-8"))
+    characters = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((root / "characters").glob("*.json"))]
+    pools = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((root / "pools").glob("*.json"))]
+    if not characters or not pools or len({item.get("id") for item in characters}) != len(characters) or len({item.get("id") for item in pools}) != len(pools):
+        raise StorageError("内置角色目录为空或包含重复 ID。")
+    memberships: dict[str, list[str]] = {item["id"]: [] for item in characters}
+    for pool in pools:
+        for character_id in pool.get("character_ids", []):
+            if character_id not in memberships:
+                raise StorageError(f"角色池引用了不存在的角色：{character_id}")
+            memberships[character_id].append(pool["id"])
+    return {**metadata, "characters": [dict(item, pool_ids=memberships[item["id"]]) for item in characters], "pools": pools}
+
+
+def catalog_source_json(item: dict[str, Any], kind: str) -> str:
+    return json.dumps({key: value for key, value in item.items() if key != "pool_ids"}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
 @dataclass(frozen=True, slots=True)
 class DownloadReport:
     """一轮素材下载的结果摘要。"""
@@ -57,6 +78,7 @@ class CatalogService:
         added_pools = 0
         with self.storage.transaction() as db:
             installed = db.execute("SELECT pack_version FROM catalog_packs WHERE pack_id=?", (_PACK_ID,)).fetchone()
+            inserted_pools: set[str] = set()
             for pool in pools:
                 if pool.get("mode") not in {"wife", "husband"}:
                     raise StorageError(f"无效的内置角色池：{pool.get('id')}")
@@ -65,6 +87,9 @@ class CatalogService:
                     (pool["id"], pool["name"], pool["mode"]),
                 )
                 added_pools += max(result.rowcount, 0)
+                if result.rowcount:
+                    inserted_pools.add(pool["id"])
+                self._insert_baseline(db, "pool", pool, now)
             for character in characters:
                 self._validate_character(character)
                 provenance = {
@@ -82,10 +107,11 @@ class CatalogService:
                     ),
                 )
                 added_characters += max(result.rowcount, 0)
+                self._insert_baseline(db, "character", character, now)
                 for pool_id in character.get("pool_ids", []):
                     existing_pool = db.execute("SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)).fetchone()
-                    expected_mode = "wife" if character["gender"] == "female" else "husband"
-                    if existing_pool and existing_pool["deleted_at"] is None and existing_pool["mode"] == expected_mode:
+                    expected_mode = "wife" if character["gender"] == "female" else "husband" if character["gender"] == "male" else None
+                    if (result.rowcount or pool_id in inserted_pools) and existing_pool and existing_pool["deleted_at"] is None and (expected_mode is None or existing_pool["mode"] == expected_mode):
                         db.execute("INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)", (pool_id, character["id"]))
             version = str(manifest.get("pack_version", "unknown"))
             if installed is None:
@@ -141,8 +167,16 @@ class CatalogService:
 
     def _load_manifest(self) -> dict[str, Any]:
         if self._manifest is None:
-            self._manifest = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+            self._manifest = load_catalog_directory(self.manifest_path)
         return self._manifest
+
+    @staticmethod
+    def _insert_baseline(db: Any, kind: str, item: dict[str, Any], now: int) -> None:
+        source = catalog_source_json(item, kind)
+        db.execute(
+            "INSERT OR IGNORE INTO catalog_sync_baselines(entity_kind,entity_id,source_json,source_sha,commit_sha,updated_at) VALUES(?,?,?,?,?,?)",
+            (kind, item["id"], source, hashlib.sha256(source.encode()).hexdigest(), "bundled", now),
+        )
 
     @staticmethod
     def _validate_character(character: dict[str, Any]) -> None:

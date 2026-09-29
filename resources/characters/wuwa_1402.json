@@ -1,0 +1,31 @@
+{
+  "id": "wuwa:1402",
+  "name": "秧秧",
+  "aliases": [
+    "秧秧·玄翎",
+    "秧秧・玄翎"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1402",
+    "1610"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/87d919a165e38fd43355d8bbec5a3e2e.png",
+      "sha256": "1b2f80a291a1ea0e768e3d15d32979be72375e74a770bcc432c9ee3d25cb86cf",
+      "width": 696,
+      "height": 960,
+      "bytes": 373829,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

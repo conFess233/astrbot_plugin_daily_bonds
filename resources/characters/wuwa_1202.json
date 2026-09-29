@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1202",
+  "name": "炽霞",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1202"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/e05a962eda74b62db0f8ada80845e1c4.png",
+      "sha256": "bea94f15857b552db50fa23cce2c6585715c1ef2affcee14518060142eca44e9",
+      "width": 696,
+      "height": 960,
+      "bytes": 318387,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

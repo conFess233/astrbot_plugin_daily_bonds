@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1601",
+  "name": "桃祈",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1601"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/80e25dc73edb84d45d2ca8a60a01ec6b.png",
+      "sha256": "eff4b965a963ea58ce16755846b7ce23ecba3448479d26640734b84948ce6c1c",
+      "width": 696,
+      "height": 960,
+      "bytes": 329016,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

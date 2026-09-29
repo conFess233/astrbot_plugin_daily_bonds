@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1411",
+  "name": "仇远",
+  "aliases": [],
+  "gender": "male",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1411"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/d5e2a4a3f93538f69107a2ee95222de4.png",
+      "sha256": "701b3a16caa8c7b82bb8f0d10d4e4eb22c40ad686f7e36b7ca17d081843abb43",
+      "width": 696,
+      "height": 960,
+      "bytes": 535108,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "wuwa_husband",
+  "name": "鸣潮·老公",
+  "mode": "husband",
+  "enabled_on_first_install": true,
+  "character_ids": [
+    "wuwa:1104",
+    "wuwa:1204",
+    "wuwa:1206",
+    "wuwa:1212",
+    "wuwa:1301",
+    "wuwa:1303",
+    "wuwa:1305",
+    "wuwa:1403",
+    "wuwa:1404",
+    "wuwa:1411",
+    "wuwa:1510",
+    "wuwa:rover:male"
+  ]
+}

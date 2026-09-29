@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1413",
+  "name": "清宵",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1413"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/ae6148e817054bbde62330258e9b6d86/2403117c01187d1932832b3a7069c255.png",
+      "sha256": "267a34249e1a5496b900dee416bc2a175d6373090abc1ce08d9ba9eda58eecb5",
+      "width": 696,
+      "height": 960,
+      "bytes": 438420,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

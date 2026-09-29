@@ -1,0 +1,25 @@
+{
+  "id": "wuwa:rover:female",
+  "name": "漂泊者（女）",
+  "aliases": [
+    "女漂泊者",
+    "女主"
+  ],
+  "gender": "female",
+  "gender_basis": "官方男女主角分别建档",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1309",
+    "1408",
+    "1502",
+    "1604"
+  ],
+  "enabled": false,
+  "release_status": "released",
+  "material_status": "pending_single_character_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [],
+  "candidate_image_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/ebc1ec3a5f3ce13058390564e0513cd3.png",
+  "pending_reason": "已核验官方指南返回双人合图；禁止裁切，未找到已核实的对应单人原始半身图，不使用合图替代。",
+  "verified_on": "2026-09-28"
+}

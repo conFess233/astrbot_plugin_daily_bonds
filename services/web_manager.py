@@ -23,6 +23,7 @@ from .catalog_admin import CatalogAdminService
 from .admin_queries import AdminQueryService
 from .admin_corrections import AdminCorrectionService
 from .catalog_import import CatalogImportService
+from .catalog_sync import CatalogSyncService
 from .maintenance import MaintenanceService
 from .host_config import HostConfigBridge
 from .storage import SQLiteStorage
@@ -41,6 +42,7 @@ class WebManager:
         self.queries = AdminQueryService(storage)
         self.corrections = AdminCorrectionService(storage)
         self.imports = CatalogImportService(storage, storage.database_path.parent)
+        self.catalog_sync = CatalogSyncService(storage)
         self.maintenance = MaintenanceService(storage, storage.database_path.parent)
         self.runtime_reset = None
         self.host_config = host_config
@@ -75,6 +77,8 @@ class WebManager:
             ("admin/commit", self.admin_commit, ["POST"], "Commit a preflighted administrative correction"),
             ("imports/preview", self.import_preview, ["POST"], "Validate a JSON or ZIP catalog import"),
             ("imports/commit", self.import_commit, ["POST"], "Commit selected valid catalog items"),
+            ("catalog-sync/check", self.catalog_sync_check, ["POST"], "Check official catalog updates"),
+            ("catalog-sync/commit", self.catalog_sync_commit, ["POST"], "Apply selected official catalog updates"),
             ("jobs/<job_id>", self.get_job, ["GET"], "Read an owned maintenance job"),
             ("exports/create", self.create_export, ["POST"], "Create an owned catalog role-pack export"),
             ("backups/create", self.create_backup, ["POST"], "Create a consistent complete backup"),
@@ -431,6 +435,32 @@ class WebManager:
             if any(fragment in message for fragment in ("已变化", "版本", "request_id", "预检")):
                 return self._error("CORRECTION_CONFLICT", message, 409)
             return self._error("INTERNAL_ERROR", "纠错提交失败。", 500)
+
+    async def catalog_sync_check(self):
+        username, denied = self._authorize()
+        if denied:
+            return denied
+        payload = await request.json(default={})
+        if not isinstance(payload, dict):
+            return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
+        try:
+            data = await self.catalog_sync.check(actor=username, force=payload.get("force") is True)
+            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+        except (ValueError, StorageError, OSError, asyncio.TimeoutError) as exc:
+            return self._error("CATALOG_SYNC_CHECK_FAILED", str(exc), 400)
+
+    async def catalog_sync_commit(self):
+        username, denied = self._authorize()
+        if denied:
+            return denied
+        payload = await request.json(default={})
+        if not isinstance(payload, dict):
+            return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
+        try:
+            data = await self.catalog_sync.commit(payload, actor=username)
+            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+        except (ValueError, StorageError, OSError, asyncio.TimeoutError) as exc:
+            return self._error("CATALOG_SYNC_COMMIT_FAILED", str(exc), 400)
 
     async def import_preview(self):
         username, denied = self._authorize()

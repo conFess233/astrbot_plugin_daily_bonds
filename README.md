@@ -3,7 +3,7 @@
 <p align="center">不止要老公/老婆，还要香香软软的群友😋</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.4-blue" alt="版本 0.1.4">
+  <img src="https://img.shields.io/badge/version-0.1.5-blue" alt="版本 0.1.5">
   <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上">
   <img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证">
@@ -11,7 +11,7 @@
 
 <p align="center"><a href="#quick-start">快速开始</a> · <a href="#usage">群内指令</a> · <a href="#configuration">配置</a> · <a href="#webui">管理页</a> · <a href="#limits">使用边界</a> · <a href="./CHANGELOG.md">更新日志</a></p>
 
-整合每日老婆/老公功能，并支持娶群友。内置《鸣潮》角色与角色池，也支持管理员添加角色、图片和角色池。
+整合每日老婆/老公功能，并支持娶群友。内置《鸣潮》角色与角色池，也支持管理员添加角色、图片和角色池。内置角色按 ID 分别保存在 `resources/characters/`，角色池保存在 `resources/pools/`。
 
 <a id="quick-start"></a>
 
@@ -95,6 +95,8 @@ AstrBot 原生插件配置页可编辑全部全局业务配置。顶层 `enabled
 
 列表和排行图片使用随插件附带的 Noto Sans SC 字体渲染；字体许可见 [resources/fonts/OFL.txt](./resources/fonts/OFL.txt)。亲密度与活跃度排行显示 QQ 昵称、QQ 号与头像；头像获取失败时显示 QQ 号末两位占位。带图回复将文字和图片放在同一条消息中。
 
+群友列表的每段关系显示持有者与群友双方的 QQ 头像、昵称及 QQ 号；头像获取失败时使用 QQ 号占位。
+
 <a id="webui"></a>
 
 ## 管理页
@@ -103,6 +105,7 @@ AstrBot 原生插件配置页可编辑全部全局业务配置。顶层 `enabled
 
 - 运行概况、群作用域、逐条消息文案与全局或群级配置的预检和保存。
 - 角色、角色池和图片管理；已保存与刚上传的图片都有缩略图，点击可查看大图。删除角色或池前会显示影响。
+- 打开管理页时检查仓库默认分支的完整角色与角色池目录；发现更新后可在角色目录查看差异并批量选择同步。新增和无本地改动的项目默认勾选，冲突默认跳过但可明确覆盖；仓库移除的内容保留在本地，图片只追加。所选项目在图片校验通过后整批提交，并记录同步基线。
 - 关系、普通与抢夺槽位配额、邀请、亲密度、活跃度及操作记录查询；管理员纠错需先预检再提交。简短成功与错误提示显示在右上角。
 - JSON/ZIP 角色包预检与导入、角色包导出、完整备份及恢复预检。恢复会覆盖当前插件数据，提交前自动建立当前数据备份。
 

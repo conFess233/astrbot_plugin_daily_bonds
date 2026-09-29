@@ -50,6 +50,20 @@
           </div>
           <button id="catalog-refresh" class="button secondary" type="button">刷新目录</button>
         </div>
+        <div class="editor-card catalog-sync-card">
+          <div class="editor-meta"><h3>同步仓库角色配置</h3><button id="catalog-sync-check" class="button secondary" type="button">重新检查仓库</button></div>
+          <p class="hint">从仓库默认分支读取全部角色与角色池配置。预览后选择要同步的项目；本地图片与仓库已移除的内容会保留。</p>
+          <p id="catalog-sync-banner" class="sync-banner" aria-live="polite">正在检查仓库更新…</p>
+          <div id="catalog-sync-controls" class="actions" hidden>
+            <button id="catalog-sync-safe" class="button secondary" type="button">选择安全项</button>
+            <button id="catalog-sync-all" class="button secondary" type="button">全选可同步项</button>
+            <button id="catalog-sync-characters" class="button secondary" type="button">只选角色</button>
+            <button id="catalog-sync-pools" class="button secondary" type="button">只选角色池</button>
+            <button id="catalog-sync-none" class="button secondary" type="button">清空选择</button>
+          </div>
+          <div id="catalog-sync-items" class="sync-items" aria-live="polite"></div>
+          <div class="actions action-end"><button id="catalog-sync-commit" class="button primary" type="button" disabled>同步所选项目</button></div>
+        </div>
         <div class="catalog-layout">
           <section class="card catalog-list-card">
             <label class="field" for="character-search"><span>搜索角色</span><input id="character-search" type="search" /></label>

@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1306",
+  "name": "奥古斯塔",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1306"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/359c1bbf33fa9be011924f70565f913c.png",
+      "sha256": "a9f93ec8bb6f8759411901c42b2dbe3b9ff5119b555a17d6c4bc15f766743e24",
+      "width": 696,
+      "height": 960,
+      "bytes": 216913,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

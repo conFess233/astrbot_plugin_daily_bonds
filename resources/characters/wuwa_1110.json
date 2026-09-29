@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1110",
+  "name": "穗穗",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1110"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/a86ded28e834a8be7a7a8b74c2ce7bfa/6941a971665e80a206db56b0ad3c59b7.png",
+      "sha256": "04076e514a131c332f84c285377574f0f138ec90406898003298205e235ea23b",
+      "width": 696,
+      "height": 960,
+      "bytes": 379119,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

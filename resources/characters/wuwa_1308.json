@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1308",
+  "name": "丽贝卡",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1308"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/55b3b96fcdfc9942bff4bf963ce2bf96/12f4a3c1249a4d44190e7757b314ac53.png",
+      "sha256": "7007815ea66bb59015fa3c0081d5f6bf51f33d4bdb4465ca4a7a61d9b3f13b36",
+      "width": 696,
+      "height": 960,
+      "bytes": 383078,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

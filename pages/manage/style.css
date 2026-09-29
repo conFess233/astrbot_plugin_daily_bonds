@@ -103,6 +103,13 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .notification.error { border-color: color-mix(in srgb, var(--danger), transparent 55%); color: var(--danger); }
 .notification.success { border-color: color-mix(in srgb, var(--success), transparent 55%); color: var(--success); }
 .catalog-layout { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(0, 1.6fr); gap: 16px; align-items: start; }
+.catalog-sync-card { margin-bottom: 16px; }
+.sync-banner { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; background: var(--surface-soft); color: var(--text); }
+.sync-items { display: grid; gap: 9px; max-height: 480px; overflow: auto; margin: 14px 0; }
+.sync-item { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 5px 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.sync-item.conflict { border-color: color-mix(in srgb, var(--danger), transparent 55%); }
+.sync-item strong { overflow-wrap: anywhere; }
+.sync-item pre { grid-column: 2; max-height: 140px; overflow: auto; margin: 0; color: var(--muted); font: 12px/1.5 ui-monospace, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .catalog-list-card, .catalog-editor, .pool-editor { padding: 18px; }
 .catalog-list { display: grid; gap: 7px; margin: 12px 0 24px; max-height: 420px; overflow: auto; }
 .catalog-item { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 10px; text-align: left; color: var(--text); background: var(--surface-soft); cursor: pointer; overflow-wrap: anywhere; transition: border-color .2s ease, background .2s ease, transform .2s ease; }

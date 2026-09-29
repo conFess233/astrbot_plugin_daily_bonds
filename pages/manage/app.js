@@ -42,6 +42,7 @@ const state = {
   periodResetPlan: null,
   importPlan: null,
   restorePlan: null,
+  catalogSyncPlan: null,
 };
 
 function normalizeApiResponse(result) {
@@ -716,6 +717,115 @@ bridge.onContext((context) => {
   document.title = bridge.t("pages.manage.title", "今日姻缘 · 管理");
 });
 await refreshAll();
+checkCatalogSync(false).catch((error) => {
+  $("#catalog-sync-banner").textContent = error.message || "仓库更新检查失败，可稍后手动重查。";
+  showNotice(error.message || "仓库更新检查失败，可稍后手动重查。", "error");
+});
+
+function syncItemLabel(item) {
+  return `${item.kind === "character" ? "角色" : "角色池"} · ${item.name} (${item.id})`;
+}
+
+function syncChangeText(item) {
+  const changes = item.changes;
+  if (item.status === "removed") return changes.note;
+  const fields = Object.entries(changes.fields || {}).map(([key, value]) => `${key}: ${JSON.stringify(value.local)} → ${JSON.stringify(value.remote)}`);
+  if (item.kind === "character") fields.push(`新增图片 ${changes.images_to_add} 张`);
+  else fields.push(`新增成员 ${changes.members_to_add.join("、") || "无"}；移除成员 ${changes.members_to_remove.join("、") || "无"}`);
+  return fields.join("\n");
+}
+
+function renderCatalogSync(plan) {
+  const host = $("#catalog-sync-items");
+  host.replaceChildren();
+  const actionable = plan.items.filter((item) => ["new", "update", "conflict"].includes(item.status));
+  $("#catalog-sync-controls").hidden = !actionable.length;
+  $("#catalog-sync-banner").textContent = plan.unavailable
+    ? "仓库默认分支尚未发布新的角色与角色池目录；本地目录照常使用。"
+    : actionable.length
+      ? `发现 ${actionable.length} 项仓库配置更新 · 提交 ${plan.commit_sha.slice(0, 8)}`
+      : `仓库配置已是最新 · 提交 ${plan.commit_sha.slice(0, 8)}`;
+  for (const item of plan.items) {
+    const label = document.createElement("label");
+    label.className = `sync-item ${item.status}`;
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.kind = item.kind;
+    input.dataset.id = item.id;
+    input.dataset.status = item.status;
+    input.disabled = item.status === "blocked" || item.status === "removed";
+    input.checked = item.status === "new" || item.status === "update";
+    const title = document.createElement("strong");
+    const statuses = { new: "新增", update: "可安全更新", conflict: "本地改动冲突，默认跳过", blocked: "本地已删除，不能同步", removed: "仓库已移除，本地保留" };
+    title.textContent = `${syncItemLabel(item)} · ${statuses[item.status]}`;
+    const detail = document.createElement("pre");
+    detail.textContent = syncChangeText(item);
+    label.append(input, title, detail);
+    host.append(label);
+  }
+  host.querySelectorAll("input").forEach((input) => input.addEventListener("change", updateCatalogSyncSelection));
+  updateCatalogSyncSelection();
+}
+
+function updateCatalogSyncSelection() {
+  const count = $("#catalog-sync-items").querySelectorAll("input:checked").length;
+  $("#catalog-sync-commit").disabled = count === 0;
+  $("#catalog-sync-commit").textContent = count ? `同步所选 ${count} 项` : "同步所选项目";
+}
+
+async function checkCatalogSync(force) {
+  $("#catalog-sync-check").disabled = true;
+  $("#catalog-sync-banner").textContent = "正在检查仓库更新…";
+  try {
+    const result = await apiPost("catalog-sync/check", { force });
+    state.catalogSyncPlan = result.data;
+    renderCatalogSync(result.data);
+    if (result.data.updates) showNotice(`发现 ${result.data.updates} 项仓库角色配置更新。`, "success");
+    else if (force && !result.data.unavailable) showNotice("仓库角色配置已是最新。", "success");
+  } catch (error) {
+    state.catalogSyncPlan = null;
+    $("#catalog-sync-items").replaceChildren();
+    $("#catalog-sync-controls").hidden = true;
+    $("#catalog-sync-commit").disabled = true;
+    $("#catalog-sync-banner").textContent = error.message || "检查失败。";
+    throw error;
+  } finally {
+    $("#catalog-sync-check").disabled = false;
+  }
+}
+
+$("#catalog-sync-check").addEventListener("click", () => checkCatalogSync(true).catch((error) => showNotice(error.message || "检查失败。", "error")));
+for (const [id, predicate] of [
+  ["catalog-sync-safe", (item) => item.status === "new" || item.status === "update"],
+  ["catalog-sync-all", (item) => !["blocked", "removed"].includes(item.status)],
+  ["catalog-sync-characters", (item) => item.kind === "character" && !["blocked", "removed"].includes(item.status)],
+  ["catalog-sync-pools", (item) => item.kind === "pool" && !["blocked", "removed"].includes(item.status)],
+  ["catalog-sync-none", () => false],
+]) {
+  $("#" + id).addEventListener("click", () => {
+    $("#catalog-sync-items").querySelectorAll("input").forEach((input) => {
+      input.checked = !input.disabled && predicate({ kind: input.dataset.kind, status: input.dataset.status });
+    });
+    updateCatalogSyncSelection();
+  });
+}
+$("#catalog-sync-commit").addEventListener("click", async () => {
+  const plan = state.catalogSyncPlan;
+  if (!plan) return;
+  const chosen = [...$("#catalog-sync-items").querySelectorAll("input:checked")];
+  const characters = chosen.filter((input) => input.dataset.kind === "character").map((input) => input.dataset.id);
+  const pools = chosen.filter((input) => input.dataset.kind === "pool").map((input) => input.dataset.id);
+  $("#catalog-sync-commit").disabled = true;
+  try {
+    const result = await apiPost("catalog-sync/commit", { preview_id: plan.preview_id, characters, pools });
+    showNotice(`已同步 ${result.data.characters} 个角色、${result.data.pools} 个角色池及 ${result.data.images_added} 张新图片。`, "success");
+    await loadCatalog();
+    await checkCatalogSync(true);
+  } catch (error) {
+    showNotice(error.message || "同步失败，未写入所选项目。", "error");
+    updateCatalogSyncSelection();
+  }
+});
 
 function renderCatalog() {
   const characters = $("#character-list");

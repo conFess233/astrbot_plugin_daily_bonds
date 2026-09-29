@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1211",
+  "name": "达妮娅",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1211"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/7cd3a060b03a576b87151cadde4434f5.png",
+      "sha256": "4754d817a8b825711bb32b44d589bba8dff4f1e438d6b78b6095c0862d915735",
+      "width": 696,
+      "height": 960,
+      "bytes": 476311,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

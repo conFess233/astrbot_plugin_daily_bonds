@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1109",
+  "name": "洛瑟菈",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1109"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/5b6fdcf9c649468d04fdd5a5ec4d7675/77e6b7f90219f64bba05731581f5090f.png",
+      "sha256": "f3deb57a06aee408743d86c5dfb9ab791cbda2c016f30bcab8bccb9cb100ff55",
+      "width": 696,
+      "height": 960,
+      "bytes": 457174,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

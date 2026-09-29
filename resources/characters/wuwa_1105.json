@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1105",
+  "name": "折枝",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1105"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/c8f2296790674a0b95dd8b328a10f448.png",
+      "sha256": "b5297165ea519c08fc6d54c434d0231c3c1979f2e10f9d29e7cdea2ae2ae2ca3",
+      "width": 696,
+      "height": 960,
+      "bytes": 396332,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1607",
+  "name": "坎特蕾拉",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1607"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/96574f5d80c21f91c18c0450608530eb/c529907cec256dc427728b03f491b179.png",
+      "sha256": "a0e91082a2b3d896c874d08fa01b9f9f855658111aa8cc9817b0d83e9fd06c2b",
+      "width": 696,
+      "height": 960,
+      "bytes": 369187,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

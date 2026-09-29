@@ -193,6 +193,24 @@ class DivorceResetTests(unittest.TestCase):
         self.assertEqual(parse_command([{"type": "text", "data": {"text": "老婆列表"}}], keywords).action, "list_characters")
         self.assertEqual(parse_command([{"type": "text", "data": {"text": "老公列表"}}], keywords).action, "list_husband")
 
+    def test_member_list_card_contains_both_member_avatars_and_names(self) -> None:
+        captured = []
+        def render(_title, rows, **_kwargs):
+            captured.extend(rows)
+            return ()
+        class AvatarCache:
+            async def get_many(self, user_ids, **_kwargs):
+                self.user_ids = set(user_ids)
+                return {identifier: None for identifier in user_ids}
+        with self.storage.transaction() as db:
+            db.execute("INSERT INTO members(scope_id,user_id,nickname,card,is_present,is_known_bot,last_observed_at) VALUES(1,'owner','持有者','',1,0,3)")
+        self.runtime.renderer = SimpleNamespace(has_cjk_font=True, render=render)
+        self.runtime.avatar_cache = AvatarCache()
+        asyncio.run(self.runtime._list_relationships(1, "today", "member", None, 10, True, config=default_config()))
+        self.assertEqual(self.runtime.avatar_cache.user_ids, {"owner", "200"})
+        self.assertEqual(captured[0].pair_names, ("持有者", "新群名"))
+        self.assertEqual((captured[0].avatar_user_id, captured[0].other_avatar_user_id), ("owner", "200"))
+
     def test_upgrade_preserves_old_preflights_and_adds_default_alias(self) -> None:
         old_config = default_config()
         old_config["commands"]["keywords"]["divorce_member"] = ["踹群友"]

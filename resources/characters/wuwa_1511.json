@@ -1,0 +1,27 @@
+{
+  "id": "wuwa:1511",
+  "name": "露西",
+  "aliases": [],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [
+    "1511"
+  ],
+  "enabled": true,
+  "release_status": "released",
+  "material_status": "verified_official_half_body",
+  "source_url": "https://guide-server.aki-game.net/role/avatar/list",
+  "images": [
+    {
+      "source_url": "https://guide-res.aki-game.net/introduction/material/55b3b96fcdfc9942bff4bf963ce2bf96/b7ee163d2126c08e328d59c8f2d84469.png",
+      "sha256": "0ef30d5a311028370f5bbf2465f307f7776c5ff53ab7c86b9e552e438255f82f",
+      "width": 696,
+      "height": 960,
+      "bytes": 321318,
+      "kind": "official_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-09-28"
+}

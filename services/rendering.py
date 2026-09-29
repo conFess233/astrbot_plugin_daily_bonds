@@ -80,7 +80,8 @@ class CardRenderer:
             if index % 2 == 0:
                 draw.rounded_rectangle((32, top, self.WIDTH - 32, top + 62), radius=12, fill=(250, 249, 254))
             if row.pair_names is not None:
-                draw.text((38, top + 18), f"{row.pair_rank}.", font=primary_font, fill=self.INK)
+                if row.pair_rank:
+                    draw.text((38, top + 18), f"{row.pair_rank}.", font=primary_font, fill=self.INK)
                 _draw_avatar(image, row.avatar_path, (83, top + 9, 129, top + 55), row.avatar_user_id, secondary_font)
                 draw.text((140, top + 8), _fit_text(draw, row.pair_names[0], primary_font, 155), font=primary_font, fill=self.INK)
                 draw.text((140, top + 39), row.avatar_user_id, font=secondary_font, fill=self.MUTED)
