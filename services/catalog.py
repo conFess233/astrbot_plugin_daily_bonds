@@ -1,4 +1,4 @@
-"""鸣潮静态种子导入与官方素材校验下载。"""
+"""静态角色目录导入与受信任来源的素材校验下载。"""
 
 from __future__ import annotations
 
@@ -22,8 +22,6 @@ from PIL import Image, UnidentifiedImageError
 from ..models import StorageError
 from .storage import SQLiteStorage
 
-_PACK_ID = "wuwa_builtin"
-_ALLOWED_HOSTS = frozenset({"guide-res.aki-game.net"})
 _IMAGE_FORMATS = {"PNG": ("png", "image/png"), "JPEG": ("jpg", "image/jpeg"), "WEBP": ("webp", "image/webp")}
 
 
@@ -31,6 +29,7 @@ def load_catalog_directory(root: Path) -> dict[str, Any]:
     """Read the packaged one-file-per-entity catalog."""
 
     metadata = json.loads((root / "catalog.json").read_text(encoding="utf-8"))
+    packs = [metadata, *(json.loads(path.read_text(encoding="utf-8")) for path in sorted(root.glob("*-catalog.json")))]
     characters = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((root / "characters").glob("*.json"))]
     pools = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((root / "pools").glob("*.json"))]
     if not characters or not pools or len({item.get("id") for item in characters}) != len(characters) or len({item.get("id") for item in pools}) != len(pools):
@@ -41,7 +40,7 @@ def load_catalog_directory(root: Path) -> dict[str, Any]:
             if character_id not in memberships:
                 raise StorageError(f"角色池引用了不存在的角色：{character_id}")
             memberships[character_id].append(pool["id"])
-    return {**metadata, "characters": [dict(item, pool_ids=memberships[item["id"]]) for item in characters], "pools": pools}
+    return {**metadata, "packs": packs, "characters": [dict(item, pool_ids=memberships[item["id"]]) for item in characters], "pools": pools}
 
 
 def catalog_source_json(item: dict[str, Any], kind: str) -> str:
@@ -72,12 +71,12 @@ class CatalogService:
         manifest = self._load_manifest()
         pools = manifest.get("pools")
         characters = manifest.get("characters")
-        if manifest.get("pack_id") != _PACK_ID or not isinstance(pools, list) or not isinstance(characters, list):
-            raise StorageError("内置鸣潮角色清单格式无效。")
+        packs = manifest.get("packs", [])
+        if not isinstance(pools, list) or not isinstance(characters, list) or not isinstance(packs, list) or not packs or any(not isinstance(pack, dict) or not isinstance(pack.get("pack_id"), str) or not isinstance(pack.get("pack_version"), str) for pack in packs):
+            raise StorageError("内置角色清单格式无效。")
         added_characters = 0
         added_pools = 0
         with self.storage.transaction() as db:
-            installed = db.execute("SELECT pack_version FROM catalog_packs WHERE pack_id=?", (_PACK_ID,)).fetchone()
             inserted_pools: set[str] = set()
             for pool in pools:
                 if pool.get("mode") not in {"wife", "husband"}:
@@ -113,11 +112,11 @@ class CatalogService:
                     expected_mode = "wife" if character["gender"] == "female" else "husband" if character["gender"] == "male" else None
                     if (result.rowcount or pool_id in inserted_pools) and existing_pool and existing_pool["deleted_at"] is None and (expected_mode is None or existing_pool["mode"] == expected_mode):
                         db.execute("INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)", (pool_id, character["id"]))
-            version = str(manifest.get("pack_version", "unknown"))
-            if installed is None:
-                db.execute("INSERT INTO catalog_packs(pack_id,pack_version,installed_at) VALUES(?,?,?)", (_PACK_ID, version, now))
-            elif installed["pack_version"] != version:
-                db.execute("UPDATE catalog_packs SET pack_version=?,installed_at=? WHERE pack_id=?", (version, now, _PACK_ID))
+            for pack in packs:
+                pack_id, version = pack["pack_id"], pack["pack_version"]
+                db.execute("""INSERT INTO catalog_packs(pack_id,pack_version,installed_at) VALUES(?,?,?)
+                              ON CONFLICT(pack_id) DO UPDATE SET pack_version=excluded.pack_version,installed_at=excluded.installed_at
+                              WHERE catalog_packs.pack_version<>excluded.pack_version""", (pack_id, version, now))
         return added_characters, added_pools
 
     async def download_builtin_images(
@@ -142,11 +141,13 @@ class CatalogService:
             return DownloadReport(0, 0, ())
         semaphore = asyncio.Semaphore(max(1, concurrency))
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
-        connector = aiohttp.TCPConnector(limit=max(1, concurrency), ttl_dns_cache=60)
+        from .catalog_import import _PublicResolver
+
+        connector = aiohttp.TCPConnector(resolver=_PublicResolver(), use_dns_cache=False, limit=max(1, concurrency))
         downloaded = 0
         already_present = 0
         failures: list[str] = []
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector, raise_for_status=False) as session:
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector, raise_for_status=False, trust_env=False) as session:
             async def run_one(character_id: str, spec: dict[str, Any]) -> tuple[str, str | None]:
                 async with semaphore:
                     try:
@@ -238,9 +239,10 @@ class CatalogService:
 async def _fetch_limited(session: aiohttp.ClientSession, initial_url: str, max_bytes: int) -> tuple[bytes, str]:
     current = initial_url
     for _ in range(5):
-        parsed = urlparse(current)
-        if parsed.scheme != "https" or parsed.hostname not in _ALLOWED_HOSTS or parsed.username or parsed.password:
-            raise StorageError("内置图片 URL 必须指向受信任的 HTTPS 官方资源域名。")
+        try:
+            _validate_image_url(current)
+        except ValueError as exc:
+            raise StorageError(str(exc)) from exc
         async with session.get(current, allow_redirects=False) as response:
             if response.status in {301, 302, 303, 307, 308}:
                 location = response.headers.get("Location")
@@ -262,6 +264,15 @@ async def _fetch_limited(session: aiohttp.ClientSession, initial_url: str, max_b
                 chunks.append(chunk)
             return b"".join(chunks), current
     raise StorageError("图片重定向次数超过上限。")
+
+
+def _validate_image_url(url: str) -> str:
+    from .catalog_import import _validate_public_url
+
+    _validate_public_url(url)
+    if urlparse(url).scheme != "https":
+        raise ValueError("图片 URL 必须使用 HTTPS。")
+    return url
 
 
 def _inspect_image(payload: bytes, max_pixels: int) -> tuple[int, int, str, str]:

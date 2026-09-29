@@ -3,7 +3,7 @@
 <p align="center">不止要老公/老婆，还要香香软软的群友😋</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.5-blue" alt="版本 0.1.5">
+  <img src="https://img.shields.io/badge/version-0.1.6-blue" alt="版本 0.1.6">
   <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上">
   <img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证">
@@ -11,7 +11,7 @@
 
 <p align="center"><a href="#quick-start">快速开始</a> · <a href="#usage">群内指令</a> · <a href="#configuration">配置</a> · <a href="#webui">管理页</a> · <a href="#limits">使用边界</a> · <a href="./CHANGELOG.md">更新日志</a></p>
 
-整合每日老婆/老公功能，并支持娶群友。内置《鸣潮》角色与角色池，也支持管理员添加角色、图片和角色池。内置角色按 ID 分别保存在 `resources/characters/`，角色池保存在 `resources/pools/`。
+整合每日老婆/老公功能，并支持娶群友。内置《鸣潮》和《战双帕弥什》角色与角色池，也支持管理员添加角色、图片和角色池。内置角色按 ID 分别保存在 `resources/characters/`，角色池保存在 `resources/pools/`；战双角色池默认不加入抽取配置，可在管理页启用。
 
 <a id="quick-start"></a>
 

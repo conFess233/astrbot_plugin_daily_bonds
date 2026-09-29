@@ -10,7 +10,6 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 try:
     import aiohttp
@@ -18,7 +17,8 @@ except ModuleNotFoundError:
     aiohttp = None  # type: ignore[assignment]
 
 from ..models import StorageError
-from .catalog import _atomic_content_write, _fetch_limited, _inspect_image, catalog_source_json
+from .catalog import _atomic_content_write, _fetch_limited, _inspect_image, _validate_image_url, catalog_source_json
+from .catalog_import import _PublicResolver
 from .storage import SQLiteStorage
 
 
@@ -174,9 +174,11 @@ class CatalogSyncService:
                 raise ValueError(f"读取仓库失败（HTTP {response.status}）。")
             if response.content_length and response.content_length > limit:
                 raise ValueError("仓库配置文件超出大小限制。")
-            data = await response.content.read(limit + 1)
-            if len(data) > limit:
-                raise ValueError("仓库配置文件超出大小限制。")
+            data = bytearray()
+            async for chunk in response.content.iter_chunked(64 * 1024):
+                data.extend(chunk)
+                if len(data) > limit:
+                    raise ValueError("仓库配置文件超出大小限制。")
         parsed = json.loads(data)
         if not isinstance(parsed, dict):
             raise ValueError("仓库配置文件不是 JSON 对象。")
@@ -202,9 +204,10 @@ class CatalogSyncService:
             for image in images:
                 if not isinstance(image, dict) or not isinstance(image.get("sha256"), str) or not _DIGEST.fullmatch(image["sha256"]) or not isinstance(image.get("source_url"), str) or any(isinstance(image.get(key), bool) or not isinstance(image.get(key), int) or image[key] < 1 for key in ("width", "height", "bytes")):
                     raise ValueError(f"仓库角色图片配置无效：{identifier}")
-                parsed = urlparse(image["source_url"])
-                if parsed.scheme != "https" or parsed.hostname != "guide-res.aki-game.net" or parsed.username or parsed.password:
-                    raise ValueError(f"仓库角色图片来源不是受信任的官方域名：{identifier}")
+                try:
+                    _validate_image_url(image["source_url"])
+                except ValueError as exc:
+                    raise ValueError(f"仓库角色图片 URL 无效：{identifier}：{exc}") from exc
 
     def _compare(self, remote: dict[str, Any]) -> list[dict[str, Any]]:
         result = []
@@ -317,7 +320,8 @@ class CatalogSyncService:
             raise StorageError("同步图片需要安装 requirements.txt 中的 aiohttp。")
         timeout = aiohttp.ClientTimeout(total=30)
         results: dict[str, tuple[dict[str, Any], bytes, str, str]] = {}
-        async with aiohttp.ClientSession(timeout=timeout, raise_for_status=False) as session:
+        connector = aiohttp.TCPConnector(resolver=_PublicResolver(), use_dns_cache=False, limit=4)
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector, raise_for_status=False, trust_env=False) as session:
             semaphore = asyncio.Semaphore(4)
             async def one(digest: str, spec: dict[str, Any]) -> None:
                 async with semaphore:
