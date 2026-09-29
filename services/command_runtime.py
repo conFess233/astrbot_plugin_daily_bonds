@@ -193,7 +193,7 @@ class CommandRuntime:
         if mode is None:
             return None
         mode_config = config["modes"][mode]
-        lifecycle_actions = {"divorce_character", "gift_accept", "gift_reject", "gift_cancel"}
+        lifecycle_actions = {"divorce_character", "divorce_wife", "divorce_husband", "divorce_member", "gift_accept", "gift_reject", "gift_cancel"}
         if not mode_config["enabled"] and command.action not in {"list_characters", "list_members", "rank_intimacy", "rank_activity", *lifecycle_actions}:
             return render_message(config, "errors", "mode_closed")
 
@@ -365,31 +365,25 @@ class CommandRuntime:
             accept_keyword = values["config"]["commands"]["keywords"]["gift_accept"][0]
             return await self._result_reply(result.code, result.data, mode, values["config"], accept_keyword=accept_keyword)
         if command.action in {"divorce_character", "divorce_wife", "divorce_husband", "divorce_member"}:
-            if command.action == "divorce_character":
-                matches = []
-                for candidate_mode in ("wife", "husband"):
-                    relation_id = await self._resolve_relation(
-                        values["scope_id"], values["period_id"], candidate_mode, actor_id, command.argument
-                    )
-                    if relation_id:
-                        matches.append((candidate_mode, relation_id))
-                if len(matches) != 1:
-                    return render_message(config, "errors", "divorce_ambiguous")
-                mode, relation_id = matches[0]
-                mode_config = values["config"]["modes"][mode]
-            elif mode == "member" and target_id:
-                subject_id = target_id
-                relation_id = await self._resolve_relation(
-                    values["scope_id"], values["period_id"], mode, actor_id, subject_id
+            allowed_modes = ("wife", "husband", "member") if command.action == "divorce_character" else (mode,)
+            matches = await self._divorce_matches(
+                values["scope_id"], values["period_id"], actor_id, allowed_modes,
+                command.argument, target_id,
+            )
+            if not matches:
+                return render_message(config, "errors", "divorce_relation_missing")
+            if len(matches) > 1:
+                labels = {"wife": "老婆", "husband": "老公", "member": "群友"}
+                candidates = "\n".join(
+                    f"- {labels[item['mode']]}：{item['name']}（{item['subject_id']}）"
+                    for item in matches
                 )
-            else:
-                relation_id = await self._resolve_relation(
-                    values["scope_id"], values["period_id"], mode, actor_id, command.argument
-                )
+                return f"{render_message(config, 'errors', 'divorce_ambiguous')}\n{candidates}"
+            mode = str(matches[0]["mode"])
+            relation_id = str(matches[0]["id"])
+            mode_config = config["modes"][mode]
             if not mode_config["divorce_enabled"]:
                 return render_message(config, "errors", "divorce_disabled")
-            if relation_id is None:
-                return render_message(config, "errors", "divorce_relation_missing")
             result = await _thread_call(
                 self.gameplay.divorce,
                 scope_id=values["scope_id"], period_id=values["period_id"], mode=mode,
@@ -425,6 +419,40 @@ class CommandRuntime:
             )
             return await self._result_reply(result.code, result.data, mode, values["config"])
         return None
+
+    async def _divorce_matches(
+        self, scope_id: int, period_id: str, owner_id: str, modes: tuple[str, ...],
+        query: str | None, target_user_id: str | None,
+    ) -> list[dict[str, str]]:
+        marks = ",".join("?" for _ in modes)
+        with self.storage._lock:
+            rows = self.storage._connection().execute(
+                f"""SELECT r.id,r.mode,r.subject_id,s.name,s.aliases_json,
+                           m.nickname,m.card
+                    FROM relationships r
+                    JOIN subject_snapshots s ON s.id=r.snapshot_id
+                    LEFT JOIN members m ON m.scope_id=r.scope_id AND m.user_id=r.subject_id
+                       AND m.is_present=1 AND r.mode='member'
+                    WHERE r.scope_id=? AND r.period_id=? AND r.owner_id=? AND r.state='active'
+                      AND r.mode IN ({marks})
+                    ORDER BY r.acquired_at,r.id""",
+                (scope_id, period_id, owner_id, *modes),
+            ).fetchall()
+        matches: list[dict[str, str]] = []
+        normalized = query.removeprefix("#") if query else None
+        for row in rows:
+            if target_user_id is not None:
+                selected = row["mode"] == "member" and str(row["subject_id"]) == target_user_id
+            elif query is None:
+                selected = True
+            else:
+                names = {str(row["name"]), *json.loads(row["aliases_json"])}
+                if row["mode"] == "member":
+                    names.update(str(row[key]) for key in ("nickname", "card") if row[key])
+                selected = str(row["subject_id"]) == normalized or query in names
+            if selected:
+                matches.append({key: str(row[key]) for key in ("id", "mode", "subject_id", "name")})
+        return matches
 
     async def _resolve_relation(
         self, scope_id: int, period_id: str, mode: str, owner_id: str, query: str | None

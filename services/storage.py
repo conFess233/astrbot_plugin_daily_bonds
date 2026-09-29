@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from ..models import Scope, StorageError
 from .settings import default_config, effective_config, merge_sparse, validate_config
 
-_SCHEMA_VERSION = 5
+_SCHEMA_VERSION = 6
 _NAMESPACE = uuid.UUID("1dc04dd2-af4f-4585-b350-0aa574597b9f")
 
 
@@ -328,6 +328,7 @@ class SQLiteStorage:
             migration_dir / "003_web_request_dedup.sql",
             migration_dir / "004_catalog_admin.sql",
             migration_dir / "005_admin_correction_preflights.sql",
+            migration_dir / "006_period_resets.sql",
         ]
         checksums = [hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files]
         try:

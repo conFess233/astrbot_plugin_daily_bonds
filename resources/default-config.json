@@ -60,7 +60,8 @@
         "离婚老公"
       ],
       "divorce_member": [
-        "踹群友"
+        "踹群友",
+        "离婚群友"
       ],
       "list_characters": [
         "老婆列表"
@@ -206,9 +207,9 @@
       "gift_disabled": "这个玩法当前不允许赠送。",
       "gift_target_required": "请 @ 一位当前群内且允许参与的接收者。",
       "gift_relation_ambiguous": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
-      "divorce_ambiguous": "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。",
+      "divorce_ambiguous": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID：",
       "divorce_disabled": "这个玩法当前不允许解除关系。",
-      "divorce_relation_missing": "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。",
+      "divorce_relation_missing": "没有找到匹配的当前关系。",
       "invite_multiple": "你有多条待处理赠送，请在命令后填写邀请编号。",
       "invite_none": "没有可处理的待赠送邀请。",
       "invite_invalid_id": "邀请编号无效或不属于当前群。",

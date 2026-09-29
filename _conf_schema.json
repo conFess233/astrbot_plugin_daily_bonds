@@ -226,9 +226,10 @@
               },
               "divorce_member": {
                 "type": "list",
-                "description": "踹群友关键词",
+                "description": "群友离婚关键词",
                 "default": [
-                  "踹群友"
+                  "踹群友",
+                  "离婚群友"
                 ],
                 "hint": "触发词列表，每项为一条关键词。"
               },
@@ -876,7 +877,7 @@
               "divorce_ambiguous": {
                 "type": "text",
                 "description": "离婚关系不明确",
-                "default": "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。"
+                "default": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID："
               },
               "divorce_disabled": {
                 "type": "text",
@@ -886,7 +887,7 @@
               "divorce_relation_missing": {
                 "type": "text",
                 "description": "解除关系未找到",
-                "default": "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。"
+                "default": "没有找到匹配的当前关系。"
               },
               "invite_multiple": {
                 "type": "text",

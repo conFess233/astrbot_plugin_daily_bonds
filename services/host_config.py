@@ -31,7 +31,7 @@ class HostConfigBridge:
         elif marker == 0:
             # On upgrade, AstrBot adds schema defaults before the plugin starts.
             # Preserve existing Web UI edits unless the native page was edited.
-            if native == default_config():
+            if native == default_config() or _matches_migrated_defaults(native, stored):
                 native = stored
             elif native != stored:
                 revision = self._save_runtime(native, revision)
@@ -76,3 +76,17 @@ class HostConfigBridge:
             now=int(time.time()),
             updated_by="system:astrbot-config",
         )
+
+
+def _matches_migrated_defaults(native: dict[str, Any], stored: dict[str, Any]) -> bool:
+    """Recognize the one-time default updates in migration 006 before host reconciliation."""
+
+    candidate = deepcopy(native)
+    if candidate["commands"]["keywords"]["divorce_member"] == ["踹群友"]:
+        candidate["commands"]["keywords"]["divorce_member"] = ["踹群友", "离婚群友"]
+    errors = candidate["messages"]["errors"]
+    if errors["divorce_ambiguous"] == "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。":
+        errors["divorce_ambiguous"] = "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID："
+    if errors["divorce_relation_missing"] == "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。":
+        errors["divorce_relation_missing"] = "没有找到匹配的当前关系。"
+    return candidate == stored

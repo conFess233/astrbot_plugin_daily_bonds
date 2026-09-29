@@ -157,6 +157,20 @@
           </div>
           <pre id="correction-result" class="query-result" aria-live="polite">修改前会检查目标、理由及配置版本。</pre>
         </div>
+        <div class="editor-card correction-card">
+          <h3>重置当前周期数据</h3>
+          <p class="hint">作用于上方选定的群。两个操作互不附带对方的修改；历史、统计、补抽资格和待处理赠送均保留。关系结束后，绑定它的赠送若被接受才会提示失效。</p>
+          <div class="form-grid">
+            <label class="field"><span>玩法</span><select id="period-reset-mode"><option value="wife">老婆</option><option value="husband">老公</option><option value="member">娶群友</option><option value="all">全部玩法</option></select></label>
+            <label class="field"><span>操作理由</span><input id="period-reset-reason" maxlength="500" /></label>
+          </div>
+          <div class="actions correction-actions">
+            <button id="period-reset-relations-preview" class="button secondary" type="button">预览重置关系</button>
+            <button id="period-reset-counters-preview" class="button secondary" type="button">预览重置每日数据</button>
+            <button id="period-reset-commit" class="button danger" type="button" disabled>确认执行</button>
+          </div>
+          <pre id="period-reset-result" class="query-result" aria-live="polite">选择群与玩法，填写理由后预览影响。</pre>
+        </div>
       </section>
 
       <section id="settings-panel" class="panel" hidden>

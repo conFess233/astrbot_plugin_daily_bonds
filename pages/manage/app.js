@@ -39,6 +39,7 @@ const state = {
   poolRevision: 0,
   dataScopeId: "",
   correctionPlan: null,
+  periodResetPlan: null,
   importPlan: null,
   restorePlan: null,
 };
@@ -125,6 +126,8 @@ function renderScopes() {
   const dataScope = $("#data-scope");
   const previousDataScope = state.dataScopeId;
   dataScope.replaceChildren();
+  state.periodResetPlan = null;
+  $("#period-reset-commit").disabled = true;
   if (!state.scopes.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
@@ -984,6 +987,8 @@ $("#data-scope").addEventListener("change", () => {
   state.dataScopeId = $("#data-scope").value;
   state.correctionPlan = null;
   $("#correction-commit").disabled = true;
+  state.periodResetPlan = null;
+  $("#period-reset-commit").disabled = true;
   loadOverview().catch((error) => showNotice(error.message, "error"));
 });
 
@@ -1031,6 +1036,56 @@ $("#correction-commit").addEventListener("click", async () => {
   } catch (error) {
     $("#correction-result").textContent = error.message || "纠错提交失败，请重新预检。";
     state.correctionPlan = null;
+  }
+});
+
+function clearPeriodResetPlan() {
+  state.periodResetPlan = null;
+  $("#period-reset-commit").disabled = true;
+}
+
+for (const selector of ["#period-reset-mode", "#period-reset-reason"]) {
+  $(selector).addEventListener("input", clearPeriodResetPlan);
+}
+
+async function previewPeriodReset(action) {
+  clearPeriodResetPlan();
+  try {
+    if (!$("#data-scope").value) throw new Error("请先选择群作用域。");
+    const result = await apiPost("admin/preview", {
+      action,
+      scope_id: $("#data-scope").value,
+      mode: $("#period-reset-mode").value,
+      reason: $("#period-reset-reason").value.trim(),
+    });
+    state.periodResetPlan = result.data;
+    $("#period-reset-result").textContent = JSON.stringify(result.data, null, 2);
+    $("#period-reset-commit").disabled = false;
+  } catch (error) {
+    $("#period-reset-result").textContent = error.message || "重置预检失败。";
+  }
+}
+
+$("#period-reset-relations-preview").addEventListener("click", () => previewPeriodReset("period_reset_relations"));
+$("#period-reset-counters-preview").addEventListener("click", () => previewPeriodReset("period_reset_counters"));
+$("#period-reset-commit").addEventListener("click", async () => {
+  const plan = state.periodResetPlan;
+  if (!plan) return;
+  const operation = plan.action === "period_reset_relations" ? "重置关系" : "重置每日数据";
+  if (!window.confirm(`将对群作用域 ${plan.scope_id} 执行${operation}（${plan.target}）。\n预览：${JSON.stringify(plan.before)}\n继续吗？`)) return;
+  $("#period-reset-commit").disabled = true;
+  try {
+    const result = await apiPost("admin/commit", {
+      preflight_id: plan.preflight_id,
+      expected_revision: plan.config_revision,
+      request_id: crypto.randomUUID(),
+    });
+    $("#period-reset-result").textContent = JSON.stringify(result.data || result, null, 2);
+    showNotice(`${operation}已完成。`);
+    clearPeriodResetPlan();
+  } catch (error) {
+    $("#period-reset-result").textContent = error.message || "重置失败，请重新预检。";
+    clearPeriodResetPlan();
   }
 });
 

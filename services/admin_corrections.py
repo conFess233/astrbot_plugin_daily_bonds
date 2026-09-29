@@ -22,7 +22,7 @@ class AdminCorrectionService:
 
     def preview(self, payload: Mapping[str, Any], *, actor: str, now: int) -> dict[str, Any]:
         action = payload.get("action")
-        if action not in {"relationship_end", "credit_grant", "intimacy_set", "activity_set", "counter_reset"}:
+        if action not in {"relationship_end", "credit_grant", "intimacy_set", "activity_set", "counter_reset", "period_reset_relations", "period_reset_counters"}:
             raise ValueError("纠错操作类型无效。")
         scope_id = payload.get("scope_id")
         if isinstance(scope_id, bool) or not isinstance(scope_id, int) or scope_id < 1:
@@ -76,12 +76,17 @@ class AdminCorrectionService:
                        (str(uuid.uuid4()), actor, row["action"], "correction", target, request_id, row["reason"], details, now))
             period = db.execute("SELECT id FROM periods WHERE scope_id=? AND state='current'", (row["scope_id"],)).fetchone()
             db.execute("INSERT INTO operation_log(id,scope_id,period_id,mode,kind,actor_id,actor_type,result_code,config_revision,data_json,reason,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                       (str(uuid.uuid4()), row["scope_id"], period["id"] if period else None, spec.get("mode"), row["action"], actor, "dashboard", "ADMIN_APPLIED", config_revision, details, row["reason"], now))
+                       (str(uuid.uuid4()), row["scope_id"], period["id"] if period else None, None if spec.get("mode") == "all" else spec.get("mode"), row["action"], actor, "dashboard", "ADMIN_APPLIED", config_revision, details, row["reason"], now))
             db.execute("INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
                        (actor, "admin/commit", request_id, request_hash, json.dumps(response, ensure_ascii=False), now))
             return response
 
     def _normalize_spec(self, action: str, payload: Mapping[str, Any]) -> dict[str, Any]:
+        if action in {"period_reset_relations", "period_reset_counters"}:
+            mode = payload.get("mode")
+            if mode not in {*_MODES, "all"}:
+                raise ValueError("mode 必须为 wife、husband、member 或 all。")
+            return {"mode": mode}
         if action == "relationship_end":
             relationship_id = self._text(payload.get("relationship_id"), "relationship_id", 128)
             compensation = payload.get("compensation", 0)
@@ -109,6 +114,35 @@ class AdminCorrectionService:
         return {"mode": mode, "user_id": user_id, "fields": sorted(fields)}
 
     def _capture(self, db: sqlite3.Connection, scope_id: int, action: str, spec: dict[str, Any], reason: str, now: int) -> tuple[str, dict[str, Any], dict[str, Any]]:
+        if action in {"period_reset_relations", "period_reset_counters"}:
+            period = self._current_period(db, scope_id)
+            mode = spec["mode"]
+            mode_sql = "" if mode == "all" else " AND mode=?"
+            params = (scope_id, period) if mode == "all" else (scope_id, period, mode)
+            if action == "period_reset_relations":
+                rows = db.execute(
+                    f"SELECT id,mode,owner_id,subject_id,version FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql} ORDER BY id",
+                    params,
+                ).fetchall()
+                invite_count = int(db.execute(
+                    f"""SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND state='pending'
+                         AND relationship_id IN (SELECT id FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql})""",
+                    (*params[:2], *params),
+                ).fetchone()[0])
+                before = {"period_id": period, "active_relationships": len(rows), "pending_invites_retained": invite_count,
+                          "fingerprint": self._rows_hash(rows)}
+                after = {"period_id": period, "active_relationships": 0, "pending_invites_retained": invite_count,
+                         "normal_draws_unchanged": True, "redraw_credits_unchanged": True}
+            else:
+                rows = db.execute(
+                    f"""SELECT mode,user_id,normal_draws,steal_attempts,stolen_successes,divorces,last_steal_at
+                         FROM daily_counters WHERE scope_id=? AND period_id=?{mode_sql} ORDER BY mode,user_id""",
+                    params,
+                ).fetchall()
+                before = {"period_id": period, "counter_rows": len(rows), "fingerprint": self._rows_hash(rows)}
+                after = {"period_id": period, "counter_rows_reset": len(rows), "relationships_unchanged": True,
+                         "redraw_credits_unchanged": True}
+            return f"{period}:{mode}", before, after
         if action == "relationship_end":
             row = db.execute("SELECT id,period_id,mode,owner_id,state,version,ended_at,end_reason FROM relationships WHERE id=? AND scope_id=?", (spec["relationship_id"], scope_id)).fetchone()
             if row is None or row["state"] != "active":
@@ -140,7 +174,23 @@ class AdminCorrectionService:
 
     def _apply(self, db: sqlite3.Connection, action: str, scope_id: int, spec: dict[str, Any], after: dict[str, Any], actor: str, request_id: str, revision: str, now: int) -> None:
         operation_id = str(uuid.uuid4())
-        if action == "relationship_end":
+        if action == "period_reset_relations":
+            mode_sql = "" if spec["mode"] == "all" else " AND mode=?"
+            params = (scope_id, after["period_id"]) if spec["mode"] == "all" else (scope_id, after["period_id"], spec["mode"])
+            db.execute(
+                f"""UPDATE relationships SET state='ended',ended_at=?,end_reason='admin:period_reset',version=version+1
+                    WHERE scope_id=? AND period_id=? AND state='active'{mode_sql}""",
+                (now, *params),
+            )
+        elif action == "period_reset_counters":
+            mode_sql = "" if spec["mode"] == "all" else " AND mode=?"
+            params = (scope_id, after["period_id"]) if spec["mode"] == "all" else (scope_id, after["period_id"], spec["mode"])
+            db.execute(
+                f"""UPDATE daily_counters SET normal_draws=0,steal_attempts=0,stolen_successes=0,divorces=0,last_steal_at=NULL
+                    WHERE scope_id=? AND period_id=?{mode_sql}""",
+                params,
+            )
+        elif action == "relationship_end":
             db.execute("UPDATE relationships SET state='ended',ended_at=?,end_reason=?,version=version+1 WHERE id=? AND scope_id=? AND state='active'", (now, "admin:" + str(after["end_reason"]), spec["relationship_id"], scope_id))
             db.execute("UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='relationship-ended' WHERE relationship_id=? AND state='pending'", (now, spec["relationship_id"]))
             if spec["compensation"]:
@@ -183,6 +233,11 @@ class AdminCorrectionService:
     @staticmethod
     def _credit_count(db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, user_id: str) -> int:
         return int(db.execute("SELECT COUNT(*) FROM redraw_credits WHERE scope_id=? AND period_id=? AND mode=? AND user_id=? AND state='available'", (scope_id, period_id, mode, user_id)).fetchone()[0])
+
+    @staticmethod
+    def _rows_hash(rows: list[sqlite3.Row]) -> str:
+        encoded = json.dumps([dict(row) for row in rows], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _mode(value: Any) -> str:

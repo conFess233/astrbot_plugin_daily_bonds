@@ -147,7 +147,7 @@ def _render(part: _Part) -> str:
 
 
 def _parse_action(action: str, suffix: str) -> ParsedCommand:
-    if action not in {"steal_wife", "steal_husband", "steal_member", "gift_wife", "gift_husband", "gift_member", "divorce_member"} and ("<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix):
+    if action not in {"steal_wife", "steal_husband", "steal_member", "gift_wife", "gift_husband", "gift_member", "divorce_character", "divorce_wife", "divorce_husband", "divorce_member"} and ("<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix):
         raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
     if action in {"draw_wife", "draw_husband", "draw_member"}:
         _no_suffix(action, suffix)
@@ -170,14 +170,16 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
     if action in {"gift_wife", "gift_husband", "gift_member"}:
         target, argument = _target_and_argument(suffix, optional_argument=True)
         return ParsedCommand(action, argument=argument, target_user_id=target)
-    if action == "divorce_member":
-        target, rest = _leading_at(suffix)
-        if target is None or rest:
-            raise CommandSyntaxError("用法：踹群友 @配偶成员")
-        return ParsedCommand(action, target_user_id=target)
-    if action in {"divorce_character", "divorce_wife", "divorce_husband"}:
+    if action in {"divorce_character", "divorce_wife", "divorce_husband", "divorce_member"}:
         if not suffix:
-            raise CommandSyntaxError("请填写角色名称或 #角色ID。")
+            return ParsedCommand(action)
+        target, rest = _leading_at(suffix)
+        if target is not None:
+            if rest:
+                raise CommandSyntaxError("@目标后不能再填写名称或 ID。")
+            return ParsedCommand(action, target_user_id=target)
+        if "<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix:
+            raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
         return ParsedCommand(action, argument=suffix)
     raise CommandSyntaxError("该命令尚未配置语法。")
 
