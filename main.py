@@ -6,6 +6,8 @@ import asyncio
 import time
 from pathlib import Path
 
+from PIL import Image as PILImage
+
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.event import AstrMessageEvent, filter
@@ -20,6 +22,7 @@ from .services.gameplay import GameplayService
 from .services.statistics import StatisticsService
 from .adapters.onebot import OneBotAdapter
 from .services.command_runtime import CommandRuntime, RuntimeReply
+from .services.outgoing_images import prepare_outgoing_image
 from .services.notifications import NotificationService
 from .services.web_manager import WebManager
 from .services.retention import RetentionService
@@ -106,12 +109,25 @@ class DailyBondsPlugin(Star):
             if not response.image_paths:
                 yield event.plain_result(response.text)
                 return
+            temporary_paths = []
             try:
+                send_paths = []
+                for image_path in response.image_paths:
+                    try:
+                        send_path, temporary = await asyncio.to_thread(prepare_outgoing_image, image_path)
+                    except (OSError, ValueError, PILImage.DecompressionBombError):
+                        logger.exception("今日姻缘：缩放发送图片失败，使用原图。")
+                        send_path, temporary = image_path, False
+                    send_paths.append(send_path)
+                    if temporary:
+                        temporary_paths.append(send_path)
                 chain = ([Plain(response.text)] if response.text else []) + [
-                    Image.fromFileSystem(str(image_path)) for image_path in response.image_paths
+                    Image.fromFileSystem(str(image_path)) for image_path in send_paths
                 ]
                 yield event.chain_result(chain)
             finally:
+                for image_path in temporary_paths:
+                    image_path.unlink(missing_ok=True)
                 for image_path in response.cleanup_paths:
                     image_path.unlink(missing_ok=True)
         elif response:

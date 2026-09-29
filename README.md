@@ -3,7 +3,7 @@
 <p align="center">不止要老公/老婆，还要香香软软的群友😋</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.8-blue" alt="版本 0.1.8">
+  <img src="https://img.shields.io/badge/version-0.1.9-blue" alt="版本 0.1.9">
   <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上">
   <img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证">
@@ -93,7 +93,7 @@ AstrBot 原生插件配置页可编辑全部全局业务配置。顶层 `enabled
 
 `<mode>` 分别是 `wife`、`husband`、`member`。每种玩法还可独立设置启用状态、抢夺与赠送开关、抢夺冷却、赠送邀请超时和解除关系次数。“老婆列表”和“老公列表”有独立关键词，原有自定义的“老婆列表”关键词继续只对应老婆。权重、统计分值、消息触发方式、名单、图片与导入限制也都在对应主题分区中。
 
-列表和排行图片使用随插件附带的 Noto Sans SC 字体渲染；字体许可见 [resources/fonts/OFL.txt](./resources/fonts/OFL.txt)。亲密度与活跃度排行显示 QQ 昵称、QQ 号与头像；头像获取失败时显示 QQ 号末两位占位。带图回复将文字和图片放在同一条消息中。
+列表和排行图片使用随插件附带的 Noto Sans SC 字体渲染；字体许可见 [resources/fonts/OFL.txt](./resources/fonts/OFL.txt)。亲密度与活跃度排行显示 QQ 昵称、QQ 号与头像；头像获取失败时显示 QQ 号末两位占位。带图回复将文字和图片放在同一条消息中。发送横图或竖图时保留完整画面和原始比例；宽或高超过 1600 像素时，只缩小发送用的临时副本，图库原图不变。
 
 群友列表的每段关系显示持有者与群友双方的 QQ 头像、昵称及 QQ 号；头像获取失败时使用 QQ 号占位。
 
