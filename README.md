@@ -3,7 +3,7 @@
 <p align="center">不止要老公/老婆，还要香香软软的群友😋</p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.1.6-blue" alt="版本 0.1.6">
+  <img src="https://img.shields.io/badge/version-0.1.6-blue" alt="版本 0.1.7">
   <img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上">
   <img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器">
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证">
@@ -44,10 +44,10 @@
 | `抢群友 @持有者 [QQ号]`                                               | 抢该持有者的群友关系；可省略配偶 QQ 号。                              |
 | `送老婆 @接收者 [名称或#ID]` / `送老公 @接收者 [名称或#ID]`           | 将自己持有的关系赠送给群成员。                                        |
 | `送群友 @接收者 [QQ号]`                                               | 赠送自己的群友关系。                                                  |
-| `离婚 [名称、#ID、QQ号或@成员]`                                          | 解除自己的老婆、老公或群友关系；只有一段关系时可省略目标。              |
-| `离婚老婆 [名称或#ID]` / `离婚老公 [名称或#ID]`                        | 只查对应玩法；多段关系时需指定目标。                                  |
+| `离婚 [名称、#ID、QQ号或@成员]`                                       | 解除自己的老婆、老公或群友关系；只有一段关系时可省略目标。            |
+| `离婚老婆 [名称或#ID]` / `离婚老公 [名称或#ID]`                       | 只查对应玩法；多段关系时需指定目标。                                  |
 | `离婚群友 [@成员、QQ号或完整名称]` / `踹群友 [@成员、QQ号或完整名称]` | 解除自己的群友关系，不会将对方踢出群；支持结婚时及当前成员名称。      |
-| `老婆列表 [页码]` / `老公列表 [页码]` / `群友列表 [页码]`            | 分别查看本群各玩法当前关系，抢夺槽位关系会标记“抢夺”。                |
+| `老婆列表 [页码]` / `老公列表 [页码]` / `群友列表 [页码]`             | 分别查看本群各玩法当前关系，抢夺槽位关系会标记“抢夺”。                |
 | `亲密度排行 [页码]` / `活跃度排行 [页码]`                             | 查看本群排行；排行方式和统计窗口由配置决定。                          |
 | `接受赠送 [邀请编号]` / `拒绝赠送 [邀请编号]` / `取消赠送 [邀请编号]` | 处理需确认的赠送；同时有多条待处理邀请时必须填写编号。                |
 
@@ -81,7 +81,7 @@ AstrBot 原生插件配置页可编辑全部全局业务配置。顶层 `enabled
 | `reset.timezone` / `reset.time`                                         | `Asia/Shanghai` / `00:00`    | 每日周期所用 IANA 时区和 `HH:mm` 时间。                      |
 | `commands.cooldown_seconds`                                             | `3`                          | 通用指令冷却，`0` 关闭，最大 `86400` 秒。                    |
 | `modes.<mode>.capacity`                                                 | `1`                          | 各玩法持有容量，`1～100`；普通每日总额度与之相同。           |
-| `modes.<mode>.steal_slot_capacity`                                      | `1`                          | 独立抢夺槽位数，`0～100`；`0` 时沿用普通容量规则。             |
+| `modes.<mode>.steal_slot_capacity`                                      | `1`                          | 独立抢夺槽位数，`0～100`；`0` 时沿用普通容量规则。           |
 | `modes.<mode>.steal_probability`                                        | `0.3`                        | 抢夺成功概率；范围 `0～1`，页面按百分比展示。                |
 | `modes.<mode>.steal_attempt_limit` / `stolen_limit`                     | `3` / `1`                    | 每周期尝试次数和目标被成功抢走次数；`0` 表示不限。           |
 | `modes.<mode>.gift_mode`                                                | `direct`                     | `direct` 直接赠送，`confirm` 创建待确认邀请。                |
