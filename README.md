@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证">
 </p>
 
-<p align="center"><a href="#quick-start">快速开始</a> · <a href="#usage">群内指令</a> · <a href="#configuration">配置</a> · <a href="#webui">管理页</a> · <a href="#limits">使用边界</a></p>
+<p align="center"><a href="#quick-start">快速开始</a> · <a href="#usage">群内指令</a> · <a href="#configuration">配置</a> · <a href="#webui">管理页</a> · <a href="#limits">使用边界</a> · <a href="./CHANGELOG.md">更新日志</a></p>
 
 整合每日老婆/老公功能，并支持娶群友。内置《鸣潮》角色与角色池，也支持管理员添加角色、图片和角色池。
 
@@ -105,6 +105,10 @@ AstrBot 原生插件配置页可编辑全部全局业务配置。顶层 `enabled
 玩法配置、关系、群成员缓存、QQ 号、消息计数、亲密度、邀请和操作记录保存在 AstrBot 的 `data/plugin_data/astrbot_plugin_daily_bonds/`。主要文件是 `state.sqlite3`；`media/` 保存角色素材，`avatars/` 保存 QQ 头像缓存，`backups/` 保存管理员生成的完整备份。源码目录不保存运行数据库。全局历史保留和头像缓存期限可配置。
 
 内置角色图片在后台从清单中的外部地址下载并验证；群友头像会向 QQ 头像服务请求。网络或图片解码失败时，相关输出可退回文字。导入远程图片和 ZIP 包受来源、大小、条目、路径、解码与摘要检查。角色包导出只包含目录与素材；完整备份包含数据库及插件素材，请按包含群和用户数据的文件妥善保管。恢复前可预检作用域映射；重启或恢复后，未完成的确认赠送会被标为失效或结果未知。
+
+## 更新日志
+
+[更新日志](./CHANGELOG.md)
 
 ## License
 
