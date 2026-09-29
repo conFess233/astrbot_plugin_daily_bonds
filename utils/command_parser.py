@@ -37,6 +37,14 @@ def parse_command(
         parts.pop(0)
     if not parts:
         return None
+    if all(part.kind == "text" for part in parts):
+        raw_text = "".join(part.value for part in parts).strip()
+        admin_match = re.fullmatch(r"/设置老婆(?:\s+(.*))?", raw_text)
+        if admin_match:
+            name = (admin_match.group(1) or "").strip()
+            if not name or len(name) > 80:
+                raise CommandSyntaxError("请填写 1～80 字符的角色名或别名。")
+            return ParsedCommand("set_wife", argument=name)
 
     if parts[0].kind == "at" and parts[0].value in bot_ids and allow_leading_bot_mention:
         parts.pop(0)

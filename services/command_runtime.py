@@ -19,6 +19,7 @@ from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
 from ..models import CommandSyntaxError, ParsedCommand, Scope, StorageError
 from ..utils.command_parser import parse_command
 from .access import AccessService
+from .admin_permissions import may_set_wife
 from .avatar_cache import AvatarCache
 from .gameplay import Candidate, GameplayService
 from .member_lifecycle import reconcile_member_eligibility
@@ -187,6 +188,8 @@ class CommandRuntime:
             return render_message(config, "errors", "syntax_error", detail=str(exc))
         if command is None:
             return None
+        if command.action == "set_wife" and not may_set_wife(event, raw_event.sender_id, config):
+            return "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。"
 
         revision = f"{global_revision}:{local_revision}"
         event_key, payload_hash = _event_key(raw_event.raw)
@@ -199,7 +202,7 @@ class CommandRuntime:
             return render_message(config, "errors", "mode_closed")
 
         cooldown_seconds = config["commands"]["cooldown_seconds"]
-        cooldown_claimed = bool(cooldown_seconds and command.action not in {"gift_accept", "gift_reject", "gift_cancel"})
+        cooldown_claimed = bool(cooldown_seconds and command.action not in {"gift_accept", "gift_reject", "gift_cancel", "set_wife"})
         if cooldown_claimed:
             allowed, remaining, replay = await _thread_call(
                 self._claim_command_cooldown,
@@ -219,7 +222,31 @@ class CommandRuntime:
 
         reply: str | RuntimeReply | None = None
         try:
-            if command.action.startswith("draw_"):
+            if command.action == "set_wife":
+                candidates = await _thread_call(self._candidates, scope_id, "wife", mode_config, eligible)
+                matches = [candidate for candidate in candidates if command.argument == candidate.name]
+                if not matches:
+                    matches = [candidate for candidate in candidates if command.argument in candidate.aliases]
+                if not matches:
+                    reply = f"未找到可用的今日老婆角色：{command.argument}"
+                elif len(matches) > 1:
+                    reply = f"角色名或别名不唯一：{command.argument}；请使用完整角色名。"
+                else:
+                    result = await _thread_call(
+                        self.gameplay.set_wife,
+                        scope_id=scope_id, period_id=str(period["id"]),
+                        owner_id=raw_event.sender_id, character_id=matches[0].subject_id,
+                        pool_ids=mode_config["pool_ids"], event_key=event_key,
+                        payload_hash=payload_hash, config_revision=revision,
+                        now=raw_event.observed_at,
+                    )
+                    if result.code == "ALREADY_HELD":
+                        reply = f"你今天已持有 {matches[0].name}。"
+                    elif result.code == "NO_CANDIDATE":
+                        reply = f"角色当前不可用：{matches[0].name}"
+                    else:
+                        reply = await self._result_reply(result.code, result.data, "wife", config)
+            elif command.action.startswith("draw_"):
                 candidates = await _thread_call(self._candidates, scope_id, mode, mode_config, eligible)
                 result = await _thread_call(
                     self.gameplay.draw,
@@ -839,6 +866,8 @@ async def _thread_call(function: Any, *args: Any, **kwargs: Any) -> Any:
 
 
 def _action_mode(action: str) -> str | None:
+    if action == "set_wife":
+        return "wife"
     if action.endswith("wife") or action == "list_characters":
         return "wife"
     if action.endswith("husband"):

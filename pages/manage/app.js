@@ -212,7 +212,7 @@ const MESSAGE_REQUIRED = new Set([
 ]);
 const CONFIG_LABELS = {
   schema_version: "配置格式版本", enabled: "启用", mode: "名单模式", ids: "名单 ID",
-  extra_bot_ids: "补充机器人 QQ 号", timezone: "时区", time: "重置时间",
+  extra_bot_ids: "补充机器人 QQ 号", extra_admin_ids: "额外命令管理员 QQ 号", timezone: "时区", time: "重置时间",
   allow_bare: "允许裸关键词", allow_leading_bot_mention: "允许开头 @机器人",
   allow_host_prefix: "允许宿主命令前缀", extra_prefixes: "额外命令前缀",
   cooldown_seconds: "通用冷却（秒）", capacity: "每日容量", steal_enabled: "允许抢夺",
@@ -260,6 +260,7 @@ const CONFIG_HINTS = {
   "access.groups.ids": "每行一个群身份 ID。",
   "access.users.ids": "每行一个 QQ 数字 ID；空白名单会拒绝全部用户。",
   "access.extra_bot_ids": "每行一个机器人 QQ 数字 ID。",
+  "access.extra_admin_ids": "每行一个 QQ 数字 ID；可使用 /设置老婆 命令。",
   "commands.extra_prefixes": "每行一个字面前缀。",
   "modes.wife.pool_ids": "每个角色池独立开关；全部关闭时没有可抽取角色。群级覆盖关闭时继承全局开关。",
   "modes.husband.pool_ids": "每个角色池独立开关；全部关闭时没有可抽取角色。群级覆盖关闭时继承全局开关。",
@@ -311,7 +312,7 @@ function configGroup(path) {
 }
 
 function configIsGlobalOnly(path) {
-  return path === "schema_version" || path.startsWith("access.groups.") ||
+  return path === "schema_version" || path.startsWith("access.groups.") || path === "access.extra_admin_ids" ||
     path.startsWith("resources.") || path.startsWith("history.");
 }
 
@@ -1056,16 +1057,27 @@ $("#image-preview").addEventListener("close", () => {
 });
 
 $("#character-image").addEventListener("change", async (event) => {
-  const file = event.target.files?.[0];
-  if (!file) return;
+  const files = [...(event.target.files || [])];
+  if (!files.length) return;
+  const uploaded = [];
+  const failed = [];
   try {
-    const result = await apiUpload("media/upload", file);
-    const item = result.data || result;
-    if (!state.characterImages.includes(item.hash)) state.characterImages.push(item.hash);
+    for (const file of files) {
+      if (state.characterImages.length >= 20) {
+        failed.push(`${file.name}：角色最多关联 20 张图片`);
+        continue;
+      }
+      try {
+        const result = await apiUpload("media/upload", file);
+        const item = result.data || result;
+        if (!state.characterImages.includes(item.hash)) state.characterImages.push(item.hash);
+        uploaded.push(file.name);
+      } catch (error) {
+        failed.push(`${file.name}：${error.message || "上传失败"}`);
+      }
+    }
     renderCharacterImages();
-    showNotice(`图片已验证并上传：${item.width} × ${item.height}`, "success");
-  } catch (error) {
-    showNotice(error.message || "图片上传失败。", "error");
+    showNotice(`成功上传 ${uploaded.length} 张${failed.length ? `；失败 ${failed.length} 张：${failed.join("；")}` : ""}`, failed.length ? "error" : "success");
   } finally {
     event.target.value = "";
   }

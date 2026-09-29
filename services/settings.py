@@ -71,13 +71,13 @@ def validate_config(config: Mapping[str, Any]) -> None:
                  "display.intimacy_rank_enabled", "display.activity_rank_enabled"):
         _boolean(config, path)
 
-    for path in ("access.groups.ids", "access.users.ids", "access.extra_bot_ids", "commands.extra_prefixes"):
+    for path in ("access.groups.ids", "access.users.ids", "access.extra_bot_ids", "access.extra_admin_ids", "commands.extra_prefixes"):
         values = _value(config, path)
         if not isinstance(values, list) or any(not isinstance(item, str) or not item.strip() for item in values):
             raise ConfigurationError(f"{path} 必须是非空字符串组成的数组")
         if len(values) != len(set(values)):
             raise ConfigurationError(f"{path} 不可包含重复项")
-    for user_id in config["access"]["users"]["ids"] + config["access"]["extra_bot_ids"]:
+    for user_id in config["access"]["users"]["ids"] + config["access"]["extra_bot_ids"] + config["access"]["extra_admin_ids"]:
         if not user_id.isdecimal():
             raise ConfigurationError("用户和机器人名单必须使用 QQ 数字字符串")
 

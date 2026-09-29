@@ -74,6 +74,12 @@
             "description": "补充机器人 QQ 号",
             "default": [],
             "hint": "每行一个机器人 QQ 数字 ID。"
+          },
+          "extra_admin_ids": {
+            "type": "list",
+            "description": "额外命令管理员 QQ 号",
+            "default": [],
+            "hint": "每行一个 QQ 数字 ID；可使用 /设置老婆 命令。"
           }
         }
       },

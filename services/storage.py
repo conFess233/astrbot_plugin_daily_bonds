@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from ..models import Scope, StorageError
 from .settings import default_config, effective_config, merge_sparse, validate_config
 
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 9
 _NAMESPACE = uuid.UUID("1dc04dd2-af4f-4585-b350-0aa574597b9f")
 
 
@@ -279,11 +279,14 @@ class SQLiteStorage:
         capacity: int,
         now: int,
         slot_kind: str = "normal",
+        ignore_capacity: bool = False,
     ) -> str:
-        """在当前事务中统一检查容量、自配偶和 subject 唯一归属。"""
+        """在当前事务中校验关系；管理员指定老婆可绕过普通容量。"""
 
         if mode not in {"wife", "husband", "member"} or capacity < 1 or slot_kind not in {"normal", "steal"}:
             raise StorageError("玩法或持有容量无效。")
+        if ignore_capacity and (mode != "wife" or slot_kind != "normal"):
+            raise StorageError("只有管理员指定的普通老婆关系可绕过持有容量。")
         if mode == "member":
             if subject_kind != "member" or owner_id == subject_id:
                 raise StorageError("群友关系类型无效，禁止娶自己。")
@@ -308,7 +311,7 @@ class SQLiteStorage:
             "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind=? AND state='active'",
             (scope_id, period_id, mode, owner_id, slot_kind),
         ).fetchone()["amount"]
-        if int(count) >= capacity:
+        if int(count) >= capacity and not ignore_capacity:
             raise StorageError("持有名额已满。")
         relation_id = str(uuid.uuid4())
         connection.execute(
@@ -330,6 +333,7 @@ class SQLiteStorage:
             migration_dir / "006_period_resets.sql",
             migration_dir / "007_steal_slots.sql",
             migration_dir / "008_catalog_sync.sql",
+            migration_dir / "009_admin_set_wife.sql",
         ]
         checksums = [hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files]
         try:

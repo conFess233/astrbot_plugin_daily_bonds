@@ -140,6 +140,70 @@ class GameplayService:
             self._record(db, operation_id, scope_id, period_id, mode, owner_id, "draw", result, config_revision, now, event_key, payload_hash)
             return result
 
+    def set_wife(
+        self, *, scope_id: int, period_id: str, owner_id: str, character_id: str,
+        pool_ids: Sequence[str], event_key: str, payload_hash: str,
+        config_revision: str, now: int,
+    ) -> BusinessResult:
+        """Create an administrator-selected wife without consuming draw quota."""
+
+        operation_id = str(uuid.uuid4())
+        with self.storage.transaction() as db:
+            replay = self._replay(db, scope_id, event_key, payload_hash)
+            if replay:
+                return replay
+            self._current_period(db, scope_id, period_id)
+            if not pool_ids:
+                result = BusinessResult("NO_CANDIDATE", {})
+            else:
+                marks = ",".join("?" for _ in pool_ids)
+                row = db.execute(
+                    f"""SELECT c.id,c.name,c.aliases_json,c.gender,c.revision
+                        FROM characters c JOIN pool_members pm ON pm.character_id=c.id
+                        JOIN pools p ON p.id=pm.pool_id
+                        WHERE c.id=? AND c.enabled=1 AND c.deleted_at IS NULL
+                          AND p.mode='wife' AND p.deleted_at IS NULL AND p.id IN ({marks})
+                        LIMIT 1""",
+                    (character_id, *pool_ids),
+                ).fetchone()
+                if row is None:
+                    result = BusinessResult("NO_CANDIDATE", {})
+                else:
+                    images = tuple(value[0] for value in db.execute(
+                        """SELECT ci.media_hash FROM character_images ci
+                           JOIN media_blobs mb ON mb.hash=ci.media_hash
+                           WHERE ci.character_id=? ORDER BY ci.ordinal,ci.media_hash""",
+                        (character_id,),
+                    ).fetchall())
+                    existing = db.execute(
+                        """SELECT id FROM relationships WHERE scope_id=? AND period_id=?
+                           AND mode='wife' AND owner_id=? AND subject_id=? AND state='active'""",
+                        (scope_id, period_id, owner_id, character_id),
+                    ).fetchone()
+                    if existing is not None:
+                        result = BusinessResult("ALREADY_HELD", {"relationship_id": existing["id"]})
+                    elif not images:
+                        result = BusinessResult("NO_CANDIDATE", {})
+                    else:
+                        candidate = Candidate(
+                            str(row["id"]), "character", str(row["name"]),
+                            tuple(json.loads(row["aliases_json"])), str(row["gender"]),
+                            int(row["revision"]), images,
+                        )
+                        snapshot_id = self._snapshot(db, candidate, now)
+                        relationship_id = self.storage.create_relationship(
+                            scope_id=scope_id, period_id=period_id, mode="wife", owner_id=owner_id,
+                            subject_kind="character", subject_id=character_id,
+                            snapshot_id=snapshot_id, capacity=1, now=now, ignore_capacity=True,
+                        )
+                        result = BusinessResult("DRAWN", {
+                            "relationship_id": relationship_id,
+                            "candidate": _candidate_dict(candidate), "credit_id": None,
+                        })
+            self._record(db, operation_id, scope_id, period_id, "wife", owner_id,
+                         "set_wife", result, config_revision, now, event_key, payload_hash)
+            return result
+
     def steal(
         self,
         *,
