@@ -118,10 +118,8 @@ class SQLiteStorage:
                 (f"scope:{scope_id}" if scope_id is not None else "global",),
             ).fetchall()
         global_row = next((row for row in rows if row["scope_key"] == "global"), None)
-        global_value = json.loads(global_row["value_json"]) if global_row else default_config()
-        # 旧版全局配置没有消息模板；读时补入默认值，首次保存再持久化。
-        if "messages" not in global_value:
-            global_value["messages"] = default_config()["messages"]
+        defaults = default_config()
+        global_value = merge_sparse(defaults, json.loads(global_row["value_json"])) if global_row else defaults
         if scope_id is None:
             validate_config(global_value)
             return global_value, int(global_row["revision"]) if global_row else 0

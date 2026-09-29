@@ -7,7 +7,7 @@ from collections.abc import MutableMapping
 from typing import Any
 import time
 
-from .settings import default_config, validate_config
+from .settings import default_config, merge_sparse, validate_config
 from .storage import SQLiteStorage
 
 
@@ -20,7 +20,7 @@ class HostConfigBridge:
         """Apply a native edit, or import an existing Web UI configuration."""
 
         stored, revision = self.storage.get_settings()
-        native = deepcopy(self.config.get("settings", default_config()))
+        native = merge_sparse(default_config(), deepcopy(self.config.get("settings", default_config())))
         validate_config(native)
         marker = self.config.get("_settings_revision", 0)
         if isinstance(marker, bool) or not isinstance(marker, int) or marker < 0:

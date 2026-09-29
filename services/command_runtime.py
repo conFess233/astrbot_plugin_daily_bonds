@@ -725,6 +725,10 @@ class CommandRuntime:
         *, accept_keyword: str = "接受赠送",
     ) -> str | RuntimeReply:
         text = self._format_result(code, data, mode, config, accept_keyword=accept_keyword)
+        if code == "CAPACITY_FULL" and mode in {"wife", "husband"}:
+            if config["modes"][mode]["capacity"] == 1:
+                text = render_message(config, "results", f"capacity_full_single_{mode}")
+            return RuntimeReply(text, starts_cooldown=False)
         if code == "CAPACITY_FULL" and data.get("relationships"):
             relationships = data["relationships"]
             names = [str(item["name"]) for item in relationships]

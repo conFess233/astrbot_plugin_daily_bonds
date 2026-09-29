@@ -683,6 +683,16 @@
                 "description": "持有名额已满",
                 "default": "持有名额已满：{names}"
               },
+              "capacity_full_single_wife": {
+                "type": "text",
+                "description": "已有一个老婆时再次抽取",
+                "default": "你今日已有老婆啦，请明日再来。"
+              },
+              "capacity_full_single_husband": {
+                "type": "text",
+                "description": "已有一个老公时再次抽取",
+                "default": "你今日已有老公啦，请明日再来。"
+              },
               "no_draw_quota": {
                 "type": "text",
                 "description": "普通抽取额度用完",

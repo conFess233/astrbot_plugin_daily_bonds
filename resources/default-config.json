@@ -168,6 +168,8 @@
       "draw_husband": "娶到老公：{name}",
       "draw_member": "娶到群友：{name}",
       "capacity_full": "持有名额已满：{names}",
+      "capacity_full_single_wife": "你今日已有老婆啦，请明日再来。",
+      "capacity_full_single_husband": "你今日已有老公啦，请明日再来。",
       "no_draw_quota": "今天的普通抽取额度已用完",
       "no_candidate": "当前没有可抽取对象",
       "steal_failed": "抢夺失败；配偶保留原关系",
