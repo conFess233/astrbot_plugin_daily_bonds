@@ -32,6 +32,7 @@ _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 _SHA = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _DIRECTORIES = ("resources/characters/", "resources/pools/")
+_MAX_JSON_BYTES = 50 * 1024 * 1024
 
 
 class CatalogSyncService:
@@ -221,35 +222,89 @@ class CatalogSyncService:
         if aiohttp is None:
             raise StorageError("检查仓库更新需要安装 requirements.txt 中的 aiohttp。")
         timeout = aiohttp.ClientTimeout(total=25)
-        headers = {"Accept": "application/vnd.github+json", "User-Agent": "astrbot-plugin-daily-bonds"}
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "astrbot-plugin-daily-bonds",
+        }
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
-            repository = await self._json(session, f"https://api.github.com/repos/{_REPOSITORY}", 100_000)
+            repository = await self._json(
+                session, f"https://api.github.com/repos/{_REPOSITORY}", _MAX_JSON_BYTES
+            )
             branch = repository.get("default_branch")
-            if not isinstance(branch, str) or not re.fullmatch(r"[A-Za-z0-9._/-]{1,100}", branch):
+            if not isinstance(branch, str) or not re.fullmatch(
+                r"[A-Za-z0-9._/-]{1,100}", branch
+            ):
                 raise ValueError("仓库默认分支信息无效。")
-            commit = await self._json(session, f"https://api.github.com/repos/{_REPOSITORY}/commits/{branch}", 100_000)
+            commit = await self._json(
+                session,
+                f"https://api.github.com/repos/{_REPOSITORY}/commits/{branch}",
+                _MAX_JSON_BYTES,
+            )
             sha = commit.get("sha")
             tree_sha = commit.get("commit", {}).get("tree", {}).get("sha")
-            if not isinstance(sha, str) or not _SHA.fullmatch(sha) or not isinstance(tree_sha, str) or not _SHA.fullmatch(tree_sha):
+            if (
+                not isinstance(sha, str)
+                or not _SHA.fullmatch(sha)
+                or not isinstance(tree_sha, str)
+                or not _SHA.fullmatch(tree_sha)
+            ):
                 raise ValueError("仓库提交信息无效。")
-            tree = await self._json(session, f"https://api.github.com/repos/{_REPOSITORY}/git/trees/{tree_sha}?recursive=1", 2_000_000)
+            tree = await self._json(
+                session,
+                f"https://api.github.com/repos/{_REPOSITORY}/git/trees/{tree_sha}?recursive=1",
+                _MAX_JSON_BYTES,
+            )
             if tree.get("truncated") or not isinstance(tree.get("tree"), list):
                 raise ValueError("仓库目录列表不完整。")
-            entries = [item for item in tree["tree"] if item.get("type") == "blob" and
-                       isinstance(item.get("path"), str) and item["path"].endswith(".json") and
-                       any(item["path"].startswith(directory) and "/" not in item["path"][len(directory):] for directory in _DIRECTORIES)]
-            if len(entries) > 1000 or any(not isinstance(item.get("size"), int) or item["size"] > 256_000 for item in entries) or sum(item["size"] for item in entries) > 8_000_000:
+            entries = [
+                item
+                for item in tree["tree"]
+                if item.get("type") == "blob"
+                and isinstance(item.get("path"), str)
+                and item["path"].endswith(".json")
+                and any(
+                    item["path"].startswith(directory)
+                    and "/" not in item["path"][len(directory) :]
+                    for directory in _DIRECTORIES
+                )
+            ]
+            if (
+                len(entries) > 1000
+                or any(
+                    not isinstance(item.get("size"), int) or item["size"] > _MAX_JSON_BYTES
+                    for item in entries
+                )
+                or sum(item["size"] for item in entries) > _MAX_JSON_BYTES
+            ):
                 raise ValueError("仓库角色配置文件数量或体积超出限制。")
             paths = sorted(item["path"] for item in entries)
-            if any(not re.fullmatch(r"resources/(?:characters|pools)/[A-Za-z0-9_.-]+\.json", path) for path in paths):
+            if any(
+                not re.fullmatch(
+                    r"resources/(?:characters|pools)/[A-Za-z0-9_.-]+\.json", path
+                )
+                for path in paths
+            ):
                 raise ValueError("仓库角色配置文件名无效。")
-            if not any(path.startswith(_DIRECTORIES[0]) for path in paths) or not any(path.startswith(_DIRECTORIES[1]) for path in paths):
-                return {"commit_sha": sha, "characters": {}, "pools": {}, "unavailable": True}
+            if not any(path.startswith(_DIRECTORIES[0]) for path in paths) or not any(
+                path.startswith(_DIRECTORIES[1]) for path in paths
+            ):
+                return {
+                    "commit_sha": sha,
+                    "characters": {},
+                    "pools": {},
+                    "unavailable": True,
+                }
             semaphore = asyncio.Semaphore(8)
+
             async def one(path: str) -> tuple[str, dict[str, Any]]:
                 async with semaphore:
-                    source = await self._json(session, f"https://raw.githubusercontent.com/{_REPOSITORY}/{sha}/{path}", 256_000)
+                    source = await self._json(
+                        session,
+                        f"https://raw.githubusercontent.com/{_REPOSITORY}/{sha}/{path}",
+                        _MAX_JSON_BYTES,
+                    )
                     return path, source
+
             pairs = await asyncio.gather(*(one(path) for path in paths))
         characters: dict[str, dict[str, Any]] = {}
         pools: dict[str, dict[str, Any]] = {}
@@ -265,7 +320,11 @@ class CatalogSyncService:
                 if identifier not in characters:
                     raise ValueError(f"仓库角色池引用了缺失角色：{identifier}")
                 gender = characters[identifier]["gender"]
-                if gender not in ({"female", "unspecified"} if pool["mode"] == "wife" else {"male", "unspecified"}):
+                if gender not in (
+                    {"female", "unspecified"}
+                    if pool["mode"] == "wife"
+                    else {"male", "unspecified"}
+                ):
                     raise ValueError(f"仓库角色池与角色性别不匹配：{identifier}")
         return {"commit_sha": sha, "characters": characters, "pools": pools}
 

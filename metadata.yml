@@ -1,7 +1,7 @@
 name: astrbot_plugin_daily_bonds
 display_name: 今日姻缘
 desc: QQ 群内的每日姻缘与群友关系玩法
-version: 0.1.9
+version: 0.1.10
 author: confess233
 repo: https://github.com/conFess233/astrbot_plugin_daily_bonds
 support_platforms:
