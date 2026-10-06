@@ -25,12 +25,16 @@ class RetentionService:
             dedupe_days = int(global_config["resources"]["dedupe_retention_days"])
             scope_ids = [
                 int(row["id"])
-                for row in self.storage._connection().execute("SELECT id FROM scopes").fetchall()
+                for row in self.storage._connection()
+                .execute("SELECT id FROM scopes")
+                .fetchall()
             ]
             activity_days = int(global_config["statistics"]["activity_window_days"])
             for scope_id in scope_ids:
                 config, _ = self.storage.get_settings(scope_id)
-                activity_days = max(activity_days, int(config["statistics"]["activity_window_days"]))
+                activity_days = max(
+                    activity_days, int(config["statistics"]["activity_window_days"])
+                )
 
             history_cutoff = now - history_days * 86400
             dedupe_cutoff = now - dedupe_days * 86400
@@ -41,13 +45,46 @@ class RetentionService:
             expired_jobs: list[tuple[str, str]] = []
             tracked_job_ids: set[str] = set()
             with self.storage.transaction() as db:
-                deleted["activity_seconds"] = self._delete(db, "DELETE FROM activity_seconds WHERE observed_second<=?", (activity_cutoff,))
-                deleted["processed_events"] = self._delete(db, "DELETE FROM processed_events WHERE observed_at<=?", (dedupe_cutoff,))
-                deleted["cooldowns"] = self._delete(db, "DELETE FROM cooldowns WHERE last_command_at<=?", (cooldown_cutoff,))
-                deleted["web_request_dedup"] = self._delete(db, "DELETE FROM web_request_dedup WHERE created_at<=?", (dedupe_cutoff,))
-                deleted["web_admin_dedup"] = self._delete(db, "DELETE FROM web_admin_dedup WHERE created_at<=?", (dedupe_cutoff,))
-                deleted["web_admin_preflights"] = self._delete(db, "DELETE FROM web_admin_preflights WHERE expires_at<=? OR consumed_at IS NOT NULL", (now,))
-                deleted["web_admin_action_preflights"] = self._delete(db, "DELETE FROM web_admin_action_preflights WHERE expires_at<=? OR consumed_at IS NOT NULL", (now,))
+                deleted["activity_seconds"] = self._delete(
+                    db,
+                    "DELETE FROM activity_seconds WHERE observed_second<=?",
+                    (activity_cutoff,),
+                )
+                deleted["activity_pokes"] = self._delete(
+                    db,
+                    "DELETE FROM activity_pokes WHERE observed_second<=?",
+                    (activity_cutoff,),
+                )
+                deleted["processed_events"] = self._delete(
+                    db,
+                    "DELETE FROM processed_events WHERE observed_at<=?",
+                    (dedupe_cutoff,),
+                )
+                deleted["cooldowns"] = self._delete(
+                    db,
+                    "DELETE FROM cooldowns WHERE last_command_at<=?",
+                    (cooldown_cutoff,),
+                )
+                deleted["web_request_dedup"] = self._delete(
+                    db,
+                    "DELETE FROM web_request_dedup WHERE created_at<=?",
+                    (dedupe_cutoff,),
+                )
+                deleted["web_admin_dedup"] = self._delete(
+                    db,
+                    "DELETE FROM web_admin_dedup WHERE created_at<=?",
+                    (dedupe_cutoff,),
+                )
+                deleted["web_admin_preflights"] = self._delete(
+                    db,
+                    "DELETE FROM web_admin_preflights WHERE expires_at<=? OR consumed_at IS NOT NULL",
+                    (now,),
+                )
+                deleted["web_admin_action_preflights"] = self._delete(
+                    db,
+                    "DELETE FROM web_admin_action_preflights WHERE expires_at<=? OR consumed_at IS NOT NULL",
+                    (now,),
+                )
                 expired_jobs = [
                     (str(row["id"]), str(row["kind"]))
                     for row in db.execute(
@@ -56,7 +93,8 @@ class RetentionService:
                     ).fetchall()
                 ]
                 tracked_job_ids = {
-                    str(row[0]) for row in db.execute("SELECT id FROM maintenance_jobs").fetchall()
+                    str(row[0])
+                    for row in db.execute("SELECT id FROM maintenance_jobs").fetchall()
                 }
                 deleted["maintenance_jobs"] = self._delete(
                     db,
@@ -135,7 +173,8 @@ class RetentionService:
             )
             self._remove_media_files(media_paths)
             deleted["avatar_cache"] = _prune_files(
-                self.data_root / "avatars", int(global_config["resources"]["avatar_cache_max_entries"])
+                self.data_root / "avatars",
+                int(global_config["resources"]["avatar_cache_max_entries"]),
             )
             return deleted
 

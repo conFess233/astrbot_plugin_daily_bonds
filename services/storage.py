@@ -7,17 +7,17 @@ import json
 import sqlite3
 import threading
 import uuid
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from collections.abc import Iterator, Mapping
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..models import Scope, StorageError
 from .settings import default_config, effective_config, merge_sparse, validate_config
 
-_SCHEMA_VERSION = 8
+_SCHEMA_VERSION = 11
 _NAMESPACE = uuid.UUID("1dc04dd2-af4f-4585-b350-0aa574597b9f")
 
 
@@ -67,8 +67,8 @@ class SQLiteStorage:
     def transaction(self, *, immediate: bool = True) -> Iterator[sqlite3.Connection]:
         """串行化单进程写事务，避免协程交错使用同一连接。"""
 
-        connection = self._connection()
         with self._lock:
+            connection = self._connection()
             connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
             try:
                 yield connection
@@ -282,8 +282,14 @@ class SQLiteStorage:
     ) -> str:
         """在当前事务中统一检查容量、自配偶和 subject 唯一归属。"""
 
-        if mode not in {"wife", "husband", "member"} or capacity < 1 or slot_kind not in {"normal", "steal"}:
+        if (
+            mode not in {"wife", "husband", "member"}
+            or capacity < 1
+            or slot_kind not in {"normal", "steal", "designated"}
+        ):
             raise StorageError("玩法或持有容量无效。")
+        if slot_kind == "designated" and mode == "member":
+            raise StorageError("群友玩法不支持指定槽位。")
         if mode == "member":
             if subject_kind != "member" or owner_id == subject_id:
                 raise StorageError("群友关系类型无效，禁止娶自己。")
@@ -302,7 +308,11 @@ class SQLiteStorage:
             "SELECT subject_kind,subject_id FROM subject_snapshots WHERE id=?",
             (snapshot_id,),
         ).fetchone()
-        if snapshot is None or snapshot["subject_kind"] != subject_kind or snapshot["subject_id"] != subject_id:
+        if (
+            snapshot is None
+            or snapshot["subject_kind"] != subject_kind
+            or snapshot["subject_id"] != subject_id
+        ):
             raise StorageError("关系对象与不可变快照不匹配。")
         count = connection.execute(
             "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind=? AND state='active'",
@@ -314,7 +324,18 @@ class SQLiteStorage:
         connection.execute(
             """INSERT INTO relationships(id,scope_id,period_id,mode,owner_id,subject_kind,subject_id,snapshot_id,state,acquired_at,slot_kind)
                VALUES(?,?,?,?,?,?,?,?, 'active',?,?)""",
-            (relation_id, scope_id, period_id, mode, owner_id, subject_kind, subject_id, snapshot_id, now, slot_kind),
+            (
+                relation_id,
+                scope_id,
+                period_id,
+                mode,
+                owner_id,
+                subject_kind,
+                subject_id,
+                snapshot_id,
+                now,
+                slot_kind,
+            ),
         )
         return relation_id
 
@@ -330,33 +351,66 @@ class SQLiteStorage:
             migration_dir / "006_period_resets.sql",
             migration_dir / "007_steal_slots.sql",
             migration_dir / "008_catalog_sync.sql",
+            migration_dir / "009_designated_slots.sql",
+            migration_dir / "010_activity_days.sql",
+            migration_dir / "011_message_templates.sql",
         ]
-        checksums = [hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files]
+        checksums = [
+            hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files
+        ]
         try:
             has_migrations = connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
             ).fetchone()
             if has_migrations:
-                versions = connection.execute("SELECT version FROM schema_migrations ORDER BY version").fetchall()
+                versions = connection.execute(
+                    "SELECT version FROM schema_migrations ORDER BY version"
+                ).fetchall()
                 current = max((int(row["version"]) for row in versions), default=0)
             else:
                 current = 0
             if current > _SCHEMA_VERSION:
-                raise StorageError(f"数据库版本 {current} 高于插件支持版本 {_SCHEMA_VERSION}。")
-            applied = {
-                int(row["version"]): row["checksum"]
-                for row in connection.execute("SELECT version,checksum FROM schema_migrations").fetchall()
-            } if has_migrations else {}
+                raise StorageError(
+                    f"数据库版本 {current} 高于插件支持版本 {_SCHEMA_VERSION}。"
+                )
+            applied = (
+                {
+                    int(row["version"]): row["checksum"]
+                    for row in connection.execute(
+                        "SELECT version,checksum FROM schema_migrations"
+                    ).fetchall()
+                }
+                if has_migrations
+                else {}
+            )
             for version in range(1, current + 1):
                 if version not in applied or applied[version] != checksums[version - 1]:
                     raise StorageError(f"数据库迁移 {version} 的校验和无效。")
             for version in range(current + 1, _SCHEMA_VERSION + 1):
                 migration = migration_files[version - 1].read_text(encoding="utf-8")
+                rebuild = version == 9
+                if rebuild:
+                    # SQLite 重建被其他表引用的父表，FK 开关必须在 BEGIN 之前设置。
+                    connection.execute("PRAGMA foreign_keys=OFF")
                 script = (
-                    "BEGIN IMMEDIATE;\n" + migration +
-                    f"\nINSERT INTO schema_migrations(version,applied_at,checksum) VALUES({version},unixepoch(),'{checksums[version - 1]}');\nCOMMIT;"
+                    "BEGIN IMMEDIATE;\n"
+                    + migration
+                    + f"\nINSERT INTO schema_migrations(version,applied_at,checksum) VALUES({version},unixepoch(),'{checksums[version - 1]}');\n"
+                    + ("" if rebuild else "COMMIT;")
                 )
-                connection.executescript(script)
+                try:
+                    connection.executescript(script)
+                    if rebuild:
+                        if connection.execute("PRAGMA foreign_key_check").fetchone():
+                            raise StorageError(
+                                "关系槽位迁移的外键校验失败，已保留原数据。"
+                            )
+                        connection.commit()
+                finally:
+                    if rebuild:
+                        if connection.in_transaction:
+                            connection.rollback()
+                        connection.execute("PRAGMA foreign_keys=ON")
         except Exception as exc:
             if connection.in_transaction:
                 connection.rollback()

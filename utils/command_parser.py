@@ -38,13 +38,24 @@ def parse_command(
     if not parts:
         return None
 
-    if parts[0].kind == "at" and parts[0].value in bot_ids and allow_leading_bot_mention:
+    if (
+        parts[0].kind == "at"
+        and parts[0].value in bot_ids
+        and allow_leading_bot_mention
+    ):
         parts.pop(0)
         _trim_leading_text(parts)
-    prefix_set = tuple(sorted((item for item in prefixes if item), key=len, reverse=True))
+    prefix_set = tuple(
+        sorted((item for item in prefixes if item), key=len, reverse=True)
+    )
     if allow_prefix:
         _consume_prefix(parts, prefix_set)
-        if parts and parts[0].kind == "at" and parts[0].value in bot_ids and allow_leading_bot_mention:
+        if (
+            parts
+            and parts[0].kind == "at"
+            and parts[0].value in bot_ids
+            and allow_leading_bot_mention
+        ):
             parts.pop(0)
             _trim_leading_text(parts)
             _consume_prefix(parts, prefix_set)
@@ -61,7 +72,11 @@ def parse_command(
     candidates: list[tuple[str, str]] = []
     for action, aliases in keywords.items():
         for alias in aliases:
-            if rendered == alias or rendered.startswith(alias + " ") or rendered.startswith(alias + "<@"):
+            if (
+                rendered == alias
+                or rendered.startswith(alias + " ")
+                or rendered.startswith(alias + "<@")
+            ):
                 candidates.append((alias, action))
     if not candidates:
         return None
@@ -71,7 +86,9 @@ def parse_command(
     if len({action for _, action in matches}) > 1:
         raise CommandSyntaxError("这条命令的关键词存在配置冲突，请联系管理员。")
     alias, action = matches[0]
-    suffix = rendered[len(alias):].strip()
+    suffix = rendered[len(alias) :].strip()
+    if action == "query_affection" and sum(part.kind == "at" for part in parts) != 1:
+        raise CommandSyntaxError("好感度查询需要一段真实的 @ 消息。")
     if leading_target is not None:
         if action not in {"steal_wife", "steal_husband", "steal_member"}:
             raise CommandSyntaxError("此命令不接受开头的目标 @。")
@@ -147,12 +164,37 @@ def _render(part: _Part) -> str:
 
 
 def _parse_action(action: str, suffix: str) -> ParsedCommand:
-    if action not in {"steal_wife", "steal_husband", "steal_member", "gift_wife", "gift_husband", "gift_member", "divorce_character", "divorce_wife", "divorce_husband", "divorce_member"} and ("<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix):
+    if action not in {
+        "steal_wife",
+        "steal_husband",
+        "steal_member",
+        "gift_wife",
+        "gift_husband",
+        "gift_member",
+        "divorce_character",
+        "divorce_wife",
+        "divorce_husband",
+        "divorce_member",
+        "query_affection",
+    } and ("<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix):
         raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
-    if action in {"draw_wife", "draw_husband", "draw_member"}:
+    if action in {"draw_wife", "draw_husband"}:
+        return ParsedCommand(action, argument=suffix or None)
+    if action == "draw_member":
         _no_suffix(action, suffix)
         return ParsedCommand(action)
-    if action in {"list_characters", "list_husband", "list_members", "rank_intimacy", "rank_activity"}:
+    if action == "query_affection":
+        target, rest = _leading_at(suffix)
+        if target is None or rest:
+            raise CommandSyntaxError("好感度查询只接受一名 @ 用户，不接受其他参数。")
+        return ParsedCommand(action, target_user_id=target)
+    if action in {
+        "list_characters",
+        "list_husband",
+        "list_members",
+        "rank_intimacy",
+        "rank_activity",
+    }:
         if not suffix:
             return ParsedCommand(action)
         if not _PAGE.fullmatch(suffix):
@@ -170,7 +212,12 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
     if action in {"gift_wife", "gift_husband", "gift_member"}:
         target, argument = _target_and_argument(suffix, optional_argument=True)
         return ParsedCommand(action, argument=argument, target_user_id=target)
-    if action in {"divorce_character", "divorce_wife", "divorce_husband", "divorce_member"}:
+    if action in {
+        "divorce_character",
+        "divorce_wife",
+        "divorce_husband",
+        "divorce_member",
+    }:
         if not suffix:
             return ParsedCommand(action)
         target, rest = _leading_at(suffix)

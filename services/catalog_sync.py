@@ -17,10 +17,15 @@ except ModuleNotFoundError:
     aiohttp = None  # type: ignore[assignment]
 
 from ..models import StorageError
-from .catalog import _atomic_content_write, _fetch_limited, _inspect_image, _validate_image_url, catalog_source_json
+from .catalog import (
+    _atomic_content_write,
+    _fetch_limited,
+    _inspect_image,
+    _validate_image_url,
+    catalog_source_json,
+)
 from .catalog_import import _PublicResolver
 from .storage import SQLiteStorage
-
 
 _REPOSITORY = "conFess233/astrbot_plugin_daily_bonds"
 _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
@@ -49,14 +54,35 @@ class CatalogSyncService:
             except Exception as exc:
                 raise ValueError("读取仓库角色配置失败，请稍后重试。") from exc
             self._remote_cache = (now, remote)
-        items = self._compare(remote)
+        items = await asyncio.to_thread(self._compare, remote)
         token = str(uuid.uuid4())
-        self._plans[token] = {"actor": actor, "remote": remote, "items": items, "expires": now + 600}
-        self._plans = {key: value for key, value in self._plans.items() if value["expires"] >= now}
-        public = [{key: value for key, value in item.items() if key not in {"source", "revision"}} for item in items]
-        return {"preview_id": token, "commit_sha": remote["commit_sha"], "items": public,
-                "unavailable": bool(remote.get("unavailable")),
-                "updates": sum(item["status"] in {"new", "update", "conflict"} for item in items), "expires_at": now + 600}
+        self._plans[token] = {
+            "actor": actor,
+            "remote": remote,
+            "items": items,
+            "expires": now + 600,
+        }
+        self._plans = {
+            key: value for key, value in self._plans.items() if value["expires"] >= now
+        }
+        public = [
+            {
+                key: value
+                for key, value in item.items()
+                if key not in {"source", "revision"}
+            }
+            for item in items
+        ]
+        return {
+            "preview_id": token,
+            "commit_sha": remote["commit_sha"],
+            "items": public,
+            "unavailable": bool(remote.get("unavailable")),
+            "updates": sum(
+                item["status"] in {"new", "update", "conflict"} for item in items
+            ),
+            "expires_at": now + 600,
+        }
 
     async def commit(self, payload: dict[str, Any], *, actor: str) -> dict[str, Any]:
         token = payload.get("preview_id")
@@ -67,53 +93,129 @@ class CatalogSyncService:
             raise ValueError("同步预览已过期，请重新检查。")
         requested_characters = payload.get("characters", [])
         requested_pools = payload.get("pools", [])
-        if not isinstance(requested_characters, list) or not isinstance(requested_pools, list) or any(not isinstance(value, str) for value in requested_characters + requested_pools):
+        if (
+            not isinstance(requested_characters, list)
+            or not isinstance(requested_pools, list)
+            or any(
+                not isinstance(value, str)
+                for value in requested_characters + requested_pools
+            )
+        ):
             raise ValueError("请选择要同步的角色和角色池。")
-        if len(set(requested_characters)) != len(requested_characters) or len(set(requested_pools)) != len(requested_pools):
+        if len(set(requested_characters)) != len(requested_characters) or len(
+            set(requested_pools)
+        ) != len(requested_pools):
             raise ValueError("同步选择包含重复 ID。")
-        chosen = {(kind, identifier) for kind, values in (("character", requested_characters), ("pool", requested_pools)) for identifier in values}
+        chosen = {
+            (kind, identifier)
+            for kind, values in (
+                ("character", requested_characters),
+                ("pool", requested_pools),
+            )
+            for identifier in values
+        }
         options = {(item["kind"], item["id"]): item for item in plan["items"]}
-        if not chosen or any(key not in options or options[key]["status"] not in {"new", "update", "conflict"} for key in chosen):
+        if not chosen or any(
+            key not in options
+            or options[key]["status"] not in {"new", "update", "conflict"}
+            for key in chosen
+        ):
             raise ValueError("同步选择为空或包含无效项目。")
         async with self._lock:
             if self._plans.get(token) is not plan:
                 raise ValueError("同步预览已被使用，请重新检查。")
-            self._validate_dependencies(chosen, options)
+            await asyncio.to_thread(self._validate_dependencies, chosen, options)
             selected = [options[key] for key in sorted(chosen)]
             try:
                 images = await self._download_images(selected)
             except (ValueError, StorageError):
                 raise
             except Exception as exc:
-                raise ValueError("所选角色图片下载失败，整批未写入，请稍后重试。") from exc
-            now = int(time.time())
-            with self.storage.transaction() as db:
-                for item in selected:
-                    table = "characters" if item["kind"] == "character" else "pools"
-                    row = db.execute(f"SELECT revision,deleted_at FROM {table} WHERE id=?", (item["id"],)).fetchone()
-                    current = int(row["revision"]) if row else 0
-                    if current != item["revision"] or (row and row["deleted_at"] is not None):
-                        raise StorageError(f"{item['id']} 已变化，请重新检查仓库更新。")
-                self._validate_dependencies(chosen, options)
-                for item in selected:
-                    if item["kind"] == "character":
-                        self._apply_character(db, item, images, now)
-                for item in selected:
-                    if item["kind"] == "pool":
-                        self._apply_pool(db, item)
-                for item in selected:
-                    source = catalog_source_json(item["source"], item["kind"])
-                    db.execute("""INSERT INTO catalog_sync_baselines(entity_kind,entity_id,source_json,source_sha,commit_sha,updated_at)
-                                  VALUES(?,?,?,?,?,?) ON CONFLICT(entity_kind,entity_id) DO UPDATE SET
-                                  source_json=excluded.source_json,source_sha=excluded.source_sha,
-                                  commit_sha=excluded.commit_sha,updated_at=excluded.updated_at""",
-                               (item["kind"], item["id"], source, hashlib.sha256(source.encode()).hexdigest(), plan["remote"]["commit_sha"], now))
-                db.execute("INSERT INTO web_admin_audit(id,actor_username,action,entity_kind,entity_id,request_id,reason,details_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                           (str(uuid.uuid4()), actor, "catalog.sync", "catalog", plan["remote"]["commit_sha"], str(uuid.uuid4()), "",
-                            json.dumps({"characters": requested_characters, "pools": requested_pools}, ensure_ascii=False), now))
+                raise ValueError(
+                    "所选角色图片下载失败，整批未写入，请稍后重试。"
+                ) from exc
+            await asyncio.to_thread(
+                self._commit_selected,
+                selected,
+                chosen,
+                options,
+                images,
+                plan,
+                actor,
+                requested_characters,
+                requested_pools,
+            )
             self._plans.pop(token, None)
-            return {"commit_sha": plan["remote"]["commit_sha"], "characters": len(requested_characters),
-                    "pools": len(requested_pools), "images_added": len(images)}
+            return {
+                "commit_sha": plan["remote"]["commit_sha"],
+                "characters": len(requested_characters),
+                "pools": len(requested_pools),
+                "images_added": len(images),
+            }
+
+    def _commit_selected(
+        self,
+        selected,
+        chosen,
+        options,
+        images,
+        plan,
+        actor,
+        requested_characters,
+        requested_pools,
+    ):
+        now = int(time.time())
+        with self.storage.transaction() as db:
+            for item in selected:
+                table = "characters" if item["kind"] == "character" else "pools"
+                row = db.execute(
+                    f"SELECT revision,deleted_at FROM {table} WHERE id=?", (item["id"],)
+                ).fetchone()
+                current = int(row["revision"]) if row else 0
+                if current != item["revision"] or (
+                    row and row["deleted_at"] is not None
+                ):
+                    raise StorageError(f"{item['id']} 已变化，请重新检查仓库更新。")
+            self._validate_dependencies(chosen, options)
+            for item in selected:
+                if item["kind"] == "character":
+                    self._apply_character(db, item, images, now)
+            for item in selected:
+                if item["kind"] == "pool":
+                    self._apply_pool(db, item)
+            for item in selected:
+                source = catalog_source_json(item["source"], item["kind"])
+                db.execute(
+                    """INSERT INTO catalog_sync_baselines(entity_kind,entity_id,source_json,source_sha,commit_sha,updated_at)
+                              VALUES(?,?,?,?,?,?) ON CONFLICT(entity_kind,entity_id) DO UPDATE SET
+                              source_json=excluded.source_json,source_sha=excluded.source_sha,
+                              commit_sha=excluded.commit_sha,updated_at=excluded.updated_at""",
+                    (
+                        item["kind"],
+                        item["id"],
+                        source,
+                        hashlib.sha256(source.encode()).hexdigest(),
+                        plan["remote"]["commit_sha"],
+                        now,
+                    ),
+                )
+            db.execute(
+                "INSERT INTO web_admin_audit(id,actor_username,action,entity_kind,entity_id,request_id,reason,details_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                (
+                    str(uuid.uuid4()),
+                    actor,
+                    "catalog.sync",
+                    "catalog",
+                    plan["remote"]["commit_sha"],
+                    str(uuid.uuid4()),
+                    "",
+                    json.dumps(
+                        {"characters": requested_characters, "pools": requested_pools},
+                        ensure_ascii=False,
+                    ),
+                    now,
+                ),
+            )
 
     async def _fetch_remote(self) -> dict[str, Any]:
         if aiohttp is None:
@@ -304,12 +406,32 @@ class CatalogSyncService:
                 if incompatible:
                     raise ValueError(f"角色池 {identifier} 包含性别不匹配的角色：{'、'.join(incompatible[:20])}")
 
-    async def _download_images(self, selected: list[dict[str, Any]]) -> dict[str, tuple[dict[str, Any], bytes, str, str]]:
-        specs = {image["sha256"]: image for item in selected if item["kind"] == "character" for image in item["source"]["images"]}
+    def _missing_images(self, specs):
         with self.storage._lock:
             db = self.storage._connection()
-            specs = {digest: spec for digest, spec in specs.items() if not (row := db.execute("SELECT relative_path FROM media_blobs WHERE hash=?", (digest,)).fetchone()) or not (self.media_root / row["relative_path"]).is_file()}
+            specs = {
+                digest: spec
+                for digest, spec in specs.items()
+                if not (
+                    row := db.execute(
+                        "SELECT relative_path FROM media_blobs WHERE hash=?", (digest,)
+                    ).fetchone()
+                )
+                or not (self.media_root / row["relative_path"]).is_file()
+            }
         config, _ = self.storage.get_settings()
+        return specs, config
+
+    async def _download_images(
+        self, selected: list[dict[str, Any]]
+    ) -> dict[str, tuple[dict[str, Any], bytes, str, str]]:
+        specs = {
+            image["sha256"]: image
+            for item in selected
+            if item["kind"] == "character"
+            for image in item["source"]["images"]
+        }
+        specs, config = await asyncio.to_thread(self._missing_images, specs)
         max_bytes = int(config["resources"]["image_max_bytes"])
         max_pixels = int(config["resources"]["image_max_pixels"])
         if sum(spec["bytes"] for spec in specs.values()) > 64 * 1024 * 1024:
@@ -320,18 +442,34 @@ class CatalogSyncService:
             raise StorageError("同步图片需要安装 requirements.txt 中的 aiohttp。")
         timeout = aiohttp.ClientTimeout(total=30)
         results: dict[str, tuple[dict[str, Any], bytes, str, str]] = {}
-        connector = aiohttp.TCPConnector(resolver=_PublicResolver(), use_dns_cache=False, limit=4)
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector, raise_for_status=False, trust_env=False) as session:
+        connector = aiohttp.TCPConnector(
+            resolver=_PublicResolver(), use_dns_cache=False, limit=4
+        )
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            connector=connector,
+            raise_for_status=False,
+            trust_env=False,
+        ) as session:
             semaphore = asyncio.Semaphore(4)
+
             async def one(digest: str, spec: dict[str, Any]) -> None:
                 async with semaphore:
-                    payload, _final_url = await _fetch_limited(session, spec["source_url"], max_bytes)
-                    if hashlib.sha256(payload).hexdigest() != digest or len(payload) != spec["bytes"]:
+                    payload, _final_url = await _fetch_limited(
+                        session, spec["source_url"], max_bytes
+                    )
+                    if (
+                        hashlib.sha256(payload).hexdigest() != digest
+                        or len(payload) != spec["bytes"]
+                    ):
                         raise ValueError(f"图片校验失败：{digest[:12]}")
-                    width, height, extension, mime = await asyncio.to_thread(_inspect_image, payload, max_pixels)
+                    width, height, extension, mime = await asyncio.to_thread(
+                        _inspect_image, payload, max_pixels
+                    )
                     if (width, height) != (spec["width"], spec["height"]):
                         raise ValueError(f"图片尺寸不符：{digest[:12]}")
                     results[digest] = (spec, payload, extension, mime)
+
             await asyncio.gather(*(one(digest, spec) for digest, spec in specs.items()))
         return results
 

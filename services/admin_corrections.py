@@ -11,8 +11,7 @@ from typing import Any, Mapping
 from ..models import StorageError
 from .storage import SQLiteStorage
 
-
-_COUNTERS = {"normal_draws", "steal_attempts", "stolen_successes", "divorces"}
+_COUNTERS = {"normal_draws", "designated_draws", "steal_attempts", "stolen_successes", "divorces"}
 _MODES = {"wife", "husband", "member"}
 
 
@@ -117,7 +116,15 @@ class AdminCorrectionService:
             raise ValueError("fields 必须选择至少一项可重置计数。")
         return {"mode": mode, "user_id": user_id, "fields": sorted(fields)}
 
-    def _capture(self, db: sqlite3.Connection, scope_id: int, action: str, spec: dict[str, Any], reason: str, now: int) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    def _capture(
+        self,
+        db: sqlite3.Connection,
+        scope_id: int,
+        action: str,
+        spec: dict[str, Any],
+        reason: str,
+        now: int,
+    ) -> tuple[str, dict[str, Any], dict[str, Any]]:
         if action in {"period_reset_relations", "period_reset_counters"}:
             period = self._current_period(db, scope_id)
             mode = spec["mode"]
@@ -128,62 +135,159 @@ class AdminCorrectionService:
                     f"SELECT id,mode,owner_id,subject_id,slot_kind,version FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql} ORDER BY id",
                     params,
                 ).fetchall()
-                invite_count = int(db.execute(
-                    f"""SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND state='pending'
+                invite_count = int(
+                    db.execute(
+                        f"""SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND state='pending'
                          AND relationship_id IN (SELECT id FROM relationships WHERE scope_id=? AND period_id=? AND state='active'{mode_sql})""",
-                    (*params[:2], *params),
-                ).fetchone()[0])
-                before = {"period_id": period, "active_relationships": len(rows),
-                          "normal_relationships": sum(row["slot_kind"] == "normal" for row in rows),
-                          "steal_slot_relationships": sum(row["slot_kind"] == "steal" for row in rows),
-                          "pending_invites_retained": invite_count,
-                          "fingerprint": self._rows_hash(rows)}
-                after = {"period_id": period, "active_relationships": 0, "pending_invites_retained": invite_count,
-                         "normal_draws_unchanged": True, "redraw_credits_unchanged": True}
+                        (*params[:2], *params),
+                    ).fetchone()[0]
+                )
+                before = {
+                    "period_id": period,
+                    "active_relationships": len(rows),
+                    "normal_relationships": sum(
+                        row["slot_kind"] == "normal" for row in rows
+                    ),
+                    "steal_slot_relationships": sum(
+                        row["slot_kind"] == "steal" for row in rows
+                    ),
+                    "designated_relationships": sum(
+                        row["slot_kind"] == "designated" for row in rows
+                    ),
+                    "pending_invites_retained": invite_count,
+                    "fingerprint": self._rows_hash(rows),
+                }
+                after = {
+                    "period_id": period,
+                    "active_relationships": 0,
+                    "pending_invites_retained": invite_count,
+                    "normal_draws_unchanged": True,
+                    "designated_draws_unchanged": True,
+                    "redraw_credits_unchanged": True,
+                }
             else:
                 rows = db.execute(
-                    f"""SELECT mode,user_id,normal_draws,steal_attempts,stolen_successes,divorces,last_steal_at
+                    f"""SELECT mode,user_id,normal_draws,designated_draws,steal_attempts,stolen_successes,divorces,last_steal_at
                          FROM daily_counters WHERE scope_id=? AND period_id=?{mode_sql} ORDER BY mode,user_id""",
                     params,
                 ).fetchall()
-                before = {"period_id": period, "counter_rows": len(rows), "fingerprint": self._rows_hash(rows)}
-                after = {"period_id": period, "counter_rows_reset": len(rows), "relationships_unchanged": True,
-                         "redraw_credits_unchanged": True}
+                before = {
+                    "period_id": period,
+                    "counter_rows": len(rows),
+                    "fingerprint": self._rows_hash(rows),
+                }
+                after = {
+                    "period_id": period,
+                    "counter_rows_reset": len(rows),
+                    "relationships_unchanged": True,
+                    "redraw_credits_unchanged": True,
+                }
             return f"{period}:{mode}", before, after
         if action == "relationship_end":
-            row = db.execute("SELECT id,period_id,mode,owner_id,slot_kind,state,version,ended_at,end_reason FROM relationships WHERE id=? AND scope_id=?", (spec["relationship_id"], scope_id)).fetchone()
+            row = db.execute(
+                "SELECT id,period_id,mode,owner_id,slot_kind,state,version,ended_at,end_reason FROM relationships WHERE id=? AND scope_id=?",
+                (spec["relationship_id"], scope_id),
+            ).fetchone()
             if row is None or row["state"] != "active":
                 raise ValueError("关系不存在或已结束。")
             before = dict(row)
-            pending_invites = int(db.execute("SELECT COUNT(*) FROM gift_invites WHERE relationship_id=? AND state='pending'", (spec["relationship_id"],)).fetchone()[0])
+            pending_invites = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM gift_invites WHERE relationship_id=? AND state='pending'",
+                    (spec["relationship_id"],),
+                ).fetchone()[0]
+            )
             before["pending_invites"] = pending_invites
-            after = {"state": "ended", "ended_at": now, "end_reason": reason, "compensation": spec["compensation"], "invalidated_invites": pending_invites}
+            after = {
+                "state": "ended",
+                "ended_at": now,
+                "end_reason": reason,
+                "compensation": spec["compensation"],
+                "invalidated_invites": pending_invites,
+            }
             return str(row["id"]), before, after
         if action == "credit_grant":
             period = self._current_period(db, scope_id)
             target = f"{period}:{spec['mode']}:{spec['user_id']}"
-            before = {"available_credits": self._credit_count(db, scope_id, period, spec["mode"], spec["user_id"])}
-            return target, before, {"period_id": period, "quantity": spec["quantity"], "available_credits": before["available_credits"] + spec["quantity"]}
+            before = {
+                "available_credits": self._credit_count(
+                    db, scope_id, period, spec["mode"], spec["user_id"]
+                )
+            }
+            return (
+                target,
+                before,
+                {
+                    "period_id": period,
+                    "quantity": spec["quantity"],
+                    "available_credits": before["available_credits"] + spec["quantity"],
+                },
+            )
         if action == "intimacy_set":
-            row = db.execute("SELECT score,updated_at FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id=?", (scope_id, spec["source_id"], spec["target_id"])).fetchone()
+            row = db.execute(
+                "SELECT score,updated_at FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id=?",
+                (scope_id, spec["source_id"], spec["target_id"]),
+            ).fetchone()
             target = f"{spec['source_id']}->{spec['target_id']}"
-            before = {"score": int(row["score"]) if row else 0, "exists": row is not None}
+            before = {
+                "score": int(row["score"]) if row else 0,
+                "exists": row is not None,
+            }
             return target, before, {"score": spec["score"], "exists": True}
         if action == "activity_set":
-            row = db.execute("SELECT message_count FROM activity_seconds WHERE scope_id=? AND user_id=? AND observed_second=?", (scope_id, spec["user_id"], spec["observed_second"])).fetchone()
+            row = db.execute(
+                "SELECT message_count FROM activity_seconds WHERE scope_id=? AND user_id=? AND observed_second=?",
+                (scope_id, spec["user_id"], spec["observed_second"]),
+            ).fetchone()
             target = f"{spec['user_id']}@{spec['observed_second']}"
-            before = {"message_count": int(row["message_count"]) if row else 0, "exists": row is not None}
-            return target, before, {"message_count": spec["message_count"], "exists": True}
+            before = {
+                "message_count": int(row["message_count"]) if row else 0,
+                "exists": row is not None,
+            }
+            return (
+                target,
+                before,
+                {"message_count": spec["message_count"], "exists": True},
+            )
         period = self._current_period(db, scope_id)
-        row = db.execute("SELECT normal_draws,steal_attempts,stolen_successes,divorces FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?", (scope_id, period, spec["mode"], spec["user_id"])).fetchone()
-        before = {"exists": row is not None, **{field: int(row[field]) if row else 0 for field in spec["fields"]}}
-        return f"{period}:{spec['mode']}:{spec['user_id']}", before, {"exists": True, "period_id": period, **{field: 0 for field in spec["fields"]}}
+        row = db.execute(
+            "SELECT normal_draws,designated_draws,steal_attempts,stolen_successes,divorces FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+            (scope_id, period, spec["mode"], spec["user_id"]),
+        ).fetchone()
+        before = {
+            "exists": row is not None,
+            **{field: int(row[field]) if row else 0 for field in spec["fields"]},
+        }
+        return (
+            f"{period}:{spec['mode']}:{spec['user_id']}",
+            before,
+            {
+                "exists": True,
+                "period_id": period,
+                **{field: 0 for field in spec["fields"]},
+            },
+        )
 
-    def _apply(self, db: sqlite3.Connection, action: str, scope_id: int, spec: dict[str, Any], after: dict[str, Any], actor: str, request_id: str, revision: str, now: int) -> None:
+    def _apply(
+        self,
+        db: sqlite3.Connection,
+        action: str,
+        scope_id: int,
+        spec: dict[str, Any],
+        after: dict[str, Any],
+        actor: str,
+        request_id: str,
+        revision: str,
+        now: int,
+    ) -> None:
         operation_id = str(uuid.uuid4())
         if action == "period_reset_relations":
             mode_sql = "" if spec["mode"] == "all" else " AND mode=?"
-            params = (scope_id, after["period_id"]) if spec["mode"] == "all" else (scope_id, after["period_id"], spec["mode"])
+            params = (
+                (scope_id, after["period_id"])
+                if spec["mode"] == "all"
+                else (scope_id, after["period_id"], spec["mode"])
+            )
             db.execute(
                 f"""UPDATE relationships SET state='ended',ended_at=?,end_reason='admin:period_reset',version=version+1
                     WHERE scope_id=? AND period_id=? AND state='active'{mode_sql}""",
@@ -191,33 +295,91 @@ class AdminCorrectionService:
             )
         elif action == "period_reset_counters":
             mode_sql = "" if spec["mode"] == "all" else " AND mode=?"
-            params = (scope_id, after["period_id"]) if spec["mode"] == "all" else (scope_id, after["period_id"], spec["mode"])
+            params = (
+                (scope_id, after["period_id"])
+                if spec["mode"] == "all"
+                else (scope_id, after["period_id"], spec["mode"])
+            )
             db.execute(
-                f"""UPDATE daily_counters SET normal_draws=0,steal_attempts=0,stolen_successes=0,divorces=0,last_steal_at=NULL
+                f"""UPDATE daily_counters SET normal_draws=0,designated_draws=0,steal_attempts=0,stolen_successes=0,divorces=0,last_steal_at=NULL
                     WHERE scope_id=? AND period_id=?{mode_sql}""",
                 params,
             )
         elif action == "relationship_end":
-            db.execute("UPDATE relationships SET state='ended',ended_at=?,end_reason=?,version=version+1 WHERE id=? AND scope_id=? AND state='active'", (now, "admin:" + str(after["end_reason"]), spec["relationship_id"], scope_id))
-            db.execute("UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='relationship-ended' WHERE relationship_id=? AND state='pending'", (now, spec["relationship_id"]))
+            db.execute(
+                "UPDATE relationships SET state='ended',ended_at=?,end_reason=?,version=version+1 WHERE id=? AND scope_id=? AND state='active'",
+                (
+                    now,
+                    "admin:" + str(after["end_reason"]),
+                    spec["relationship_id"],
+                    scope_id,
+                ),
+            )
+            db.execute(
+                "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='relationship-ended' WHERE relationship_id=? AND state='pending'",
+                (now, spec["relationship_id"]),
+            )
             if spec["compensation"]:
-                row = db.execute("SELECT period_id,mode,owner_id FROM relationships WHERE id=?", (spec["relationship_id"],)).fetchone()
-                self._issue_credits(db, scope_id, row["period_id"], row["mode"], row["owner_id"], spec["compensation"], operation_id, now)
+                row = db.execute(
+                    "SELECT period_id,mode,owner_id FROM relationships WHERE id=?",
+                    (spec["relationship_id"],),
+                ).fetchone()
+                self._issue_credits(
+                    db,
+                    scope_id,
+                    row["period_id"],
+                    row["mode"],
+                    row["owner_id"],
+                    spec["compensation"],
+                    operation_id,
+                    now,
+                )
         elif action == "credit_grant":
-            self._issue_credits(db, scope_id, after["period_id"], spec["mode"], spec["user_id"], spec["quantity"], operation_id, now)
+            self._issue_credits(
+                db,
+                scope_id,
+                after["period_id"],
+                spec["mode"],
+                spec["user_id"],
+                spec["quantity"],
+                operation_id,
+                now,
+            )
         elif action == "intimacy_set":
-            db.execute("INSERT INTO intimacy_edges(scope_id,source_id,target_id,score,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope_id,source_id,target_id) DO UPDATE SET score=excluded.score,updated_at=excluded.updated_at",
-                       (scope_id, spec["source_id"], spec["target_id"], spec["score"], now))
+            db.execute(
+                "INSERT INTO intimacy_edges(scope_id,source_id,target_id,score,updated_at) VALUES(?,?,?,?,?) ON CONFLICT(scope_id,source_id,target_id) DO UPDATE SET score=excluded.score,updated_at=excluded.updated_at",
+                (scope_id, spec["source_id"], spec["target_id"], spec["score"], now),
+            )
         elif action == "activity_set":
-            db.execute("INSERT INTO activity_seconds(scope_id,user_id,observed_second,message_count) VALUES(?,?,?,?) ON CONFLICT(scope_id,user_id,observed_second) DO UPDATE SET message_count=excluded.message_count",
-                       (scope_id, spec["user_id"], spec["observed_second"], spec["message_count"]))
+            db.execute(
+                "INSERT INTO activity_seconds(scope_id,user_id,observed_second,message_count) VALUES(?,?,?,?) ON CONFLICT(scope_id,user_id,observed_second) DO UPDATE SET message_count=excluded.message_count",
+                (
+                    scope_id,
+                    spec["user_id"],
+                    spec["observed_second"],
+                    spec["message_count"],
+                ),
+            )
         else:
-            period = after["period_id"] if "period_id" in after else self._current_period(db, scope_id)
-            row = db.execute("SELECT 1 FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?", (scope_id, period, spec["mode"], spec["user_id"])).fetchone()
+            period = (
+                after["period_id"]
+                if "period_id" in after
+                else self._current_period(db, scope_id)
+            )
+            row = db.execute(
+                "SELECT 1 FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+                (scope_id, period, spec["mode"], spec["user_id"]),
+            ).fetchone()
             if row is None:
-                db.execute("INSERT INTO daily_counters(scope_id,period_id,mode,user_id) VALUES(?,?,?,?)", (scope_id, period, spec["mode"], spec["user_id"]))
+                db.execute(
+                    "INSERT INTO daily_counters(scope_id,period_id,mode,user_id) VALUES(?,?,?,?)",
+                    (scope_id, period, spec["mode"], spec["user_id"]),
+                )
             for field in spec["fields"]:
-                db.execute(f"UPDATE daily_counters SET {field}=0 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?", (scope_id, period, spec["mode"], spec["user_id"]))
+                db.execute(
+                    f"UPDATE daily_counters SET {field}=0 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+                    (scope_id, period, spec["mode"], spec["user_id"]),
+                )
 
     @staticmethod
     def _issue_credits(db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, user_id: str, quantity: int, operation_id: str, now: int) -> None:

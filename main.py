@@ -7,22 +7,22 @@ import time
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.star import Context, Star, StarTools
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.event.filter import EventMessageType, event_message_type
-from astrbot.api.message_components import Image, Plain
+from astrbot.api.event.filter import EventMessageType
+from astrbot.api.star import Context, Star, StarTools
 
-from .services.host_config import HostConfigBridge
-from .services.catalog import CatalogService
-from .services.storage import SQLiteStorage
-from .services.access import AccessService
-from .services.gameplay import GameplayService
-from .services.statistics import StatisticsService
 from .adapters.onebot import OneBotAdapter
+from .services.access import AccessService
+from .services.catalog import CatalogService
 from .services.command_runtime import CommandRuntime, RuntimeReply
+from .services.gameplay import GameplayService
+from .services.host_config import HostConfigBridge
 from .services.notifications import NotificationService
-from .services.web_manager import WebManager
+from .services.reply_messages import reply_chain
 from .services.retention import RetentionService
+from .services.statistics import StatisticsService
+from .services.storage import SQLiteStorage
+from .services.web_manager import WebManager
 
 
 class DailyBondsPlugin(Star):
@@ -50,7 +50,7 @@ class DailyBondsPlugin(Star):
         try:
             await asyncio.to_thread(storage.open)
             host_config = HostConfigBridge(self.config, storage)
-            settings = host_config.reconcile()
+            settings = await asyncio.to_thread(host_config.reconcile)
             catalog = CatalogService(
                 storage,
                 Path(__file__).parent / "resources",
@@ -63,9 +63,13 @@ class DailyBondsPlugin(Star):
             self._web_manager = web_manager
             notifications = NotificationService(self.context, storage)
             retention = RetentionService(storage, data_dir)
-            stale_invites = await notifications.invalidate_pending_on_restart(int(time.time()))
+            stale_invites = await notifications.invalidate_pending_on_restart(
+                int(time.time())
+            )
             if stale_invites:
-                logger.info("今日姻缘：重载时将 %d 条待处理赠送邀请标记为失效。", stale_invites)
+                logger.info(
+                    "今日姻缘：重载时将 %d 条待处理赠送邀请标记为失效。", stale_invites
+                )
             self._runtime = CommandRuntime(
                 context=self.context,
                 storage=storage,
@@ -74,7 +78,7 @@ class DailyBondsPlugin(Star):
                 gameplay=GameplayService(storage),
                 statistics=StatisticsService(storage),
             )
-            web_manager.runtime_reset = self._runtime.adapter.invalidate_all_members
+            web_manager.runtime_reset = self._runtime.reset
             self._maintenance_task = asyncio.create_task(
                 self._maintenance_loop(notifications, retention),
                 name="daily-bonds-maintenance",
@@ -102,20 +106,15 @@ class DailyBondsPlugin(Star):
         except Exception:
             logger.exception("今日姻缘：处理群消息失败。")
             return
-        if isinstance(response, RuntimeReply):
-            if not response.image_paths:
-                yield event.plain_result(response.text)
-                return
+        if response:
             try:
-                chain = ([Plain(response.text)] if response.text else []) + [
-                    Image.fromFileSystem(str(image_path)) for image_path in response.image_paths
-                ]
-                yield event.chain_result(chain)
+                chain = reply_chain(response, event)
+                if chain:
+                    yield event.chain_result(chain)
             finally:
-                for image_path in response.cleanup_paths:
-                    image_path.unlink(missing_ok=True)
-        elif response:
-            yield event.plain_result(response)
+                if isinstance(response, RuntimeReply):
+                    for image_path in response.cleanup_paths:
+                        image_path.unlink(missing_ok=True)
 
     async def terminate(self) -> None:
         """停止种子素材下载并关闭数据库连接。"""

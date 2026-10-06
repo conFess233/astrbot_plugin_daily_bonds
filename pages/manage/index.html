@@ -19,15 +19,15 @@
         <button id="refresh" class="button secondary" type="button">刷新数据</button>
       </header>
 
-      <nav class="tabs" aria-label="管理页面">
-        <button class="tab active" type="button" data-tab="overview">运行概况</button>
-        <button class="tab" type="button" data-tab="settings">配置管理</button>
-        <button class="tab" type="button" data-tab="catalog">角色目录</button>
-        <button class="tab" type="button" data-tab="data">数据查询</button>
+      <nav class="tabs" role="tablist" aria-label="管理页面">
+        <button class="tab active" type="button" data-tab="overview" id="tab-overview" role="tab" aria-controls="overview-panel" aria-selected="true" tabindex="0">运行概况</button>
+        <button class="tab" type="button" data-tab="settings" id="tab-settings" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1">配置管理</button>
+        <button class="tab" type="button" data-tab="catalog" id="tab-catalog" role="tab" aria-controls="catalog-panel" aria-selected="false" tabindex="-1">角色目录</button>
+        <button class="tab" type="button" data-tab="data" id="tab-data" role="tab" aria-controls="data-panel" aria-selected="false" tabindex="-1">数据查询</button>
       </nav>
       <div id="notice" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
 
-      <section id="overview-panel" class="panel">
+      <section id="overview-panel" class="panel" role="tabpanel" aria-labelledby="tab-overview">
         <div class="section-heading">
           <div>
             <h2>运行概况</h2>
@@ -42,7 +42,8 @@
         </section>
       </section>
 
-      <section id="catalog-panel" class="panel" hidden>
+      <section id="catalog-panel" class="panel" role="tabpanel" aria-labelledby="tab-catalog" hidden>
+        <fieldset id="catalog-controls" class="control-group">
         <div class="section-heading">
           <div>
             <h2>角色与角色池</h2>
@@ -68,6 +69,11 @@
           <section class="card catalog-list-card">
             <label class="field" for="character-search"><span>搜索角色</span><input id="character-search" type="search" /></label>
             <div id="character-list" class="catalog-list" aria-live="polite"></div>
+            <div class="list-pagination" aria-label="角色列表分页">
+              <button id="character-prev" class="button secondary" type="button" disabled>上一页</button>
+              <span id="character-page" class="muted" aria-live="polite">尚未加载</span>
+              <button id="character-next" class="button secondary" type="button" disabled>下一页</button>
+            </div>
             <h3>角色池</h3>
             <div id="pool-list" class="catalog-list" aria-live="polite"></div>
           </section>
@@ -82,11 +88,11 @@
             <label class="check-field"><input id="character-enabled" type="checkbox" checked /> 启用抽取</label>
             <label class="field"><span>头像与立绘图片</span><input id="character-image" type="file" accept="image/*" /></label>
             <div id="character-images" class="image-gallery" aria-live="polite"></div>
-            <label class="field"><span>角色池</span><div id="character-pools" class="check-list"></div></label>
+            <fieldset class="pool-membership"><legend>角色池</legend><div id="character-pools" class="check-list"></div></fieldset>
             <div class="actions">
               <button id="new-character" class="button secondary" type="button">新建</button>
               <div class="action-end">
-                <button id="delete-character" class="button secondary" type="button" disabled>软删除</button>
+                <button id="delete-character" class="button danger" type="button" disabled>软删除</button>
                 <button id="save-character" class="button primary" type="button">保存角色</button>
               </div>
             </div>
@@ -100,7 +106,7 @@
             <label class="field"><span>抽取类型</span><select id="pool-mode"><option value="wife">女角色</option><option value="husband">男角色</option></select></label>
           </div>
           <p id="pool-revision" class="hint">新建的角色池默认不启用；需在配置管理中选择。</p>
-          <div class="actions"><button id="delete-pool" class="button secondary" type="button" disabled>软删除角色池</button><button id="save-pool" class="button primary" type="button">保存角色池</button></div>
+          <div class="actions"><button id="delete-pool" class="button danger" type="button" disabled>软删除角色池</button><button id="save-pool" class="button primary" type="button">保存角色池</button></div>
         </div>
         <div class="editor-card import-card">
           <h3>导入角色包</h3>
@@ -115,8 +121,8 @@
           </div>
           <div id="import-report" class="import-report" aria-live="polite">选择角色包后开始预检。</div>
         </div>
-        <div class="editor-card maintenance-card">
-          <h3>导出、备份与恢复</h3>
+        <details class="editor-card maintenance-card">
+          <summary>导出、备份与恢复</summary>
           <p class="hint">角色包只包含选中角色池及其素材。完整备份包含一致性数据库快照和插件素材；恢复会先自动备份当前数据，并覆盖当前插件数据。</p>
           <div class="form-grid">
             <label class="field"><span>导出角色池（可多选）</span><select id="export-pools" multiple size="5"></select></label>
@@ -130,10 +136,11 @@
           </div>
           <div id="maintenance-report" class="import-report" aria-live="polite">导出或备份完成后会显示作业与下载信息。恢复必须先上传并预检。</div>
           <div id="restore-scope-mappings" class="form-grid" hidden></div>
-        </div>
+        </details>
+        </fieldset>
       </section>
 
-      <section id="data-panel" class="panel" hidden>
+      <section id="data-panel" class="panel" role="tabpanel" aria-labelledby="tab-data" hidden>
         <div class="section-heading">
           <div><h2>关系、配额与统计查询</h2><p class="muted">所有查询限定在选定的机器人与群作用域。</p></div>
         </div>
@@ -183,7 +190,7 @@
         </div>
       </section>
 
-      <section id="settings-panel" class="panel" hidden>
+      <section id="settings-panel" class="panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
         <div class="section-heading">
           <div>
             <h2>配置管理</h2>
@@ -204,9 +211,11 @@
             </div>
             <span id="dirty-indicator" class="status-pill">已保存</span>
           </div>
+          <fieldset id="config-controls" class="control-group">
           <div id="config-tabs" class="config-tabs" role="tablist" aria-label="配置主题"></div>
           <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
           <p id="editor-help" class="hint">每项可单独编辑；群配置可逐项选择继承全局或覆盖。草稿仅在保存后写入，并由服务端统一校验。</p>
+          </fieldset>
           <div class="actions">
             <button id="discard" class="button secondary" type="button" disabled>放弃草稿</button>
             <div class="action-end">

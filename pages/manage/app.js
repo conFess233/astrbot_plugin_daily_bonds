@@ -20,18 +20,22 @@ async function withProgress(request) {
 }
 
 const state = {
-  context: null,
   scopes: [],
   scopeId: "global",
   savedConfig: null,
   globalConfig: null,
   savedOverride: {},
+  templateFields: {},
   savedSignature: "",
   configGroup: "enabled",
   revision: 0,
   globalRevision: 0,
   busy: false,
   characters: [],
+  characterOffset: 0,
+  characterTotal: 0,
+  catalogBusy: false,
+  catalogSyncBusy: false,
   pools: [],
   characterRevision: 0,
   characterImages: [],
@@ -72,6 +76,10 @@ const configTabs = $("#config-tabs");
 const scopeSelect = $("#scope-select");
 const notice = $("#notice");
 const imagePreviewCache = new Map();
+let configLoadSequence = 0;
+let catalogLoadSequence = 0;
+let characterLoadSequence = 0;
+let searchTimer;
 
 function showNotice(message, kind = "success") {
   const item = document.createElement("div");
@@ -92,6 +100,7 @@ function showNotice(message, kind = "success") {
 
 function setBusy(value) {
   state.busy = value;
+  $("#config-controls").disabled = value;
   for (const button of [$("#refresh"), $("#discard"), $("#preview"), $("#save"), scopeSelect]) {
     button.disabled = value || (button.id === "discard" && !isConfigDirty());
   }
@@ -169,7 +178,8 @@ const CONFIG_GROUPS = {
   "modes.member": "娶群友", statistics: "统计", weights: "抽取权重",
   display: "展示与排行", members: "群成员缓存", history: "历史记录", resources: "资源限制",
   "messages.results": "群内操作结果", "messages.errors": "群内错误提示",
-  "messages.notifications": "赠送与重启通知",
+  "messages.notifications": "赠送与重启通知", "messages.titles": "标题与统计标签",
+  "reply_quote.results": "结果回复引用", "reply_quote.errors": "错误回复引用",
 };
 const MESSAGE_LABELS = {
   draw_wife: "抽到老婆", draw_husband: "抽到老公", draw_member: "抽到群友",
@@ -196,26 +206,37 @@ const MESSAGE_LABELS = {
   rank_activity_disabled: "活跃度排行关闭", activity_disabled: "活跃度统计关闭",
   page_out_of_range: "页码超出范围", list_empty: "关系列表为空",
   restart_invalidated: "重启后邀请失效",
+  steal_slot_full: "抢夺槽位已满", relationship_locked: "受保护关系不可操作",
+  steal_slot_locked: "目标关系不可被抢", capacity_full_single_wife: "已有老婆",
+  capacity_full_single_husband: "已有老公", designated_wife: "指定老婆成功",
+  designated_husband: "指定老公成功", designated_disabled: "指定抽取关闭",
+  designated_slot_full: "指定槽位已满", no_designated_quota: "指定次数用完",
+  designated_occupied: "指定角色已被持有", designated_drawn: "指定抽取成功",
+  designated_relationship_locked: "指定关系不可操作", designated_missing: "未找到指定角色",
+  designated_ambiguous: "指定角色有多个匹配", affection_target_required: "好感度查询目标无效",
+  list_wife: "老婆列表回复", list_husband: "老公列表回复", list_member: "群友列表回复",
+  rank_intimacy: "亲密度排行回复", rank_activity: "活跃度排行回复", query_affection: "好感度查询回复",
+  member_reconcile: "成员资格变化通知", member_redraw: "群友离开补抽说明",
+  owner_ineligible: "持有人失去资格说明", participant_ineligible: "赠送参与者失去资格说明",
 };
-const MESSAGE_VARIABLES = {
-  draw_wife: "name", draw_husband: "name", draw_member: "name",
-  capacity_full: "names", invite_created: "invite_id、accept_keyword",
-  invite_already_pending: "invite_id", invite_limit: "limit",
-  unknown_result: "code", syntax_error: "detail", operation_error: "detail",
-  command_cooldown: "remaining_seconds",
-  page_out_of_range: "pages", list_empty: "title",
-  restart_invalidated: "amount", invite_expired: "invite_ids",
+const TITLE_LABELS = {
+  list_wife: "老婆列表标题", list_husband: "老公列表标题", list_member: "群友列表标题",
+  existing: "已有关系标题", rank_intimacy: "个人亲密度排行标题",
+  rank_group_intimacy: "全群亲密度排行标题", rank_activity: "活跃度排行标题",
+  query_affection: "好感度查询标题", page: "分页标题", empty: "空榜文案",
+  rank_summary: "排行摘要", intimacy_value: "亲密度数值标签", activity_value: "活跃度数值标签",
+  affection_value: "有向好感度标签", normal_slot: "普通槽位标签", steal_slot: "抢夺槽位标签",
+  designated_slot: "指定槽位标签", wife: "老婆玩法名称", husband: "老公玩法名称", member: "群友玩法名称",
 };
-const MESSAGE_REQUIRED = new Set([
-  "draw_wife", "draw_husband", "draw_member", "capacity_full",
-  "invite_created", "page_out_of_range", "invite_expired",
-]);
 const CONFIG_LABELS = {
   schema_version: "配置格式版本", enabled: "启用", mode: "名单模式", ids: "名单 ID",
   extra_bot_ids: "补充机器人 QQ 号", timezone: "时区", time: "重置时间",
   allow_bare: "允许裸关键词", allow_leading_bot_mention: "允许开头 @机器人",
   allow_host_prefix: "允许宿主命令前缀", extra_prefixes: "额外命令前缀",
   cooldown_seconds: "通用冷却（秒）", capacity: "每日容量", steal_enabled: "允许抢夺",
+  designated_capacity: "每周期指定次数与槽位上限", designated_unique: "指定角色只能拥有一段关系",
+  steal_slot_capacity: "每日抢夺槽位数量", rank_merge_rows: "小排行合并行数上限",
+  rank_max_height: "排行图片最大高度（像素）",
   steal_attempt_limit: "抢夺尝试次数上限", steal_cooldown_seconds: "抢夺冷却（秒）",
   steal_probability: "抢夺成功率（%）", stolen_limit: "被抢次数上限",
   gift_enabled: "允许赠送", gift_mode: "赠送方式", gift_timeout_seconds: "赠送确认超时（秒）",
@@ -243,9 +264,9 @@ const CONFIG_LABELS = {
   steal_wife: "抢老婆", steal_husband: "抢老公", steal_member: "抢群友",
   gift_wife: "送老婆", gift_husband: "送老公", gift_member: "送群友",
   divorce_character: "离婚", divorce_wife: "离婚老婆", divorce_husband: "离婚老公",
-  divorce_member: "踹群友", list_characters: "老婆列表", list_members: "群友列表",
+  divorce_member: "踹群友", list_characters: "老婆列表", list_husband: "老公列表", list_members: "群友列表",
   rank_intimacy: "亲密度排行", rank_activity: "活跃度排行",
-  gift_accept: "接受赠送", gift_reject: "拒绝赠送", gift_cancel: "取消赠送",
+  gift_accept: "接受赠送", gift_reject: "拒绝赠送", gift_cancel: "取消赠送", query_affection: "好感度查询",
 };
 const CONFIG_OPTIONS = {
   "access.groups.mode": [["unrestricted", "不限制"], ["blacklist", "黑名单"], ["whitelist", "白名单"]],
@@ -273,6 +294,15 @@ const CONFIG_HINTS = {
   "modes.husband.divorce_limit": "0 表示不限次数。",
   "modes.member.divorce_limit": "0 表示不限次数。",
   "reset.time": "使用 HH:mm 格式；旧周期结束后生效。",
+  "display.rank_merge_rows": "1～100；不超过此行数的小排行尝试合并为一张图片，仍受图片高度限制。",
+  "display.rank_max_height": "300～16000 像素；超过最大高度的排行拆分为多张图片。",
+  "modes.wife.designated_capacity": "0～100；0 关闭指定老婆。指定次数和槽位共用此上限，每周期重置；失败不扣次数，不占普通或抢夺槽位。",
+  "modes.husband.designated_capacity": "0～100；0 关闭指定老公。指定次数和槽位共用此上限，每周期重置；失败不扣次数，不占普通或抢夺槽位。",
+  "modes.wife.designated_unique": "开启时，已有有效关系的角色不能再次指定；关闭允许同一人或多人重复指定。只影响后续指定，已有关系保留。",
+  "modes.husband.designated_unique": "开启时，已有有效关系的角色不能再次指定；关闭允许同一人或多人重复指定。只影响后续指定，已有关系保留。",
+  "modes.wife.steal_slot_capacity": "0～100；0 表示沿用普通持有容量，正数使用独立抢夺槽位。",
+  "modes.husband.steal_slot_capacity": "0～100；0 表示沿用普通持有容量，正数使用独立抢夺槽位。",
+  "modes.member.steal_slot_capacity": "0～100；0 表示沿用普通持有容量，正数使用独立抢夺槽位。",
 };
 
 function configAt(config, path) {
@@ -306,7 +336,7 @@ function configLeaves(config, prefix = "") {
 function configGroup(path) {
   if (path === "schema_version") return "enabled";
   const parts = path.split(".");
-  if (parts[0] === "messages") return parts.slice(0, 2).join(".");
+  if (["messages", "reply_quote"].includes(parts[0])) return parts.slice(0, 2).join(".");
   return parts[0] === "modes" ? parts.slice(0, 2).join(".") : parts[0];
 }
 
@@ -317,7 +347,8 @@ function configIsGlobalOnly(path) {
 
 function configLabel(path) {
   const parts = path.split(".");
-  if (parts[0] === "messages") return MESSAGE_LABELS[parts.at(-1)] || parts.at(-1);
+  if (parts[0] === "reply_quote") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}引用消息源`;
+  if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
   if (parts[0] === "commands" && parts[1] === "keywords") return `${name}关键词`;
   if (path === "access.groups.mode") return "群准入模式";
@@ -386,6 +417,16 @@ function refreshPoolPickers() {
   }
 }
 
+function templateHint(path) {
+  const fields = state.templateFields[path];
+  if (!fields) return "最多 1000 字符；模板变量由服务端校验。使用 {{ 和 }} 表示大括号。";
+  const allowed = fields.allowed.map((name) => `{${name}}`).join("、") || "无";
+  const required = fields.required.length ? `必填：${fields.required.map((name) => `{${name}}`).join("、")}。` : "";
+  const image = fields.image ? "使用 {image} 选择图片位置，不填写则只发送文字。" : "";
+  const replacement = fields.image && fields.required.length ? "含 {image} 时可省略上述必填变量。" : "";
+  return `最多 1000 字符；可用变量：${allowed}。${required}${replacement}${image}使用 {{ 和 }} 表示大括号。`;
+}
+
 function renderConfigFields() {
   configFields.replaceChildren();
   configTabs.replaceChildren();
@@ -437,7 +478,7 @@ function renderConfigFields() {
     } else if (path.startsWith("messages.")) {
       input = document.createElement("textarea");
       input.rows = 3;
-      input.maxLength = 500;
+      input.maxLength = 1000;
       input.value = value;
     } else if (typeof value === "boolean") {
       input = document.createElement("input");
@@ -453,7 +494,9 @@ function renderConfigFields() {
       input.type = typeof value === "number" ? "number" : path === "reset.time" ? "time" : "text";
       input.value = path.endsWith(".steal_probability") ? String(value * 100) : String(value);
       if (input.type === "number") input.step = Number.isInteger(value) && !FLOAT_CONFIG_PATHS.has(path) && !path.endsWith(".steal_probability") ? "1" : "any";
-      if (path.endsWith(".steal_probability")) { input.min = "0"; input.max = "100"; }
+      if (path.endsWith(".steal_probability") || path.endsWith(".designated_capacity") || path.endsWith(".steal_slot_capacity")) { input.min = "0"; input.max = "100"; }
+      if (path === "display.rank_merge_rows") { input.min = "1"; input.max = "100"; }
+      if (path === "display.rank_max_height") { input.min = "300"; input.max = "16000"; }
     }
     input.dataset.configPath = path;
     input.setAttribute("aria-label", configLabel(path));
@@ -504,9 +547,9 @@ function renderConfigFields() {
       card.append(badge);
     }
     if (isPoolConfig(path)) renderPoolPicker(card, input);
-    const variableNames = MESSAGE_VARIABLES[path.split(".").at(-1)];
     const hint = CONFIG_HINTS[path] ||
-      (path.startsWith("messages.") ? `最多 500 字；${MESSAGE_REQUIRED.has(path.split(".").at(-1)) ? "必填变量" : "可用变量"}：${variableNames || "无"}。使用 {{ 和 }} 表示大括号。` :
+      (path.startsWith("messages.") ? templateHint(path) :
+      path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
       path.startsWith("commands.keywords.") ? "每行一个别名，至少一项。" : "");
     if (hint) {
       const help = document.createElement("small");
@@ -584,8 +627,10 @@ function showConfigError(message) {
   error.textContent = message;
   error.hidden = false;
   selectConfigGroup(configGroup(path));
-  if (isPoolConfig(path)) input.closest(".config-field").querySelector('.pool-picker input:not(:disabled)')?.focus();
-  else input.focus();
+  queueMicrotask(() => {
+    if (isPoolConfig(path)) input.closest(".config-field").querySelector('.pool-picker input:not(:disabled)')?.focus();
+    else input.focus();
+  });
 }
 
 async function describeConfigConflict() {
@@ -640,15 +685,20 @@ async function loadOverview() {
     : "当前未选择群，或该群还没有已创建的周期。";
 }
 
-async function loadConfig() {
-  const params = state.scopeId === "global" ? {} : { scope_id: state.scopeId };
+async function loadConfig(scopeId = state.scopeId) {
+  const sequence = ++configLoadSequence;
+  const params = scopeId === "global" ? {} : { scope_id: scopeId };
   const result = await apiGet("config", params);
+  if (sequence !== configLoadSequence) return;
+  state.scopeId = scopeId;
+  scopeSelect.value = scopeId;
   state.globalRevision = result.revision.global;
   state.revision = state.scopeId === "global" ? result.revision.global : result.revision.scope;
   const shown = state.scopeId === "global" ? result.data.global : result.data.effective;
   state.savedConfig = structuredClone(shown);
   state.globalConfig = structuredClone(result.data.global);
   state.savedOverride = structuredClone(result.data.override || {});
+  state.templateFields = result.data.template_fields || {};
   renderConfigFields();
   state.savedSignature = configSignature();
   $("#revision").textContent = `全局版本 ${state.globalRevision} · 当前范围版本 ${state.revision}`;
@@ -657,12 +707,14 @@ async function loadConfig() {
 }
 
 async function refreshAll() {
+  if (state.busy) return;
   setBusy(true);
   notice.replaceChildren();
   try {
     await loadScopes();
     await loadOverview();
     state.pools = (await apiGet("pools")).data;
+    renderPools();
     await loadConfig();
     showNotice("数据已刷新。", "success");
   } catch (error) {
@@ -685,6 +737,7 @@ function readDraft() {
 }
 
 async function previewDraft() {
+  if (state.busy) return;
   setBusy(true);
   try {
     const result = await apiPost("config/preview", {
@@ -708,6 +761,7 @@ async function previewDraft() {
 }
 
 async function saveDraft() {
+  if (state.busy) return;
   setBusy(true);
   try {
     const result = await apiPost("config/save", {
@@ -737,12 +791,27 @@ async function saveDraft() {
 $(".tabs").addEventListener("click", (event) => {
   const tab = event.target.closest("button[data-tab]");
   if (!tab) return;
-  for (const button of document.querySelectorAll(".tab")) button.classList.toggle("active", button === tab);
+  for (const button of document.querySelectorAll(".tab")) {
+    const selected = button === tab;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+  }
   $("#overview-panel").hidden = tab.dataset.tab !== "overview";
   $("#settings-panel").hidden = tab.dataset.tab !== "settings";
   $("#catalog-panel").hidden = tab.dataset.tab !== "catalog";
   $("#data-panel").hidden = tab.dataset.tab !== "data";
   if (tab.dataset.tab === "catalog") loadCatalog().catch((error) => showNotice(error.message, "error"));
+});
+$(".tabs").addEventListener("keydown", (event) => {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+  const tabs = [...document.querySelectorAll(".tab")];
+  const current = tabs.indexOf(event.target);
+  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 :
+    (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+  event.preventDefault();
+  tabs[next].click();
+  tabs[next].focus();
 });
 configTabs.addEventListener("click", (event) => {
   const tab = event.target.closest("button[data-config-group]");
@@ -777,12 +846,22 @@ configFields.addEventListener("input", (event) => {
 });
 configFields.addEventListener("change", updateDirtyState);
 scopeSelect.addEventListener("change", async () => {
+  if (state.busy) { scopeSelect.value = state.scopeId; return; }
   if (isConfigDirty() && !window.confirm("当前草稿尚未保存。切换范围并放弃草稿吗？")) {
     scopeSelect.value = state.scopeId;
     return;
   }
-  state.scopeId = scopeSelect.value;
-  await loadConfig();
+  const nextScope = scopeSelect.value;
+  setBusy(true);
+  try {
+    await loadConfig(nextScope);
+  } catch (error) {
+    scopeSelect.value = state.scopeId;
+    showNotice(error.message || "切换范围失败，已保留原配置。", "error");
+  } finally {
+    setBusy(false);
+    updateDirtyState();
+  }
 });
 window.addEventListener("beforeunload", (event) => {
   if (isConfigDirty()) {
@@ -791,9 +870,8 @@ window.addEventListener("beforeunload", (event) => {
   }
 });
 
-state.context = await bridge.ready();
-bridge.onContext((context) => {
-  state.context = context;
+await bridge.ready();
+bridge.onContext(() => {
   document.title = bridge.t("pages.manage.title", "今日姻缘 · 管理");
 });
 await refreshAll();
@@ -849,7 +927,7 @@ function renderCatalogSync(plan) {
 
 function updateCatalogSyncSelection() {
   const count = $("#catalog-sync-items").querySelectorAll("input:checked").length;
-  $("#catalog-sync-commit").disabled = count === 0;
+  $("#catalog-sync-commit").disabled = state.catalogSyncBusy || count === 0;
   $("#catalog-sync-commit").textContent = count ? `同步所选 ${count} 项` : "同步所选项目";
 }
 
@@ -891,10 +969,11 @@ for (const [id, predicate] of [
 }
 $("#catalog-sync-commit").addEventListener("click", async () => {
   const plan = state.catalogSyncPlan;
-  if (!plan) return;
+  if (!plan || state.catalogSyncBusy) return;
   const chosen = [...$("#catalog-sync-items").querySelectorAll("input:checked")];
   const characters = chosen.filter((input) => input.dataset.kind === "character").map((input) => input.dataset.id);
   const pools = chosen.filter((input) => input.dataset.kind === "pool").map((input) => input.dataset.id);
+  state.catalogSyncBusy = true;
   $("#catalog-sync-commit").disabled = true;
   try {
     const result = await apiPost("catalog-sync/commit", { preview_id: plan.preview_id, characters, pools });
@@ -903,11 +982,13 @@ $("#catalog-sync-commit").addEventListener("click", async () => {
     await checkCatalogSync(true);
   } catch (error) {
     showNotice(error.message || "同步失败，未写入所选项目。", "error");
+  } finally {
+    state.catalogSyncBusy = false;
     updateCatalogSyncSelection();
   }
 });
 
-function renderCatalog() {
+function renderCharacters() {
   const characters = $("#character-list");
   characters.replaceChildren();
   for (const item of state.characters) {
@@ -918,6 +999,21 @@ function renderCatalog() {
     button.addEventListener("click", () => loadCharacter(item.id).catch((error) => showNotice(error.message, "error")));
     characters.append(button);
   }
+  if (!state.characters.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = $("#character-search").value.trim() ? "没有匹配的角色。" : "暂无角色，可新建、同步仓库或导入角色包。";
+    characters.append(empty);
+  }
+  const start = state.characterTotal ? state.characterOffset + 1 : 0;
+  $("#character-page").textContent = `${start}–${state.characterOffset + state.characters.length} / ${state.characterTotal}`;
+  $("#character-prev").disabled = state.characterOffset === 0;
+  $("#character-next").disabled = state.characterOffset + state.characters.length >= state.characterTotal;
+}
+
+function renderPools() {
+  const selectedPools = new Set([...$("#character-pools").querySelectorAll("input:checked")].map((input) => input.value));
+  const selectedExport = new Set([...$("#export-pools").selectedOptions].map((option) => option.value));
   const pools = $("#pool-list");
   pools.replaceChildren();
   const exportPools = $("#export-pools");
@@ -929,7 +1025,7 @@ function renderCatalog() {
     button.textContent = `${pool.name} · ${pool.mode} · ${pool.character_count}`;
     button.addEventListener("click", () => editPool(pool));
     pools.append(button);
-    exportPools.add(new Option(`${pool.name} · ${pool.mode} · ${pool.character_count}`, pool.id));
+    exportPools.add(new Option(`${pool.name} · ${pool.mode} · ${pool.character_count}`, pool.id, false, selectedExport.has(pool.id)));
   }
   const poolChecks = $("#character-pools");
   poolChecks.replaceChildren();
@@ -940,27 +1036,40 @@ function renderCatalog() {
     input.type = "checkbox";
     input.value = pool.id;
     input.dataset.mode = pool.mode;
+    input.checked = selectedPools.has(pool.id);
     const text = document.createTextNode(`${pool.name} (${pool.mode})`);
     label.append(input, text);
     poolChecks.append(label);
   }
-  renderCharacterImages();
 }
 
-async function loadCatalog() {
+async function loadCatalog({ refreshPools = true } = {}) {
+  const sequence = ++catalogLoadSequence;
   const query = $("#character-search").value.trim();
+  const offset = state.characterOffset;
   const [characters, pools] = await Promise.all([
-    apiGet("characters", { q: query, limit: 100 }),
-    apiGet("pools"),
+    apiGet("characters", { q: query, limit: 100, offset }),
+    refreshPools ? apiGet("pools") : Promise.resolve(null),
   ]);
+  if (sequence !== catalogLoadSequence) return;
+  if (offset && !characters.data.items.length && characters.data.total <= offset) {
+    state.characterOffset = Math.max(0, Math.floor((characters.data.total - 1) / 100) * 100);
+    return loadCatalog({ refreshPools });
+  }
   state.characters = characters.data.items;
-  state.pools = pools.data;
-  renderCatalog();
-  refreshPoolPickers();
+  state.characterTotal = characters.data.total;
+  renderCharacters();
+  if (pools) {
+    state.pools = pools.data;
+    renderPools();
+    refreshPoolPickers();
+  }
 }
 
-async function loadCharacter(id) {
+async function loadCharacter(id, afterSave = false) {
+  const sequence = ++characterLoadSequence;
   const response = await apiGet("character", { id });
+  if (sequence !== characterLoadSequence || (state.catalogBusy && !afterSave)) return;
   const item = response.data;
   $("#character-form-title").textContent = `编辑角色 · ${item.name}`;
   $("#character-id").value = item.id;
@@ -980,6 +1089,7 @@ async function loadCharacter(id) {
 }
 
 function newCharacter() {
+  characterLoadSequence += 1;
   $("#character-form-title").textContent = "新建角色";
   $("#character-id").readOnly = false;
   $("#character-id").value = "";
@@ -1055,7 +1165,7 @@ $("#image-preview").addEventListener("close", () => {
   $("#image-preview-content").removeAttribute("src");
 });
 
-$("#character-image").addEventListener("change", async (event) => {
+$("#character-image").addEventListener("change", (event) => withCatalogWrite(async () => {
   const file = event.target.files?.[0];
   if (!file) return;
   try {
@@ -1069,9 +1179,22 @@ $("#character-image").addEventListener("change", async (event) => {
   } finally {
     event.target.value = "";
   }
-});
+}));
 
-$("#save-character").addEventListener("click", async () => {
+async function withCatalogWrite(action) {
+  if (state.catalogBusy) return;
+  state.catalogBusy = true;
+  characterLoadSequence += 1;
+  $("#catalog-controls").disabled = true;
+  try {
+    await action();
+  } finally {
+    state.catalogBusy = false;
+    $("#catalog-controls").disabled = false;
+  }
+}
+
+$("#save-character").addEventListener("click", () => withCatalogWrite(async () => {
   const poolIds = [...$("#character-pools").querySelectorAll("input:checked")].map((item) => item.value);
   try {
     const result = await apiPost("characters/save", {
@@ -1083,9 +1206,9 @@ $("#save-character").addEventListener("click", async () => {
     });
     showNotice(`角色已保存，版本 ${result.data.revision}`, "success");
     await loadCatalog();
-    await loadCharacter(result.data.id);
+    await loadCharacter(result.data.id, true);
   } catch (error) { showNotice(error.message || "角色保存失败。", "error"); }
-});
+}));
 
 async function removeCatalogItem(kind, id, endpoint) {
   const preview = await apiPost(`${endpoint}/delete-preview`, { id });
@@ -1100,10 +1223,10 @@ async function removeCatalogItem(kind, id, endpoint) {
   await loadCatalog();
 }
 
-$("#delete-character").addEventListener("click", async () => {
+$("#delete-character").addEventListener("click", () => withCatalogWrite(async () => {
   try { await removeCatalogItem("character", $("#character-id").value, "characters"); }
   catch (error) { showNotice(error.message || "删除失败。", "error"); }
-});
+}));
 
 function newPool() {
   $("#pool-id").readOnly = false;
@@ -1123,14 +1246,11 @@ function editPool(pool) {
   state.poolRevision = pool.revision;
   $("#pool-revision").textContent = `版本 ${pool.revision} · ${pool.character_count} 个角色`;
   $("#delete-pool").disabled = false;
-  state.editingPoolCharacters = pool.character_ids ? pool.character_ids.split(String.fromCharCode(31)) : [];
 }
 
-$("#save-pool").addEventListener("click", async () => {
+$("#save-pool").addEventListener("click", () => withCatalogWrite(async () => {
   try {
     const mode = $("#pool-mode").value;
-    const expectedGender = mode === "wife" ? "female" : "male";
-    const characters = state.characters.filter((item) => item.gender === expectedGender || item.gender === "unspecified");
     const current = state.pools.find((item) => item.id === $("#pool-id").value);
     const existing = current?.character_ids ? current.character_ids.split(String.fromCharCode(31)) : [];
     const result = await apiPost("pools/save", {
@@ -1142,16 +1262,35 @@ $("#save-pool").addEventListener("click", async () => {
     await loadCatalog();
     editPool(state.pools.find((item) => item.id === result.data.id));
   } catch (error) { showNotice(error.message || "角色池保存失败。", "error"); }
-});
+}));
 
-$("#delete-pool").addEventListener("click", async () => {
+$("#delete-pool").addEventListener("click", () => withCatalogWrite(async () => {
   try { await removeCatalogItem("pool", $("#pool-id").value, "pools"); }
   catch (error) { showNotice(error.message || "删除失败。", "error"); }
-});
+}));
 $("#new-character").addEventListener("click", newCharacter);
 $("#new-pool")?.addEventListener("click", newPool);
 $("#catalog-refresh").addEventListener("click", () => loadCatalog().catch((error) => showNotice(error.message, "error")));
-$("#character-search").addEventListener("input", () => loadCatalog().catch((error) => showNotice(error.message, "error")));
+$("#character-search").addEventListener("input", () => {
+  window.clearTimeout(searchTimer);
+  catalogLoadSequence += 1;
+  state.characterOffset = 0;
+  searchTimer = window.setTimeout(() => loadCatalog({ refreshPools: false })
+    .catch((error) => showNotice(error.message || "角色搜索失败。", "error")), 250);
+});
+for (const [id, direction] of [["character-prev", -1], ["character-next", 1]]) {
+  $("#" + id).addEventListener("click", () => {
+    const previousOffset = state.characterOffset;
+    state.characterOffset = Math.max(0, previousOffset + direction * 100);
+    $("#character-prev").disabled = true;
+    $("#character-next").disabled = true;
+    loadCatalog({ refreshPools: false }).catch((error) => {
+      state.characterOffset = previousOffset;
+      renderCharacters();
+      showNotice(error.message || "读取角色列表失败。", "error");
+    });
+  });
+}
 
 document.querySelectorAll("button[data-query]").forEach((button) => button.addEventListener("click", async () => {
   const scopeId = $("#data-scope").value;
@@ -1257,9 +1396,9 @@ function periodResetSummary(plan) {
   const scope = state.scopes.find((item) => String(item.id) === String(plan.scope_id));
   const group = scope ? `群 ${scope.group_id}` : `群作用域 ${plan.scope_id}`;
   if (plan.action === "period_reset_relations") {
-    return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将结束 ${plan.before.active_relationships} 段关系（普通 ${plan.before.normal_relationships}，抢夺槽位 ${plan.before.steal_slot_relationships}）。\n保留 ${plan.before.pending_invites_retained} 个待处理赠送、每日计数、补抽资格、历史和统计。`;
+    return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将结束 ${plan.before.active_relationships} 段关系（普通 ${plan.before.normal_relationships}，抢夺槽位 ${plan.before.steal_slot_relationships}，指定槽位 ${plan.before.designated_relationships || 0}）。\n保留 ${plan.before.pending_invites_retained} 个待处理赠送、每日计数、补抽资格、历史和统计。`;
   }
-  return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将清零 ${plan.before.counter_rows} 条每日计数记录。\n保留关系、补抽资格、待处理赠送、历史和统计。`;
+  return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将清零 ${plan.before.counter_rows} 条每日计数记录（含普通抽取、指定抽取与抢夺计数）。\n保留关系、补抽资格、待处理赠送、历史和统计。`;
 }
 
 async function previewPeriodReset(action) {
@@ -1537,7 +1676,7 @@ $("#restore-commit").addEventListener("click", async () => {
   try {
     const response = await apiPost("restore/commit", {
       job_id: plan.job_id, expected_revision: plan.expected_revision, confirm: true,
-      scope_mapping, request_id: crypto.randomUUID(),
+      scope_mapping, request_id: plan.request_id ??= crypto.randomUUID(),
     });
     const data = response.data || response;
     state.restorePlan = null;

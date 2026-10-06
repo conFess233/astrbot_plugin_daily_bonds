@@ -8,7 +8,7 @@ import secrets
 import sqlite3
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Sequence
+from typing import Any, Sequence
 
 from ..models import Mode, StorageError
 from .storage import SQLiteStorage
@@ -69,11 +69,24 @@ class GameplayService:
             replay = self._replay(db, scope_id, event_key, payload_hash)
             if replay:
                 return replay
-            period = self._current_period(db, scope_id, period_id)
+            self._current_period(db, scope_id, period_id)
             active = self._owner_relationships(db, scope_id, period_id, mode, owner_id)
             if len(active) >= capacity:
                 result = BusinessResult("CAPACITY_FULL", {"relationships": active})
-                self._record(db, operation_id, scope_id, period_id, mode, owner_id, "draw", result, config_revision, now, event_key, payload_hash)
+                self._record(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    owner_id,
+                    "draw",
+                    result,
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
                 return result
 
             credit = db.execute(
@@ -83,14 +96,44 @@ class GameplayService:
             ).fetchone()
             counter = self._counter(db, scope_id, period_id, mode, owner_id)
             if credit is None and int(counter["normal_draws"]) >= capacity:
-                result = BusinessResult("NO_DRAW_QUOTA", {"held": len(active), "capacity": capacity})
-                self._record(db, operation_id, scope_id, period_id, mode, owner_id, "draw", result, config_revision, now, event_key, payload_hash)
+                result = BusinessResult(
+                    "NO_DRAW_QUOTA", {"held": len(active), "capacity": capacity}
+                )
+                self._record(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    owner_id,
+                    "draw",
+                    result,
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
                 return result
 
-            available = self._valid_candidates(db, scope_id, period_id, mode, owner_id, candidates, pool_ids)
+            available = self._valid_candidates(
+                db, scope_id, period_id, mode, owner_id, candidates, pool_ids
+            )
             if not available:
                 result = BusinessResult("NO_CANDIDATE", {})
-                self._record(db, operation_id, scope_id, period_id, mode, owner_id, "draw", result, config_revision, now, event_key, payload_hash)
+                self._record(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    owner_id,
+                    "draw",
+                    result,
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
                 return result
             intimacy: dict[str, int] = {}
             activity: dict[str, int] = {}
@@ -110,10 +153,23 @@ class GameplayService:
                         f"""SELECT user_id,SUM(message_count) AS messages FROM activity_seconds
                             WHERE scope_id=? AND user_id IN ({marks}) AND observed_second>? AND observed_second<=?
                             GROUP BY user_id""",
-                        (scope_id, *subject_ids, now - activity_window_days * 86400, now),
+                        (
+                            scope_id,
+                            *subject_ids,
+                            now - activity_window_days * 86400,
+                            now,
+                        ),
                     ).fetchall()
                 }
-            picked = self._pick(available, mode, owner_id, intimacy, activity, weights or {}, activity_full_messages)
+            picked = self._pick(
+                available,
+                mode,
+                owner_id,
+                intimacy,
+                activity,
+                weights or {},
+                activity_full_messages,
+            )
             snapshot_id = self._snapshot(db, picked, now)
             relationship_id = self.storage.create_relationship(
                 scope_id=scope_id,
@@ -136,9 +192,145 @@ class GameplayService:
                     "UPDATE daily_counters SET normal_draws=normal_draws+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
                     (scope_id, period_id, mode, owner_id),
                 )
-            result = BusinessResult("DRAWN", {"relationship_id": relationship_id, "candidate": _candidate_dict(picked), "credit_id": credit["id"] if credit else None})
-            self._record(db, operation_id, scope_id, period_id, mode, owner_id, "draw", result, config_revision, now, event_key, payload_hash)
+            result = BusinessResult(
+                "DRAWN",
+                {
+                    "relationship_id": relationship_id,
+                    "candidate": _candidate_dict(picked),
+                    "credit_id": credit["id"] if credit else None,
+                },
+            )
+            self._record(
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                mode,
+                owner_id,
+                "draw",
+                result,
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
+            )
             return result
+
+    def draw_designated(
+        self,
+        *,
+        scope_id: int,
+        period_id: str,
+        mode: Mode,
+        owner_id: str,
+        candidates: Sequence[Candidate],
+        capacity: int,
+        pool_ids: Sequence[str] = (),
+        unique: bool = True,
+        operation_id: str | None = None,
+        event_key: str | None = None,
+        payload_hash: str = "",
+        config_revision: str = "",
+        now: int,
+    ) -> BusinessResult:
+        """指定角色独立占用槽位和成功次数，不消耗普通抽取或补抽资格。"""
+
+        if (
+            mode not in {"wife", "husband"}
+            or isinstance(capacity, bool)
+            or not isinstance(capacity, int)
+            or not 0 <= capacity <= 100
+            or not isinstance(unique, bool)
+        ):
+            raise ValueError("指定玩法、容量或独占开关无效。")
+        if len(candidates) != 1:
+            raise ValueError("指定抽取必须先解析为唯一角色。")
+        operation_id = operation_id or str(uuid.uuid4())
+        with self.storage.transaction() as db:
+            replay = self._replay(db, scope_id, event_key, payload_hash)
+            if replay:
+                return replay
+            self._current_period(db, scope_id, period_id)
+            code, data = "DESIGNATED_DRAWN", {}
+            active = self._owner_relationships(
+                db, scope_id, period_id, mode, owner_id, "designated"
+            )
+            counter = self._counter(db, scope_id, period_id, mode, owner_id)
+            if capacity == 0:
+                code = "DESIGNATED_DISABLED"
+            elif len(active) >= capacity:
+                code, data = (
+                    "DESIGNATED_SLOT_FULL",
+                    {"relationships": active, "capacity": capacity},
+                )
+            elif int(counter["designated_draws"]) >= capacity:
+                code, data = "NO_DESIGNATED_QUOTA", {"capacity": capacity}
+            else:
+                available = self._valid_candidates(
+                    db,
+                    scope_id,
+                    period_id,
+                    mode,
+                    owner_id,
+                    candidates,
+                    pool_ids,
+                    require_unoccupied=False,
+                )
+                if not available:
+                    code = "NO_CANDIDATE"
+                else:
+                    picked = available[0]
+                    occupied = (
+                        unique
+                        and db.execute(
+                            "SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND subject_id=? AND state='active' LIMIT 1",
+                            (scope_id, period_id, mode, picked.subject_id),
+                        ).fetchone()
+                        is not None
+                    )
+                    if occupied:
+                        code, data = (
+                            "DESIGNATED_OCCUPIED",
+                            {"name": picked.name, "subject_id": picked.subject_id},
+                        )
+                    else:
+                        snapshot_id = self._snapshot(db, picked, now)
+                        relationship_id = self.storage.create_relationship(
+                            scope_id=scope_id,
+                            period_id=period_id,
+                            mode=mode,
+                            owner_id=owner_id,
+                            subject_kind=picked.subject_kind,
+                            subject_id=picked.subject_id,
+                            snapshot_id=snapshot_id,
+                            capacity=capacity,
+                            now=now,
+                            slot_kind="designated",
+                        )
+                        db.execute(
+                            "UPDATE daily_counters SET designated_draws=designated_draws+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+                            (scope_id, period_id, mode, owner_id),
+                        )
+                        data = {
+                            "relationship_id": relationship_id,
+                            "candidate": _candidate_dict(picked),
+                            "slot_kind": "designated",
+                        }
+            return self._record_result(
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                mode,
+                owner_id,
+                "draw_designated",
+                code,
+                data,
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
+            )
 
     def steal(
         self,
@@ -472,6 +664,8 @@ class GameplayService:
         owner_id: str,
         candidates: Sequence[Candidate],
         allowed_pool_ids: Sequence[str],
+        *,
+        require_unoccupied: bool = True,
     ) -> list[Candidate]:
         output: list[Candidate] = []
         seen: set[str] = set()
@@ -480,7 +674,10 @@ class GameplayService:
                 continue
             seen.add(candidate.subject_id)
             if mode == "member":
-                if candidate.subject_kind != "member" or candidate.subject_id == owner_id:
+                if (
+                    candidate.subject_kind != "member"
+                    or candidate.subject_id == owner_id
+                ):
                     continue
                 member = db.execute(
                     "SELECT nickname,card,is_present,is_known_bot FROM members WHERE scope_id=? AND user_id=?",
@@ -502,8 +699,15 @@ class GameplayService:
                     continue
                 if not allowed_pool_ids:
                     continue
-                character = db.execute("SELECT name,aliases_json,gender,enabled,deleted_at,revision FROM characters WHERE id=?", (candidate.subject_id,)).fetchone()
-                if character is None or not character["enabled"] or character["deleted_at"] is not None:
+                character = db.execute(
+                    "SELECT name,aliases_json,gender,enabled,deleted_at,revision FROM characters WHERE id=?",
+                    (candidate.subject_id,),
+                ).fetchone()
+                if (
+                    character is None
+                    or not character["enabled"]
+                    or character["deleted_at"] is not None
+                ):
                     continue
                 pool_marks = ",".join("?" for _ in allowed_pool_ids)
                 pool_match = db.execute(
@@ -514,21 +718,33 @@ class GameplayService:
                 ).fetchone()
                 if pool_match is None:
                     continue
-                active_images = {row["media_hash"] for row in db.execute(
-                    """SELECT ci.media_hash FROM character_images ci JOIN media_blobs mb ON mb.hash=ci.media_hash
-                       WHERE ci.character_id=?""", (candidate.subject_id,)
-                ).fetchall()}
+                active_images = {
+                    row["media_hash"]
+                    for row in db.execute(
+                        """SELECT ci.media_hash FROM character_images ci JOIN media_blobs mb ON mb.hash=ci.media_hash
+                       WHERE ci.character_id=?""",
+                        (candidate.subject_id,),
+                    ).fetchall()
+                }
                 candidate = Candidate(
-                    candidate.subject_id, "character", character["name"], tuple(json.loads(character["aliases_json"])),
-                    character["gender"], int(character["revision"]), tuple(sorted(active_images)),
+                    candidate.subject_id,
+                    "character",
+                    character["name"],
+                    tuple(json.loads(character["aliases_json"])),
+                    character["gender"],
+                    int(character["revision"]),
+                    tuple(sorted(active_images)),
                 )
                 if not candidate.image_hashes:
                     continue
-            occupied = db.execute(
-                "SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND subject_id=? AND state='active'",
-                (scope_id, period_id, mode, candidate.subject_id),
-            ).fetchone()
-            if occupied is None:
+            occupied = (
+                require_unoccupied
+                and db.execute(
+                    "SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND subject_id=? AND state='active'",
+                    (scope_id, period_id, mode, candidate.subject_id),
+                ).fetchone()
+            )
+            if not occupied:
                 output.append(candidate)
         return output
 
@@ -595,19 +811,34 @@ class GameplayService:
         return [dict(row) | {"aliases": json.loads(row["aliases_json"])} for row in rows]
 
     @staticmethod
-    def _locked_relationship(db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, owner_id: str, relationship_id: str | None, subject_id: str | None) -> bool:
+    def _locked_relationship(
+        db: sqlite3.Connection,
+        scope_id: int,
+        period_id: str,
+        mode: str,
+        owner_id: str,
+        relationship_id: str | None,
+        subject_id: str | None,
+    ) -> bool:
         if relationship_id is None and subject_id is None:
             qualifier = ""
             params = (scope_id, period_id, mode, owner_id)
         else:
-            column, value = ("id", relationship_id) if relationship_id is not None else ("subject_id", subject_id)
+            column, value = (
+                ("id", relationship_id)
+                if relationship_id is not None
+                else ("subject_id", subject_id)
+            )
             qualifier = f" AND {column}=?"
             params = (scope_id, period_id, mode, owner_id, value)
-        return db.execute(
-            f"""SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=?
-                AND slot_kind='steal' AND state='active'{qualifier} LIMIT 1""",
-            params,
-        ).fetchone() is not None
+        return (
+            db.execute(
+                f"""SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=?
+                AND slot_kind IN ('steal','designated') AND state='active'{qualifier} LIMIT 1""",
+                params,
+            ).fetchone()
+            is not None
+        )
 
     def _choose_owned(self, relations: Sequence[dict[str, Any]], relation_id: str | None, subject_id: str | None) -> dict[str, Any] | None:
         matches = [row for row in relations if (relation_id is None or row["id"] == relation_id) and (subject_id is None or row["subject_id"] == subject_id)]

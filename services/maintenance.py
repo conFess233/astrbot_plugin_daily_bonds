@@ -20,7 +20,6 @@ from typing import Any
 from ..models import StorageError
 from .storage import SQLiteStorage
 
-
 _BACKUP_FORMAT = "astrbot-daily-bonds-backup"
 _MAX_PATH = 512
 
@@ -125,44 +124,75 @@ class MaintenanceService:
             shutil.rmtree(stage, ignore_errors=True)
             raise
 
-    def commit_restore(self, payload: dict[str, Any], *, actor: str, now: int,
-                       keep_count: int = 10) -> dict[str, Any]:
+    def commit_restore(
+        self, payload: dict[str, Any], *, actor: str, now: int, keep_count: int = 10
+    ) -> dict[str, Any]:
         job_id = self._text(payload.get("job_id"), "job_id", 64)
         request_id = self._text(payload.get("request_id"), "request_id", 128)
         expected_revision = payload.get("expected_revision")
         if payload.get("confirm") is not True:
             raise ValueError("confirm must be true after reviewing the restore preview")
         scope_mapping = payload.get("scope_mapping", {})
-        if not isinstance(scope_mapping, dict) or any(not isinstance(key, str) for key in scope_mapping):
+        if not isinstance(scope_mapping, dict) or any(
+            not isinstance(key, str) for key in scope_mapping
+        ):
             raise ValueError("scope_mapping must be an object keyed by backup scope ID")
-        request_hash = hashlib.sha256(json.dumps({"job_id": job_id, "expected_revision": expected_revision,
-                                                  "confirm": True, "scope_mapping": scope_mapping},
-                                                  sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        request_hash = hashlib.sha256(
+            json.dumps(
+                {
+                    "job_id": job_id,
+                    "expected_revision": expected_revision,
+                    "confirm": True,
+                    "scope_mapping": scope_mapping,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode()
+        ).hexdigest()
         with self.storage.transaction() as db:
-            previous = db.execute("SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='restore/commit' AND request_id=?",
-                                  (actor, request_id)).fetchone()
+            previous = db.execute(
+                "SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='restore/commit' AND request_id=?",
+                (actor, request_id),
+            ).fetchone()
             if previous:
                 if previous["request_hash"] != request_hash:
                     raise StorageError("request_id was used for another restore")
                 return json.loads(previous["response_json"])
-            job = db.execute("SELECT * FROM maintenance_jobs WHERE id=? AND kind='restore' AND actor=?", (job_id, actor)).fetchone()
+            job = db.execute(
+                "SELECT * FROM maintenance_jobs WHERE id=? AND kind='restore' AND actor=?",
+                (job_id, actor),
+            ).fetchone()
             if job is None or int(job["expires_at"]) < now or job["state"] != "ready":
-                raise StorageError("restore job is missing, expired, or already committed")
+                raise StorageError(
+                    "restore job is missing, expired, or already committed"
+                )
         stage = self.staging_root / job_id
         plan_path = stage / "plan.json"
         try:
             plan_bytes = plan_path.read_bytes()
         except OSError as exc:
-            raise StorageError("restore staging has expired; preview the backup again") from exc
+            raise StorageError(
+                "restore staging has expired; preview the backup again"
+            ) from exc
         if hashlib.sha256(plan_bytes).hexdigest() != job["staged_manifest_hash"]:
             raise StorageError("restore preview hash check failed")
         plan = json.loads(plan_bytes)
-        if str(expected_revision) != str(plan["current_revision"]) or str(expected_revision) != str(job["expected_revision"]):
-            raise StorageError("current database revision changed; preview restore again")
+        if str(expected_revision) != str(plan["current_revision"]) or str(
+            expected_revision
+        ) != str(job["expected_revision"]):
+            raise StorageError(
+                "current database revision changed; preview restore again"
+            )
         for name, spec in plan["backup"]["files"].items():
             staged_path = stage / self._safe_name(name)
-            if not staged_path.is_file() or staged_path.stat().st_size != int(spec["bytes"]) or self._hash_file(staged_path) != spec["sha256"]:
-                raise StorageError(f"staged restore file failed its preview hash check: {name}")
+            if (
+                not staged_path.is_file()
+                or staged_path.stat().st_size != int(spec["bytes"])
+                or self._hash_file(staged_path) != spec["sha256"]
+            ):
+                raise StorageError(
+                    f"staged restore file failed its preview hash check: {name}"
+                )
         database_path = stage / "database.sqlite3"
         media_stage = stage / "media"
         old_database = self.data_root / f".restore-old-{job_id}.sqlite3"
@@ -171,57 +201,147 @@ class MaintenanceService:
         moved_db = moved_media = False
         with self.storage._lock:
             if self._current_state_hash_locked() != plan["current_state_hash"]:
-                raise StorageError("database or media changed after restore preview; preview again")
+                raise StorageError(
+                    "database or media changed after restore preview; preview again"
+                )
             backup_file = self._build_backup(now)
             self.backups_root.mkdir(parents=True, exist_ok=True)
             automatic_backup = self.backups_root / f"automatic-{now}-{job_id}.zip"
             shutil.copyfile(backup_file, automatic_backup)
             self._prune_backups(keep_count)
-            response = {"restored": True, "job_id": job_id, "automatic_backup": automatic_backup.name,
-                        "database": plan["database"], "restored_at": now}
+            response = {
+                "restored": True,
+                "job_id": job_id,
+                "automatic_backup": automatic_backup.name,
+                "database": plan["database"],
+                "restored_at": now,
+            }
             staged_db = sqlite3.connect(database_path)
             try:
                 staged_db.execute("PRAGMA foreign_keys=ON")
                 staged_db.execute("BEGIN IMMEDIATE")
-                if not isinstance(scope_mapping, dict) or len(scope_mapping) > len(plan["source_scopes"]):
-                    raise ValueError("scope_mapping must map backup scope IDs to target scope identities")
+                if not isinstance(scope_mapping, dict) or len(scope_mapping) > len(
+                    plan["source_scopes"]
+                ):
+                    raise ValueError(
+                        "scope_mapping must map backup scope IDs to target scope identities"
+                    )
                 source_ids = {str(int(scope["id"])) for scope in plan["source_scopes"]}
                 if set(scope_mapping) - source_ids:
-                    raise ValueError("scope_mapping contains an unknown backup scope ID")
+                    raise ValueError(
+                        "scope_mapping contains an unknown backup scope ID"
+                    )
                 targets: set[tuple[str, str, str]] = set()
                 for source_scope in plan["source_scopes"]:
                     source_id = int(source_scope["id"])
                     candidate = scope_mapping.get(str(source_id))
                     if candidate is None:
-                        exact = next((scope for scope in plan["current_scopes"] if all(
-                            scope[key] == source_scope[key] for key in ("platform_id", "self_id", "group_id", "umo"))), None)
+                        exact = next(
+                            (
+                                scope
+                                for scope in plan["current_scopes"]
+                                if all(
+                                    scope[key] == source_scope[key]
+                                    for key in (
+                                        "platform_id",
+                                        "self_id",
+                                        "group_id",
+                                        "umo",
+                                    )
+                                )
+                            ),
+                            None,
+                        )
                         if exact is None:
-                            raise ValueError(f"scope {source_id} needs an explicit target mapping")
-                        candidate = {key: source_scope[key] for key in ("platform_id", "self_id", "group_id", "umo")}
+                            raise ValueError(
+                                f"scope {source_id} needs an explicit target mapping"
+                            )
+                        candidate = {
+                            key: source_scope[key]
+                            for key in ("platform_id", "self_id", "group_id", "umo")
+                        }
                     if not isinstance(candidate, dict):
                         raise ValueError(f"scope {source_id} mapping must be an object")
-                    target = tuple(self._text(candidate.get(key), f"scope {source_id} {key}", 256)
-                                   for key in ("platform_id", "self_id", "group_id", "umo"))
-                    if not any(tuple(str(scope[key]) for key in ("platform_id", "self_id", "group_id", "umo")) == target
-                               for scope in plan["current_scopes"]):
-                        raise ValueError(f"scope {source_id} target must match a currently known scope")
+                    target = tuple(
+                        self._text(candidate.get(key), f"scope {source_id} {key}", 256)
+                        for key in ("platform_id", "self_id", "group_id", "umo")
+                    )
+                    if not any(
+                        tuple(
+                            str(scope[key])
+                            for key in ("platform_id", "self_id", "group_id", "umo")
+                        )
+                        == target
+                        for scope in plan["current_scopes"]
+                    ):
+                        raise ValueError(
+                            f"scope {source_id} target must match a currently known scope"
+                        )
                     identity = target[:3]
                     if identity in targets:
-                        raise ValueError("multiple backup scopes cannot map to the same target group")
+                        raise ValueError(
+                            "multiple backup scopes cannot map to the same target group"
+                        )
                     targets.add(identity)
-                    staged_db.execute("UPDATE scopes SET platform_id=?,self_id=?,group_id=?,umo=? WHERE id=?", (*target, source_id))
-                staged_db.execute("INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
-                                  (actor, "restore/commit", request_id, request_hash, json.dumps(response, ensure_ascii=False), now))
-                staged_db.execute("INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,'restore',?,'completed',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='completed',report_json=excluded.report_json",
-                                  (job_id, actor, str(expected_revision), job["staged_manifest_hash"], json.dumps(response, ensure_ascii=False), now, now + 86400))
-                staged_db.execute("INSERT INTO web_admin_audit(id,actor_username,action,entity_kind,entity_id,request_id,reason,details_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-                                  (str(uuid.uuid4()), actor, "restore", "database", job_id, request_id, "confirmed full backup restore", json.dumps(response, ensure_ascii=False), now))
-                staged_db.execute("UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='restore' WHERE state='pending'", (now,))
-                staged_db.execute("UPDATE notification_outbox SET state='unknown',error_summary='restore canceled pending notification' WHERE state IN ('pending','sending')")
+                    staged_db.execute(
+                        "UPDATE scopes SET platform_id=?,self_id=?,group_id=?,umo=? WHERE id=?",
+                        (*target, source_id),
+                    )
+                staged_db.execute(
+                    "INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
+                    (
+                        actor,
+                        "restore/commit",
+                        request_id,
+                        request_hash,
+                        json.dumps(response, ensure_ascii=False),
+                        now,
+                    ),
+                )
+                staged_db.execute(
+                    "INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,'restore',?,'completed',?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state='completed',report_json=excluded.report_json",
+                    (
+                        job_id,
+                        actor,
+                        str(expected_revision),
+                        job["staged_manifest_hash"],
+                        json.dumps(response, ensure_ascii=False),
+                        now,
+                        now + 86400,
+                    ),
+                )
+                staged_db.execute(
+                    "INSERT INTO web_admin_audit(id,actor_username,action,entity_kind,entity_id,request_id,reason,details_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
+                    (
+                        str(uuid.uuid4()),
+                        actor,
+                        "restore",
+                        "database",
+                        job_id,
+                        request_id,
+                        "confirmed full backup restore",
+                        json.dumps(response, ensure_ascii=False),
+                        now,
+                    ),
+                )
+                staged_db.execute(
+                    "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='restore' WHERE state='pending'",
+                    (now,),
+                )
+                staged_db.execute(
+                    "UPDATE notification_outbox SET state='unknown',error_summary='restore canceled pending notification' WHERE state IN ('pending','sending')"
+                )
+                # 恢复是新配置版本；宿主同步失败时，重载仍须优先采用恢复后的配置。
+                staged_db.execute(
+                    "UPDATE settings SET revision=MAX(revision, ?)+1 WHERE scope_key='global'",
+                    (plan["current_revision"],),
+                )
                 staged_db.commit()
                 check = staged_db.execute("PRAGMA integrity_check").fetchall()
                 if len(check) != 1 or check[0][0] != "ok":
-                    raise StorageError("staged restored database failed integrity_check")
+                    raise StorageError(
+                        "staged restored database failed integrity_check"
+                    )
             finally:
                 staged_db.close()
             connection = self.storage._connection()
@@ -229,7 +349,9 @@ class MaintenanceService:
             self.storage.close()
             try:
                 for suffix in ("-wal", "-shm"):
-                    live_database.with_name(live_database.name + suffix).unlink(missing_ok=True)
+                    live_database.with_name(live_database.name + suffix).unlink(
+                        missing_ok=True
+                    )
                 live_database.replace(old_database)
                 moved_db = True
                 if self.media_root.exists():

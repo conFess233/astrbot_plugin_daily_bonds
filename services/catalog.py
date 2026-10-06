@@ -15,14 +15,20 @@ from urllib.parse import urljoin, urlparse
 
 try:
     import aiohttp
-except ModuleNotFoundError:  # Keep local image validation usable without the optional downloader runtime.
+except (
+    ModuleNotFoundError
+):  # Keep local image validation usable without the optional downloader runtime.
     aiohttp = None  # type: ignore[assignment]
 from PIL import Image, UnidentifiedImageError
 
 from ..models import StorageError
 from .storage import SQLiteStorage
 
-_IMAGE_FORMATS = {"PNG": ("png", "image/png"), "JPEG": ("jpg", "image/jpeg"), "WEBP": ("webp", "image/webp")}
+_IMAGE_FORMATS = {
+    "PNG": ("png", "image/png"),
+    "JPEG": ("jpg", "image/jpeg"),
+    "WEBP": ("webp", "image/webp"),
+}
 
 
 def load_catalog_directory(root: Path) -> dict[str, Any]:
@@ -130,33 +136,44 @@ class CatalogService:
         """下载缺失图像，校验 URL、体积、SHA-256、格式、像素及清单尺寸。"""
 
         if aiohttp is None:
-            raise StorageError("下载内置图片需要安装 requirements.txt 中声明的 aiohttp。")
-        manifest = self._load_manifest()
-        jobs: list[tuple[str, dict[str, Any]]] = []
-        for character in manifest["characters"]:
-            for image in character.get("images", []):
-                if not self._image_is_available(image["sha256"]):
-                    jobs.append((character["id"], image))
+            raise StorageError(
+                "下载内置图片需要安装 requirements.txt 中声明的 aiohttp。"
+            )
+        jobs = await asyncio.to_thread(self._missing_builtin_images)
         if not jobs:
             return DownloadReport(0, 0, ())
         semaphore = asyncio.Semaphore(max(1, concurrency))
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
         from .catalog_import import _PublicResolver
 
-        connector = aiohttp.TCPConnector(resolver=_PublicResolver(), use_dns_cache=False, limit=max(1, concurrency))
+        connector = aiohttp.TCPConnector(
+            resolver=_PublicResolver(), use_dns_cache=False, limit=max(1, concurrency)
+        )
         downloaded = 0
         already_present = 0
         failures: list[str] = []
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector, raise_for_status=False, trust_env=False) as session:
-            async def run_one(character_id: str, spec: dict[str, Any]) -> tuple[str, str | None]:
+        async with aiohttp.ClientSession(
+            timeout=timeout,
+            connector=connector,
+            raise_for_status=False,
+            trust_env=False,
+        ) as session:
+
+            async def run_one(
+                character_id: str, spec: dict[str, Any]
+            ) -> tuple[str, str | None]:
                 async with semaphore:
                     try:
-                        saved = await self._download_one(session, character_id, spec, max_bytes, max_pixels)
+                        saved = await self._download_one(
+                            session, character_id, spec, max_bytes, max_pixels
+                        )
                         return ("downloaded" if saved else "present", None)
                     except Exception as exc:
                         return "failed", f"{character_id}: {type(exc).__name__}: {exc}"
 
-            results = await asyncio.gather(*(run_one(character_id, spec) for character_id, spec in jobs))
+            results = await asyncio.gather(
+                *(run_one(character_id, spec) for character_id, spec in jobs)
+            )
         for status, error in results:
             if status == "downloaded":
                 downloaded += 1
@@ -165,6 +182,15 @@ class CatalogService:
             elif error:
                 failures.append(error)
         return DownloadReport(downloaded, already_present, tuple(failures))
+
+    def _missing_builtin_images(self):
+        manifest = self._load_manifest()
+        jobs: list[tuple[str, dict[str, Any]]] = []
+        for character in manifest["characters"]:
+            for image in character.get("images", []):
+                if not self._image_is_available(image["sha256"]):
+                    jobs.append((character["id"], image))
+        return jobs
 
     def _load_manifest(self) -> dict[str, Any]:
         if self._manifest is None:
@@ -194,7 +220,14 @@ class CatalogService:
                 raise StorageError(f"角色图片摘要无效：{character['id']}")
 
     def _image_is_available(self, digest: str) -> bool:
-        row = self.storage._connection().execute("SELECT relative_path FROM media_blobs WHERE hash=?", (digest,)).fetchone()
+        with self.storage._lock:
+            row = (
+                self.storage._connection()
+                .execute(
+                    "SELECT relative_path FROM media_blobs WHERE hash=?", (digest,)
+                )
+                .fetchone()
+            )
         if row is None:
             return False
         candidate = (self.media_root / row["relative_path"]).resolve()
@@ -212,27 +245,65 @@ class CatalogService:
         max_pixels: int,
     ) -> bool:
         digest = spec["sha256"]
-        if self._image_is_available(digest):
+        if await asyncio.to_thread(self._image_is_available, digest):
             return False
         url = spec["source_url"]
         payload, final_url = await _fetch_limited(session, url, max_bytes)
         if hashlib.sha256(payload).hexdigest() != digest:
             raise StorageError("下载图片的 SHA-256 不匹配。")
-        width, height, extension, mime_type = await asyncio.to_thread(_inspect_image, payload, max_pixels)
+        width, height, extension, mime_type = await asyncio.to_thread(
+            _inspect_image, payload, max_pixels
+        )
         if width != int(spec["width"]) or height != int(spec["height"]):
-            raise StorageError(f"图片尺寸与清单不符：预期 {spec['width']}x{spec['height']}，实际 {width}x{height}")
+            raise StorageError(
+                f"图片尺寸与清单不符：预期 {spec['width']}x{spec['height']}，实际 {width}x{height}"
+            )
         if int(spec["bytes"]) != len(payload):
             raise StorageError("下载图片的字节数与核验清单不符。")
         relative_path = Path("sha256") / f"{digest}.{extension}"
         target = self.media_root / relative_path
         await asyncio.to_thread(_atomic_content_write, target, payload)
+        return await asyncio.to_thread(
+            self._record_download,
+            character_id,
+            digest,
+            relative_path,
+            mime_type,
+            len(payload),
+            width,
+            height,
+            final_url,
+        )
+
+    def _record_download(
+        self,
+        character_id,
+        digest,
+        relative_path,
+        mime_type,
+        byte_size,
+        width,
+        height,
+        final_url,
+    ):
         with self.storage.transaction() as db:
             db.execute(
                 """INSERT OR IGNORE INTO media_blobs(hash,relative_path,mime_type,byte_size,width,height,source_url,verified_at)
                    VALUES(?,?,?,?,?,?,?,unixepoch())""",
-                (digest, relative_path.as_posix(), mime_type, len(payload), width, height, final_url),
+                (
+                    digest,
+                    relative_path.as_posix(),
+                    mime_type,
+                    byte_size,
+                    width,
+                    height,
+                    final_url,
+                ),
             )
-            db.execute("INSERT OR IGNORE INTO character_images(character_id,media_hash,ordinal) VALUES(?,?,0)", (character_id, digest))
+            db.execute(
+                "INSERT OR IGNORE INTO character_images(character_id,media_hash,ordinal) VALUES(?,?,0)",
+                (character_id, digest),
+            )
         return True
 
 

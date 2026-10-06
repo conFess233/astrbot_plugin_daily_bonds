@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-from collections.abc import MutableMapping
-from typing import Any
 import time
+from collections.abc import MutableMapping
+from copy import deepcopy
+from typing import Any
 
 from .settings import default_config, merge_sparse, validate_config
 from .storage import SQLiteStorage
@@ -82,11 +82,27 @@ def _matches_migrated_defaults(native: dict[str, Any], stored: dict[str, Any]) -
     """Recognize the one-time default updates in migration 006 before host reconciliation."""
 
     candidate = deepcopy(native)
+    for mode in ("wife", "husband", "member"):
+        key = f"draw_{mode}"
+        original = candidate["messages"]["results"][key]
+        if (
+            "{image}" not in original
+            and stored["messages"]["results"][key] == original + "{image}"
+        ):
+            candidate["messages"]["results"][key] += "{image}"
     if candidate["commands"]["keywords"]["divorce_member"] == ["踹群友"]:
         candidate["commands"]["keywords"]["divorce_member"] = ["踹群友", "离婚群友"]
     errors = candidate["messages"]["errors"]
-    if errors["divorce_ambiguous"] == "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。":
-        errors["divorce_ambiguous"] = "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID："
-    if errors["divorce_relation_missing"] == "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。":
+    if (
+        errors["divorce_ambiguous"]
+        == "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。"
+    ):
+        errors["divorce_ambiguous"] = (
+            "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID："
+        )
+    if (
+        errors["divorce_relation_missing"]
+        == "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。"
+    ):
         errors["divorce_relation_missing"] = "没有找到匹配的当前关系。"
     return candidate == stored

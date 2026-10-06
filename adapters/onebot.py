@@ -91,8 +91,16 @@ class OneBotAdapter:
         cached = self._members.get(key)
         monotonic_now = time.monotonic()
         if cached and ttl_seconds > 0 and monotonic_now < cached[0]:
-            self._refresh_bot_classification(key, cached[1], bot_ids | {scope.self_id})
-            return self._members[key][1]
+            signature = frozenset(bot_ids | {scope.self_id})
+            if self._bot_signatures.get(key) == signature:
+                return cached[1]
+            members = await asyncio.to_thread(
+                self._refresh_bot_classification, key, cached[1], set(signature)
+            )
+            if self._members.get(key) is cached:
+                self._members[key] = (cached[0], members)
+                self._bot_signatures[key] = signature
+            return members
         try:
             platform = self.context.get_platform_inst(scope.platform_id)
             if platform is None or platform.meta().name != "aiocqhttp":
@@ -101,13 +109,19 @@ class OneBotAdapter:
             if not callable(get_client):
                 raise StorageError("OneBot 平台未提供 get_client 接口。")
             client = get_client()
-            member_response = await client.get_group_member_list(group_id=scope.group_id)
+            member_response = await client.get_group_member_list(
+                group_id=scope.group_id
+            )
             if not isinstance(member_response, list):
                 raise StorageError("OneBot 成员列表响应不是数组。")
-            members = tuple(_member(row, bot_ids | {scope.self_id}) for row in member_response if isinstance(row, Mapping))
+            members = tuple(
+                _member(row, bot_ids | {scope.self_id})
+                for row in member_response
+                if isinstance(row, Mapping)
+            )
             if not members:
                 raise StorageError("OneBot 返回空成员列表，拒绝将整群标记为退群。")
-            _save_members(self.storage, scope_id, members, now)
+            await asyncio.to_thread(_save_members, self.storage, scope_id, members, now)
             expiry = monotonic_now + max(0, ttl_seconds)
             self._members[key] = (expiry, members)
             self._bot_signatures[key] = frozenset(bot_ids | {scope.self_id})
@@ -117,7 +131,9 @@ class OneBotAdapter:
                 return cached[1]
             if isinstance(exc, StorageError):
                 raise
-            raise StorageError(f"OneBot 成员列表暂时不可用：{type(exc).__name__}") from exc
+            raise StorageError(
+                f"OneBot 成员列表暂时不可用：{type(exc).__name__}"
+            ) from exc
 
     def invalidate_members(self, scope: Scope) -> None:
         key = (scope.platform_id, scope.self_id, scope.group_id)
@@ -129,27 +145,28 @@ class OneBotAdapter:
         self._bot_signatures.clear()
 
     def _refresh_bot_classification(
-        self, key: tuple[str, str, str], members: tuple[MemberRecord, ...], bot_ids: set[str]
-    ) -> None:
-        signature = frozenset(bot_ids)
-        if self._bot_signatures.get(key) == signature:
-            return
+        self,
+        key: tuple[str, str, str],
+        members: tuple[MemberRecord, ...],
+        bot_ids: set[str],
+    ) -> tuple[MemberRecord, ...]:
         scope_id = self.storage.get_scope_id(Scope(*key))
         if scope_id is None:
-            return
+            return members
         with self.storage.transaction() as db:
             db.executemany(
                 "UPDATE members SET is_known_bot=? WHERE scope_id=? AND user_id=?",
-                [(int(member.user_id in bot_ids), scope_id, member.user_id) for member in members],
+                [
+                    (int(member.user_id in bot_ids), scope_id, member.user_id)
+                    for member in members
+                ],
             )
-        self._members[key] = (
-            self._members[key][0],
-            tuple(
-                MemberRecord(member.user_id, member.nickname, member.card, member.user_id in bot_ids)
-                for member in members
-            ),
+        return tuple(
+            MemberRecord(
+                member.user_id, member.nickname, member.card, member.user_id in bot_ids
+            )
+            for member in members
         )
-        self._bot_signatures[key] = signature
 
 
 def mentioned_user_ids(segments: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:

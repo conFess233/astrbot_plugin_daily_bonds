@@ -2,32 +2,33 @@
 
 from __future__ import annotations
 
-import hashlib
 import asyncio
 import base64
+import hashlib
 import io
 import json
 import tempfile
 import time
 import uuid
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
+from astrbot.api import logger
+from astrbot.api.web import error_response, json_response, request
 from PIL import Image, ImageOps
 
-from astrbot.api.web import error_response, json_response, request
-
 from ..models import ConfigurationError, StorageError
-from .settings import effective_config, validate_config
-from .catalog_admin import CatalogAdminService
-from .admin_queries import AdminQueryService
 from .admin_corrections import AdminCorrectionService
+from .admin_queries import AdminQueryService
+from .catalog_admin import CatalogAdminService
 from .catalog_import import CatalogImportService
 from .catalog_sync import CatalogSyncService
-from .maintenance import MaintenanceService
 from .host_config import HostConfigBridge
+from .maintenance import MaintenanceService
+from .message_templates import template_fields
+from .settings import effective_config, validate_config
 from .storage import SQLiteStorage
-
 
 PLUGIN_NAME = "astrbot_plugin_daily_bonds"
 
@@ -94,60 +95,123 @@ class WebManager:
         if denied:
             return denied
         try:
-            scope_id = self._query_scope_id()
+            scope_id = await asyncio.to_thread(self._query_scope_id)
         except ValueError as exc:
             return self._error("INVALID_SCOPE", str(exc), 400)
+        return await asyncio.to_thread(self._overview, scope_id)
+
+    def _overview(self, scope_id: int | None):
         with self.storage._lock:
             db = self.storage._connection()
             scope_where = " WHERE scope_id=?" if scope_id is not None else ""
             scope_args = (scope_id,) if scope_id is not None else ()
-            scopes = 1 if scope_id is not None else int(db.execute("SELECT COUNT(*) FROM scopes").fetchone()[0])
-            active = int(db.execute(f"SELECT COUNT(*) FROM relationships{scope_where}{' AND' if scope_where else ' WHERE'} state='active'", scope_args).fetchone()[0])
-            pending = int(db.execute(f"SELECT COUNT(*) FROM gift_invites{scope_where}{' AND' if scope_where else ' WHERE'} state='pending'", scope_args).fetchone()[0])
-            current_periods = int(db.execute(f"SELECT COUNT(*) FROM periods{scope_where}{' AND' if scope_where else ' WHERE'} state='current'", scope_args).fetchone()[0])
-            period = db.execute("SELECT id,sequence,starts_at,ends_at,timezone,reset_time FROM periods WHERE scope_id=? AND state='current'", (scope_id,)).fetchone() if scope_id is not None else None
-            settings_rows = db.execute("SELECT scope_key,revision FROM settings ORDER BY scope_key").fetchall()
-            failed_notifications = int(db.execute(f"SELECT COUNT(*) FROM notification_outbox{scope_where}{' AND' if scope_where else ' WHERE'} state IN ('failed','unknown')", scope_args).fetchone()[0])
-            failed_jobs = int(db.execute("SELECT COUNT(*) FROM maintenance_jobs WHERE state IN ('failed','unknown')").fetchone()[0])
-        global_revision = next((int(row["revision"]) for row in settings_rows if row["scope_key"] == "global"), 0)
+            scopes = (
+                1
+                if scope_id is not None
+                else int(db.execute("SELECT COUNT(*) FROM scopes").fetchone()[0])
+            )
+            active = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM relationships{scope_where}{' AND' if scope_where else ' WHERE'} state='active'",
+                    scope_args,
+                ).fetchone()[0]
+            )
+            pending = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM gift_invites{scope_where}{' AND' if scope_where else ' WHERE'} state='pending'",
+                    scope_args,
+                ).fetchone()[0]
+            )
+            current_periods = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM periods{scope_where}{' AND' if scope_where else ' WHERE'} state='current'",
+                    scope_args,
+                ).fetchone()[0]
+            )
+            period = (
+                db.execute(
+                    "SELECT id,sequence,starts_at,ends_at,timezone,reset_time FROM periods WHERE scope_id=? AND state='current'",
+                    (scope_id,),
+                ).fetchone()
+                if scope_id is not None
+                else None
+            )
+            settings_rows = db.execute(
+                "SELECT scope_key,revision FROM settings ORDER BY scope_key"
+            ).fetchall()
+            failed_notifications = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM notification_outbox{scope_where}{' AND' if scope_where else ' WHERE'} state IN ('failed','unknown')",
+                    scope_args,
+                ).fetchone()[0]
+            )
+            failed_jobs = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM maintenance_jobs WHERE state IN ('failed','unknown')"
+                ).fetchone()[0]
+            )
+        global_revision = next(
+            (
+                int(row["revision"])
+                for row in settings_rows
+                if row["scope_key"] == "global"
+            ),
+            0,
+        )
         catalog = self.catalog.catalog_summary()
         scope_revision, enabled_pool_count = None, None
         if scope_id is not None:
             effective, scope_revision = self.storage.get_settings(scope_id)
-            enabled_pool_count = len(set(effective["modes"]["wife"]["pool_ids"] + effective["modes"]["husband"]["pool_ids"]))
-        return json_response({
-            "ok": True,
-            "data": {
-                "scope_id": scope_id,
-                "scopes": scopes,
-                "active_relationships": active,
-                "pending_invites": pending,
-                "current_periods": current_periods,
-                "current_period": dict(period) if period else None,
-                "global_revision": global_revision,
-                "settings_scopes": len(settings_rows),
-                "scope_revision": scope_revision,
-                "enabled_pool_count": enabled_pool_count,
-                "failed_notifications": failed_notifications,
-                "failed_jobs": failed_jobs,
-                "catalog": catalog,
-            },
-            "request_id": str(uuid.uuid4()),
-        })
+            enabled_pool_count = len(
+                set(
+                    effective["modes"]["wife"]["pool_ids"]
+                    + effective["modes"]["husband"]["pool_ids"]
+                )
+            )
+        return json_response(
+            {
+                "ok": True,
+                "data": {
+                    "scope_id": scope_id,
+                    "scopes": scopes,
+                    "active_relationships": active,
+                    "pending_invites": pending,
+                    "current_periods": current_periods,
+                    "current_period": dict(period) if period else None,
+                    "global_revision": global_revision,
+                    "settings_scopes": len(settings_rows),
+                    "scope_revision": scope_revision,
+                    "enabled_pool_count": enabled_pool_count,
+                    "failed_notifications": failed_notifications,
+                    "failed_jobs": failed_jobs,
+                    "catalog": catalog,
+                },
+                "request_id": str(uuid.uuid4()),
+            }
+        )
 
     async def scopes(self):
         _, denied = self._authorize()
         if denied:
             return denied
+        return await asyncio.to_thread(self._scopes)
+
+    def _scopes(self):
         with self.storage._lock:
-            rows = self.storage._connection().execute(
-                "SELECT id,platform_id,self_id,group_id,created_at FROM scopes ORDER BY platform_id,self_id,group_id LIMIT 500"
-            ).fetchall()
-        return json_response({
-            "ok": True,
-            "data": [dict(row) for row in rows],
-            "request_id": str(uuid.uuid4()),
-        })
+            rows = (
+                self.storage._connection()
+                .execute(
+                    "SELECT id,platform_id,self_id,group_id,created_at FROM scopes ORDER BY platform_id,self_id,group_id LIMIT 500"
+                )
+                .fetchall()
+            )
+        return json_response(
+            {
+                "ok": True,
+                "data": [dict(row) for row in rows],
+                "request_id": str(uuid.uuid4()),
+            }
+        )
 
     async def characters(self):
         _, denied = self._authorize()
@@ -156,8 +220,15 @@ class WebManager:
         try:
             limit = self._query_integer("limit", 50, 1, 100)
             offset = self._query_integer("offset", 0, 0, 1_000_000)
-            data = self.catalog.list_characters(query=str(request.query.get("q") or ""), limit=limit, offset=offset)
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.catalog.list_characters,
+                query=str(request.query.get("q") or ""),
+                limit=limit,
+                offset=offset,
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -169,10 +240,12 @@ class WebManager:
             character_id = character_id or request.query.get("id")
             if not isinstance(character_id, str) or not character_id.strip():
                 return self._error("INVALID_QUERY", "角色 ID 不能为空。", 400)
-            data = self.catalog.get_character(character_id)
+            data = await asyncio.to_thread(self.catalog.get_character, character_id)
             if data is None:
                 return self._error("NOT_FOUND", "角色不存在。", 404)
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except StorageError:
             return self._error("INTERNAL_ERROR", "读取角色失败。", 500)
 
@@ -184,8 +257,15 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            data = self.catalog.save_character(payload, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": payload.get("request_id")})
+            data = await asyncio.to_thread(
+                self.catalog.save_character,
+                payload,
+                actor=username,
+                now=int(time.time()),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": payload.get("request_id")}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("CATALOG_INVALID", str(exc), 400)
         except StorageError as exc:
@@ -202,7 +282,13 @@ class WebManager:
         if denied:
             return denied
         try:
-            return json_response({"ok": True, "data": self.catalog.list_pools(), "request_id": str(uuid.uuid4())})
+            return json_response(
+                {
+                    "ok": True,
+                    "data": await asyncio.to_thread(self.catalog.list_pools),
+                    "request_id": str(uuid.uuid4()),
+                }
+            )
         except StorageError:
             return self._error("INTERNAL_ERROR", "读取角色池失败。", 500)
 
@@ -214,8 +300,12 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            data = self.catalog.save_pool(payload, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": payload.get("request_id")})
+            data = await asyncio.to_thread(
+                self.catalog.save_pool, payload, actor=username, now=int(time.time())
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": payload.get("request_id")}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("CATALOG_INVALID", str(exc), 400)
         except StorageError as exc:
@@ -235,8 +325,16 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            data = self.catalog.delete_preview(kind, str(payload.get("id", "")), actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.catalog.delete_preview,
+                kind,
+                str(payload.get("id", "")),
+                actor=username,
+                now=int(time.time()),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("CATALOG_INVALID", str(exc), 400)
         except StorageError:
@@ -252,8 +350,12 @@ class WebManager:
         if payload.get("entity_kind") != kind:
             return self._error("INVALID_BODY", "删除目标类型不匹配。", 400)
         try:
-            data = self.catalog.delete(payload, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": payload.get("request_id")})
+            data = await asyncio.to_thread(
+                self.catalog.delete, payload, actor=username, now=int(time.time())
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": payload.get("request_id")}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("CATALOG_INVALID", str(exc), 400)
         except StorageError as exc:
@@ -269,18 +371,30 @@ class WebManager:
             upload = files.get("file")
             if upload is None or not callable(getattr(upload, "save", None)):
                 return self._error("MISSING_FILE", "请选择图片文件。", 400)
-            self.catalog.media_root.mkdir(parents=True, exist_ok=True)
+            await asyncio.to_thread(
+                self.catalog.media_root.mkdir, parents=True, exist_ok=True
+            )
             temporary: str | None = None
             try:
-                with tempfile.NamedTemporaryFile(prefix="upload-", suffix=".tmp", dir=self.catalog.media_root, delete=False) as stream:
+                with tempfile.NamedTemporaryFile(
+                    prefix="upload-",
+                    suffix=".tmp",
+                    dir=self.catalog.media_root,
+                    delete=False,
+                ) as stream:
                     temporary = stream.name
                 await upload.save(temporary)
-                data = await asyncio.to_thread(_upload_media_file, self.catalog, temporary, int(time.time()))
-                return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+                data = await asyncio.to_thread(
+                    _upload_media_file, self.catalog, temporary, int(time.time())
+                )
+                return json_response(
+                    {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+                )
             finally:
                 if temporary:
                     try:
                         import os
+
                         os.unlink(temporary)
                     except FileNotFoundError:
                         pass
@@ -294,11 +408,12 @@ class WebManager:
         if denied:
             return denied
         try:
-            result = self.catalog.get_media(media_hash)
+            result = await asyncio.to_thread(self.catalog.get_media, media_hash)
             if result is None:
                 return self._error("NOT_FOUND", "图片不存在。", 404)
             path, mime_type = result
             from astrbot.api.web import file_response
+
             return file_response(path, filename=path.name, content_type=mime_type)
         except StorageError:
             return self._error("INTERNAL_ERROR", "读取图片失败。", 500)
@@ -324,13 +439,21 @@ class WebManager:
         if denied:
             return denied
         try:
-            scope_id = self._required_scope_id()
+            scope_id = await asyncio.to_thread(self._required_scope_id)
             period_id = self._optional_query_text("period_id", 128)
             mode = self._optional_query_text("mode", 16)
-            data = self.queries.relationships(scope_id, period_id=period_id, mode=mode,
-                query=str(request.query.get("q") or ""), limit=self._query_integer("limit", 50, 1, 100),
-                offset=self._query_integer("offset", 0, 0, 1_000_000))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.queries.relationships,
+                scope_id,
+                period_id=period_id,
+                mode=mode,
+                query=str(request.query.get("q") or ""),
+                limit=self._query_integer("limit", 50, 1, 100),
+                offset=self._query_integer("offset", 0, 0, 1_000_000),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -339,11 +462,15 @@ class WebManager:
         if denied:
             return denied
         try:
-            scope_id = self._required_scope_id()
+            scope_id = await asyncio.to_thread(self._required_scope_id)
             mode = self._optional_query_text("mode", 16) or "wife"
             period_id = self._optional_query_text("period_id", 128)
-            data = self.queries.quota(scope_id, mode, user_id, period_id=period_id)
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.queries.quota, scope_id, mode, user_id, period_id=period_id
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -352,10 +479,17 @@ class WebManager:
         if denied:
             return denied
         try:
-            scope_id = self._required_scope_id()
-            data = self.queries.intimacy(scope_id, source_id=self._optional_query_text("source_id", 128),
-                limit=self._query_integer("limit", 50, 1, 100), offset=self._query_integer("offset", 0, 0, 1_000_000))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            scope_id = await asyncio.to_thread(self._required_scope_id)
+            data = await asyncio.to_thread(
+                self.queries.intimacy,
+                scope_id,
+                source_id=self._optional_query_text("source_id", 128),
+                limit=self._query_integer("limit", 50, 1, 100),
+                offset=self._query_integer("offset", 0, 0, 1_000_000),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -364,11 +498,19 @@ class WebManager:
         if denied:
             return denied
         try:
-            scope_id = self._required_scope_id()
-            data = self.queries.activity(scope_id, user_id=self._optional_query_text("user_id", 128),
-                window_days=self._query_integer("window_days", 7, 1, 365), now=int(time.time()),
-                limit=self._query_integer("limit", 50, 1, 100), offset=self._query_integer("offset", 0, 0, 1_000_000))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            scope_id = await asyncio.to_thread(self._required_scope_id)
+            data = await asyncio.to_thread(
+                self.queries.activity,
+                scope_id,
+                user_id=self._optional_query_text("user_id", 128),
+                window_days=self._query_integer("window_days", 7, 1, 365),
+                now=int(time.time()),
+                limit=self._query_integer("limit", 50, 1, 100),
+                offset=self._query_integer("offset", 0, 0, 1_000_000),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -377,9 +519,16 @@ class WebManager:
         if denied:
             return denied
         try:
-            data = self.queries.invites(self._required_scope_id(), state=self._optional_query_text("state", 16),
-                limit=self._query_integer("limit", 50, 1, 100), offset=self._query_integer("offset", 0, 0, 1_000_000))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.queries.invites,
+                await asyncio.to_thread(self._required_scope_id),
+                state=self._optional_query_text("state", 16),
+                limit=self._query_integer("limit", 50, 1, 100),
+                offset=self._query_integer("offset", 0, 0, 1_000_000),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -388,13 +537,29 @@ class WebManager:
         if denied:
             return denied
         try:
-            since = self._query_integer("since", 0, 0, 9_999_999_999) if request.query.get("since") not in (None, "") else None
-            until = self._query_integer("until", 0, 0, 9_999_999_999) if request.query.get("until") not in (None, "") else None
+            since = (
+                self._query_integer("since", 0, 0, 9_999_999_999)
+                if request.query.get("since") not in (None, "")
+                else None
+            )
+            until = (
+                self._query_integer("until", 0, 0, 9_999_999_999)
+                if request.query.get("until") not in (None, "")
+                else None
+            )
             if since is not None and until is not None and until < since:
                 raise ValueError("until 不得早于 since。")
-            data = self.queries.history(self._required_scope_id(), since=since, until=until,
-                limit=self._query_integer("limit", 50, 1, 100), offset=self._query_integer("offset", 0, 0, 1_000_000))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.queries.history,
+                await asyncio.to_thread(self._required_scope_id),
+                since=since,
+                until=until,
+                limit=self._query_integer("limit", 50, 1, 100),
+                offset=self._query_integer("offset", 0, 0, 1_000_000),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError) as exc:
             return self._error("INVALID_QUERY", str(exc), 400)
 
@@ -406,13 +571,20 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            scope_id = self._requested_scope_id(payload)
+            scope_id = await asyncio.to_thread(self._requested_scope_id, payload)
             if scope_id is None:
                 raise ValueError("纠错操作必须指定群作用域。")
             normalized = dict(payload)
             normalized["scope_id"] = scope_id
-            data = self.corrections.preview(normalized, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.corrections.preview,
+                normalized,
+                actor=username,
+                now=int(time.time()),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("CORRECTION_INVALID", str(exc), 400)
         except StorageError:
@@ -474,23 +646,36 @@ class WebManager:
                 return self._error("MISSING_FILE", "请选择 JSON 或 ZIP 角色包。", 400)
             incoming = self.imports.data_root / "staging" / "incoming"
             incoming.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(prefix="catalog-", suffix=".upload", dir=incoming, delete=False) as stream:
+            with tempfile.NamedTemporaryFile(
+                prefix="catalog-", suffix=".upload", dir=incoming, delete=False
+            ) as stream:
                 temporary = stream.name
             await upload.save(temporary)
-            config, _revision = self.storage.get_settings()
-            data = await self.imports.preview_file(Path(temporary), actor=username, now=int(time.time()),
-                limits=config["resources"], timeout=float(config["resources"]["http_timeout_seconds"]))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            config, _revision = await asyncio.to_thread(self.storage.get_settings)
+            data = await self.imports.preview_file(
+                Path(temporary),
+                actor=username,
+                now=int(time.time()),
+                limits=config["resources"],
+                timeout=float(config["resources"]["http_timeout_seconds"]),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("IMPORT_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("IMPORT_CONFLICT", str(exc), 409)
         except Exception:
-            return self._error("INTERNAL_ERROR", "导入预检失败，请检查文件后重试。", 500)
+            logger.exception("今日姻缘：角色包导入预检失败。")
+            return self._error(
+                "INTERNAL_ERROR", "导入预检失败，请检查文件后重试。", 500
+            )
         finally:
             if temporary:
                 try:
                     import os
+
                     os.unlink(temporary)
                 except FileNotFoundError:
                     pass
@@ -518,10 +703,16 @@ class WebManager:
         if denied:
             return denied
         try:
-            data = self.imports.get_job(job_id, actor=request.username)
+            data = await asyncio.to_thread(
+                self.imports.get_job, job_id, actor=request.username
+            )
             if data is None:
-                return self._error("NOT_FOUND", "作业不存在或不属于当前 Dashboard 用户。", 404)
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+                return self._error(
+                    "NOT_FOUND", "作业不存在或不属于当前 Dashboard 用户。", 404
+                )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except StorageError:
             return self._error("INTERNAL_ERROR", "读取作业状态失败。", 500)
 
@@ -548,12 +739,18 @@ class WebManager:
             payload = await request.json()
             if not isinstance(payload, dict):
                 return self._error("INVALID_PAYLOAD", "备份请求必须是 JSON 对象。", 400)
-            _config, revision = self.storage.get_settings()
-            data = await asyncio.to_thread(self.maintenance.create_backup, actor=username, now=int(time.time()),
+            _config, revision = await asyncio.to_thread(self.storage.get_settings)
+            data = await asyncio.to_thread(
+                self.maintenance.create_backup,
+                actor=username,
+                now=int(time.time()),
                 keep_count=int(_config["resources"].get("backup_keep_count", 10)),
-                request_id=payload.get("request_id"))
+                request_id=payload.get("request_id"),
+            )
             data["config_revision"] = revision
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("BACKUP_INVALID", str(exc), 400)
         except StorageError as exc:
@@ -564,12 +761,19 @@ class WebManager:
         if denied:
             return denied
         try:
-            result = self.maintenance.get_artifact(job_id, actor=request.username)
+            result = await asyncio.to_thread(
+                self.maintenance.get_artifact, job_id, actor=request.username
+            )
             if result is None:
-                return self._error("NOT_FOUND", "导出或备份作业不存在或不属于当前用户。", 404)
+                return self._error(
+                    "NOT_FOUND", "导出或备份作业不存在或不属于当前用户。", 404
+                )
             path, filename = result
             from astrbot.api.web import file_response
-            return file_response(path, filename=filename, content_type="application/zip")
+
+            return file_response(
+                path, filename=filename, content_type="application/zip"
+            )
         except StorageError as exc:
             return self._error("ARTIFACT_INVALID", str(exc), 409)
 
@@ -585,25 +789,38 @@ class WebManager:
                 return self._error("MISSING_FILE", "请选择完整备份 ZIP。", 400)
             incoming = self.maintenance.data_root / "staging" / "incoming"
             incoming.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(prefix="restore-", suffix=".upload", dir=incoming, delete=False) as stream:
+            with tempfile.NamedTemporaryFile(
+                prefix="restore-", suffix=".upload", dir=incoming, delete=False
+            ) as stream:
                 temporary = stream.name
             await upload.save(temporary)
-            config, _revision = self.storage.get_settings()
-            data = await asyncio.to_thread(self.maintenance.preview_restore, Path(temporary), actor=username, now=int(time.time()),
+            config, _revision = await asyncio.to_thread(self.storage.get_settings)
+            data = await asyncio.to_thread(
+                self.maintenance.preview_restore,
+                Path(temporary),
+                actor=username,
+                now=int(time.time()),
                 max_bytes=int(config["resources"]["import_max_bytes"]),
                 max_entries=int(config["resources"]["import_max_entries"]),
-                max_expanded=int(config["resources"]["import_max_expanded_bytes"]))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+                max_expanded=int(config["resources"]["import_max_expanded_bytes"]),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("RESTORE_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("RESTORE_CONFLICT", str(exc), 409)
         except Exception:
-            return self._error("INTERNAL_ERROR", "备份预检失败，请检查文件后重试。", 500)
+            logger.exception("今日姻缘：完整备份预检失败。")
+            return self._error(
+                "INTERNAL_ERROR", "备份预检失败，请检查文件后重试。", 500
+            )
         finally:
             if temporary:
                 try:
                     import os
+
                     os.unlink(temporary)
                 except FileNotFoundError:
                     pass
@@ -616,16 +833,38 @@ class WebManager:
             payload = await request.json()
             if not isinstance(payload, dict):
                 return self._error("INVALID_PAYLOAD", "恢复请求必须是 JSON 对象。", 400)
-            config, _revision = self.storage.get_settings()
-            data = await asyncio.to_thread(self.maintenance.commit_restore, payload, actor=username, now=int(time.time()),
-                keep_count=int(config["resources"].get("backup_keep_count", 10)))
-            if data.get("restored") and self.runtime_reset is not None:
-                self.runtime_reset()
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            config, _revision = await asyncio.to_thread(self.storage.get_settings)
+            data = await asyncio.to_thread(
+                self.maintenance.commit_restore,
+                payload,
+                actor=username,
+                now=int(time.time()),
+                keep_count=int(config["resources"].get("backup_keep_count", 10)),
+            )
+            if data.get("restored"):
+                if self.runtime_reset is not None:
+                    self.runtime_reset()
+                try:
+                    await asyncio.to_thread(self._mirror_current_config)
+                except Exception:
+                    logger.exception("今日姻缘：数据已恢复，但宿主配置同步失败。")
+                    return self._error(
+                        "RESTORE_CONFIG_SYNC_FAILED",
+                        "数据已恢复，但同步到 AstrBot 配置失败；请重试本次提交以完成同步。",
+                        503,
+                    )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("RESTORE_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("RESTORE_CONFLICT", str(exc), 409)
+
+    def _mirror_current_config(self) -> None:
+        with self.storage._lock:
+            config, revision = self.storage.get_settings()
+            self.host_config.mirror(config, revision)
 
     @staticmethod
     def _query_integer(name: str, default: int, minimum: int, maximum: int) -> int:
@@ -667,28 +906,35 @@ class WebManager:
         if denied:
             return denied
         try:
-            scope_id = self._query_scope_id()
-            global_value, global_revision = self.storage.get_settings()
+            scope_id = await asyncio.to_thread(self._query_scope_id)
+            global_value, global_revision = await asyncio.to_thread(
+                self.storage.get_settings
+            )
             if scope_id is None:
                 value, revision, override = global_value, global_revision, None
             else:
-                value, revision = self.storage.get_settings(scope_id)
-                override = self._stored_override(scope_id)
-            return json_response({
-                "ok": True,
-                "data": {
-                    "scope_id": scope_id,
-                    "global": global_value,
-                    "override": override,
-                    "effective": value,
-                    # AstrBot's Plugin Page bridge may unwrap the outer API envelope.
-                    # Keep the revision beside the config payload so the UI can
-                    # normalize either wrapped or unwrapped responses.
+                value, revision = await asyncio.to_thread(
+                    self.storage.get_settings, scope_id
+                )
+                override = await asyncio.to_thread(self._stored_override, scope_id)
+            return json_response(
+                {
+                    "ok": True,
+                    "data": {
+                        "scope_id": scope_id,
+                        "global": global_value,
+                        "override": override,
+                        "effective": value,
+                        "template_fields": template_fields(),
+                        # AstrBot's Plugin Page bridge may unwrap the outer API envelope.
+                        # Keep the revision beside the config payload so the UI can
+                        # normalize either wrapped or unwrapped responses.
+                        "revision": {"global": global_revision, "scope": revision},
+                    },
                     "revision": {"global": global_revision, "scope": revision},
-                },
-                "revision": {"global": global_revision, "scope": revision},
-                "request_id": str(uuid.uuid4()),
-            })
+                    "request_id": str(uuid.uuid4()),
+                }
+            )
         except ValueError as exc:
             return self._error("INVALID_SCOPE", str(exc), 400)
         except StorageError:
@@ -702,19 +948,25 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            scope_id, stored, effective = self._prepare_draft(payload)
-            impacted_scopes = self._validate_effective_scopes(scope_id, effective)
-            return json_response({
-                "ok": True,
-                "data": {
-                    "scope_id": scope_id,
-                    "valid": True,
-                    "stored_value": stored,
-                    "effective": effective,
-                    "affected_scopes": impacted_scopes,
-                },
-                "request_id": str(uuid.uuid4()),
-            })
+            scope_id, stored, effective = await asyncio.to_thread(
+                self._prepare_draft, payload
+            )
+            impacted_scopes = await asyncio.to_thread(
+                self._validate_effective_scopes, scope_id, effective
+            )
+            return json_response(
+                {
+                    "ok": True,
+                    "data": {
+                        "scope_id": scope_id,
+                        "valid": True,
+                        "stored_value": stored,
+                        "effective": effective,
+                        "affected_scopes": impacted_scopes,
+                    },
+                    "request_id": str(uuid.uuid4()),
+                }
+            )
         except (ConfigurationError, ValueError, TypeError) as exc:
             return self._error("CONFIG_INVALID", str(exc), 400)
         except StorageError:
@@ -731,36 +983,84 @@ class WebManager:
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         request_id = payload.get("request_id")
         expected_revision = payload.get("expected_revision")
-        if not isinstance(request_id, str) or not request_id.strip() or len(request_id) > 128:
-            return self._error("INVALID_REQUEST_ID", "request_id 必须是 1 到 128 个字符。", 400)
-        if isinstance(expected_revision, bool) or not isinstance(expected_revision, int) or expected_revision < 0:
-            return self._error("INVALID_REVISION", "expected_revision 必须是非负整数。", 400)
+        if (
+            not isinstance(request_id, str)
+            or not request_id.strip()
+            or len(request_id) > 128
+        ):
+            return self._error(
+                "INVALID_REQUEST_ID", "request_id 必须是 1 到 128 个字符。", 400
+            )
+        if (
+            isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 0
+        ):
+            return self._error(
+                "INVALID_REVISION", "expected_revision 必须是非负整数。", 400
+            )
         try:
-            scope_id = self._requested_scope_id(payload)
+            scope_id = await asyncio.to_thread(self._requested_scope_id, payload)
             draft_hash = hashlib.sha256(
-                json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+                json.dumps(
+                    payload,
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                ).encode("utf-8")
             ).hexdigest()
-            replay = self.storage.get_settings_request_replay(scope_id, username, request_id.strip(), draft_hash)
+            replay = await asyncio.to_thread(
+                self.storage.get_settings_request_replay,
+                scope_id,
+                username,
+                request_id.strip(),
+                draft_hash,
+            )
             if replay is not None:
                 if scope_id is None:
-                    saved_global, saved_revision = self.storage.get_settings()
+                    saved_global, saved_revision = await asyncio.to_thread(
+                        self.storage.get_settings
+                    )
                     try:
-                        self.host_config.mirror(saved_global, saved_revision)
+                        await asyncio.to_thread(
+                            self.host_config.mirror, saved_global, saved_revision
+                        )
                     except Exception:
-                        return self._error("CONFIG_SYNC_FAILED", "全局配置已保存，但同步到 AstrBot 配置失败；请重试。", 503)
-                return json_response({
-                    "ok": True,
-                    "data": {
-                        "scope_id": scope_id,
-                        "effective": payload.get("draft"),
-                        "revision": {"global": replay["global_revision"], "scope": replay["revision"]},
-                    },
-                    "revision": {"global": replay["global_revision"], "scope": replay["revision"]},
-                    "request_id": request_id.strip(),
-                })
-            scope_id, stored, effective = self._prepare_draft(payload)
-            self._validate_effective_scopes(scope_id, effective)
-            revision = self.storage.save_settings(
+                        logger.exception(
+                            "今日姻缘：全局配置已保存，但宿主配置同步失败。"
+                        )
+                        return self._error(
+                            "CONFIG_SYNC_FAILED",
+                            "全局配置已保存，但同步到 AstrBot 配置失败；请重试。",
+                            503,
+                        )
+                return json_response(
+                    {
+                        "ok": True,
+                        "data": {
+                            "scope_id": scope_id,
+                            "effective": payload.get("draft"),
+                            "revision": {
+                                "global": replay["global_revision"],
+                                "scope": replay["revision"],
+                            },
+                        },
+                        "revision": {
+                            "global": replay["global_revision"],
+                            "scope": replay["revision"],
+                        },
+                        "request_id": request_id.strip(),
+                    }
+                )
+            scope_id, stored, effective = await asyncio.to_thread(
+                self._prepare_draft, payload
+            )
+            await asyncio.to_thread(
+                self._validate_effective_scopes, scope_id, effective
+            )
+            revision = await asyncio.to_thread(
+                self.storage.save_settings,
                 scope_id,
                 stored,
                 expected_revision=expected_revision,
@@ -771,21 +1071,36 @@ class WebManager:
             )
             if scope_id is None:
                 try:
-                    self.host_config.mirror(stored, revision)
+                    await asyncio.to_thread(self.host_config.mirror, stored, revision)
                 except Exception:
-                    return self._error("CONFIG_SYNC_FAILED", "全局配置已保存，但同步到 AstrBot 配置失败；请重试。", 503)
-            saved_request = self.storage.get_settings_request_replay(scope_id, username, request_id.strip(), draft_hash)
-            global_revision = saved_request["global_revision"] if saved_request else revision
-            return json_response({
-                "ok": True,
-                "data": {
-                    "scope_id": scope_id,
-                    "effective": effective,
+                    logger.exception("今日姻缘：全局配置已保存，但宿主配置同步失败。")
+                    return self._error(
+                        "CONFIG_SYNC_FAILED",
+                        "全局配置已保存，但同步到 AstrBot 配置失败；请重试。",
+                        503,
+                    )
+            saved_request = await asyncio.to_thread(
+                self.storage.get_settings_request_replay,
+                scope_id,
+                username,
+                request_id.strip(),
+                draft_hash,
+            )
+            global_revision = (
+                saved_request["global_revision"] if saved_request else revision
+            )
+            return json_response(
+                {
+                    "ok": True,
+                    "data": {
+                        "scope_id": scope_id,
+                        "effective": effective,
+                        "revision": {"global": global_revision, "scope": revision},
+                    },
                     "revision": {"global": global_revision, "scope": revision},
-                },
-                "revision": {"global": global_revision, "scope": revision},
-                "request_id": request_id.strip(),
-            })
+                    "request_id": request_id.strip(),
+                }
+            )
         except (ConfigurationError, ValueError, TypeError) as exc:
             return self._error("CONFIG_INVALID", str(exc), 400)
         except StorageError as exc:
@@ -794,9 +1109,14 @@ class WebManager:
                 return self._error("CONFIG_CONFLICT", message, 409)
             if "request_id" in message:
                 return self._error("REQUEST_ID_CONFLICT", message, 409)
-            if any(fragment in message for fragment in ("仅允许全局设置", "群覆盖", "用户规则")):
+            if any(
+                fragment in message
+                for fragment in ("仅允许全局设置", "群覆盖", "用户规则")
+            ):
                 return self._error("CONFIG_INVALID", message, 400)
-            return self._error("INTERNAL_ERROR", "配置保存失败，请刷新后检查状态。", 500)
+            return self._error(
+                "INTERNAL_ERROR", "配置保存失败，请刷新后检查状态。", 500
+            )
 
     def _authorize(self) -> tuple[str | None, Any | None]:
         username = request.username
@@ -825,14 +1145,15 @@ class WebManager:
             ).fetchone()
         return json.loads(row["value_json"]) if row else {}
 
-    def _prepare_draft(self, payload: Mapping[str, Any]) -> tuple[int | None, dict[str, Any], dict[str, Any]]:
+    def _prepare_draft(
+        self, payload: Mapping[str, Any]
+    ) -> tuple[int | None, dict[str, Any], dict[str, Any]]:
         scope_id = self._requested_scope_id(payload)
         draft = payload.get("draft")
         if not isinstance(draft, dict):
             raise ValueError("draft 必须是完整配置对象。")
         if scope_id is None:
             validate_config(draft)
-            self._validate_effective_scopes(None, draft)
             return None, draft, draft
         global_value, _ = self.storage.get_settings()
         supplied_override = payload.get("override")
@@ -900,7 +1221,19 @@ def _sparse_diff(base: Mapping[str, Any], value: Mapping[str, Any]) -> dict[str,
 
 
 def _validate_scope_override(value: Mapping[str, Any]) -> None:
-    allowed = {"enabled", "access", "reset", "commands", "modes", "statistics", "weights", "display", "members", "messages"}
+    allowed = {
+        "enabled",
+        "access",
+        "reset",
+        "commands",
+        "modes",
+        "statistics",
+        "weights",
+        "display",
+        "members",
+        "messages",
+        "reply_quote",
+    }
     if set(value) - allowed:
         raise ConfigurationError("群覆盖包含仅允许全局设置的字段。")
     access = value.get("access", {})

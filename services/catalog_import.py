@@ -6,25 +6,20 @@ import asyncio
 import hashlib
 import ipaddress
 import json
-import os
 import re
 import shutil
 import socket
 import stat
 import struct
-import time
 import uuid
 import zipfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
-
-from PIL import UnidentifiedImageError
 
 from ..models import StorageError
 from .catalog import _atomic_content_write, _inspect_image
 from .storage import SQLiteStorage
-
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -41,20 +36,34 @@ class CatalogImportService:
         self.staging_root = data_root / "staging" / "imports"
         self.media_root = data_root / "media"
 
-    async def preview_file(self, source: Path, *, actor: str, now: int, limits: dict[str, int], timeout: float) -> dict[str, Any]:
+    async def preview_file(
+        self,
+        source: Path,
+        *,
+        actor: str,
+        now: int,
+        limits: dict[str, int],
+        timeout: float,
+    ) -> dict[str, Any]:
         max_bytes = int(limits["import_max_bytes"])
         max_entries = int(limits["import_max_entries"])
         max_expanded = int(limits["import_max_expanded_bytes"])
         max_image_bytes = int(limits["image_max_bytes"])
         max_pixels = int(limits["image_max_pixels"])
-        if not source.is_file() or source.stat().st_size <= 0 or source.stat().st_size > max_bytes:
+        if (
+            not source.is_file()
+            or source.stat().st_size <= 0
+            or source.stat().st_size > max_bytes
+        ):
             raise ValueError("导入文件为空或超过配置的压缩/JSON 字节限制")
         archive: zipfile.ZipFile | None = None
         job_id = str(uuid.uuid4())
         stage = self.staging_root / job_id
         stage.mkdir(parents=True, exist_ok=False)
         try:
-            manifest, members, archive = self._read_package(source, max_bytes, max_entries, max_expanded)
+            manifest, members, archive = await asyncio.to_thread(
+                self._read_package, source, max_bytes, max_entries, max_expanded
+            )
             if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
                 raise ValueError("manifest 必须schema_version=1 JSON 对象")
             pack_id = self._text(manifest.get("pack_id"), "pack_id", 128)
@@ -73,7 +82,9 @@ class CatalogImportService:
                 raise ValueError("ZIP 解压总大小超过限制")
             planned_characters: list[dict[str, Any]] = []
             image_total = 0
-            fetcher = _SafeImageFetcher(max_image_bytes=max_image_bytes, timeout=timeout)
+            fetcher = _SafeImageFetcher(
+                max_image_bytes=max_image_bytes, timeout=timeout
+            )
             try:
                 for index, raw in enumerate(characters_raw):
                     try:
@@ -81,90 +92,240 @@ class CatalogImportService:
                         image_plans: list[dict[str, Any]] = []
                         for image in character.pop("_images_raw"):
                             if image.get("source_url"):
-                                payload, final_url, response_mime = await fetcher.fetch(str(image["source_url"]))
+                                payload, final_url, response_mime = await fetcher.fetch(
+                                    str(image["source_url"])
+                                )
                                 source_description = {"source_url": final_url}
                             else:
                                 relative = image.get("path", image.get("relative_path"))
                                 member_name = self._zip_image_path(relative, members)
                                 if archive is None:
-                                    raise ValueError("JSON 素材包的图片必须提供 source_url")
+                                    raise ValueError(
+                                        "JSON 素材包的图片必须提供 source_url"
+                                    )
                                 info = members[member_name]
                                 if info.file_size > max_image_bytes:
                                     raise ValueError("图片文件超过 image_max_bytes")
-                                with archive.open(info, "r") as stream:
-                                    payload = stream.read(max_image_bytes + 1)
-                                if len(payload) != info.file_size or len(payload) > max_image_bytes:
-                                    raise ValueError("图片读取大小ZIP 清单不一致或超出限制")
+                                payload = await asyncio.to_thread(
+                                    _read_archive_image, archive, info, max_image_bytes
+                                )
+                                if (
+                                    len(payload) != info.file_size
+                                    or len(payload) > max_image_bytes
+                                ):
+                                    raise ValueError(
+                                        "图片读取大小ZIP 清单不一致或超出限制"
+                                    )
                                 source_description = {"path": member_name}
                             if archive is None or "source_url" in source_description:
                                 expanded_bytes += len(payload)
                             if expanded_bytes > max_expanded:
-                                raise ValueError("下载素材展开后超import_max_expanded_bytes")
+                                raise ValueError(
+                                    "下载素材展开后超import_max_expanded_bytes"
+                                )
                             digest = hashlib.sha256(payload).hexdigest()
                             declared_hash = image.get("sha256")
-                            if declared_hash is not None and (not isinstance(declared_hash, str) or not _HASH.fullmatch(declared_hash) or declared_hash != digest):
-                                raise ValueError("素材 SHA-256 缺失格式正确性或与内容不匹配")
-                            width, height, extension, mime_type = await asyncio.to_thread(_inspect_image, payload, max_pixels)
+                            if declared_hash is not None and (
+                                not isinstance(declared_hash, str)
+                                or not _HASH.fullmatch(declared_hash)
+                                or declared_hash != digest
+                            ):
+                                raise ValueError(
+                                    "素材 SHA-256 缺失格式正确性或与内容不匹配"
+                                )
+                            (
+                                width,
+                                height,
+                                extension,
+                                mime_type,
+                            ) = await asyncio.to_thread(
+                                _inspect_image, payload, max_pixels
+                            )
                             declared_mime = image.get("mime_type")
-                            if declared_mime is not None and not _mime_matches(declared_mime, mime_type):
-                                raise ValueError("declared image MIME type does not match its content")
-                            if image.get("source_url") and not _mime_matches(response_mime, mime_type):
-                                raise ValueError("URL response MIME type does not match the decoded image")
-                            for key, actual in (("width", width), ("height", height), ("bytes", len(payload))):
-                                if image.get(key) is not None and (isinstance(image[key], bool) or int(image[key]) != actual):
+                            if declared_mime is not None and not _mime_matches(
+                                declared_mime, mime_type
+                            ):
+                                raise ValueError(
+                                    "declared image MIME type does not match its content"
+                                )
+                            if image.get("source_url") and not _mime_matches(
+                                response_mime, mime_type
+                            ):
+                                raise ValueError(
+                                    "URL response MIME type does not match the decoded image"
+                                )
+                            for key, actual in (
+                                ("width", width),
+                                ("height", height),
+                                ("bytes", len(payload)),
+                            ):
+                                if image.get(key) is not None and (
+                                    isinstance(image[key], bool)
+                                    or int(image[key]) != actual
+                                ):
                                     raise ValueError(f"素材 {key} 与实际内容不匹配")
                             staged = stage / "images" / f"{digest}.{extension}"
                             if not staged.exists():
-                                await asyncio.to_thread(_atomic_content_write, staged, payload)
-                            image_plans.append({"sha256": digest, "width": width, "height": height, "bytes": len(payload),
-                                                "mime_type": mime_type, "extension": extension, **source_description})
+                                await asyncio.to_thread(
+                                    _atomic_content_write, staged, payload
+                                )
+                            image_plans.append(
+                                {
+                                    "sha256": digest,
+                                    "width": width,
+                                    "height": height,
+                                    "bytes": len(payload),
+                                    "mime_type": mime_type,
+                                    "extension": extension,
+                                    **source_description,
+                                }
+                            )
                             image_total += 1
                         if character["enabled"] and not image_plans:
-                            raise ValueError("没有可用图片的角色必disabled；待补档案可保留")
+                            raise ValueError(
+                                "没有可用图片的角色必disabled；待补档案可保留"
+                            )
                         character["images"] = image_plans
-                        character["unresolved_pool_ids"] = [pool_id for pool_id in character["pool_ids"] if pool_id not in pool_ids and not self._pool_exists(pool_id)]
+                        character["unresolved_pool_ids"] = [
+                            pool_id
+                            for pool_id in character["pool_ids"]
+                            if pool_id not in pool_ids
+                            and not await asyncio.to_thread(self._pool_exists, pool_id)
+                        ]
                         character["_index"] = index
                         planned_characters.append(character)
                     except Exception as exc:
-                        planned_characters.append({"_index": index, "id": raw.get("id") if isinstance(raw, dict) else None,
-                                                   "name": raw.get("name") if isinstance(raw, dict) else None,
-                                                   "status": "invalid", "errors": [str(exc)]})
+                        planned_characters.append(
+                            {
+                                "_index": index,
+                                "id": raw.get("id") if isinstance(raw, dict) else None,
+                                "name": raw.get("name")
+                                if isinstance(raw, dict)
+                                else None,
+                                "status": "invalid",
+                                "errors": [str(exc)],
+                            }
+                        )
             finally:
                 await fetcher.close()
 
-            with self.storage._lock:
-                db = self.storage._connection()
-                for item in planned_characters:
-                    if item.get("status") == "invalid":
-                        continue
-                    row = db.execute("SELECT revision,deleted_at FROM characters WHERE id=?", (item["id"],)).fetchone()
-                    item["status"] = "conflict" if row is not None else "new"
-                    item["existing_revision"] = int(row["revision"]) if row else 0
-                    item["deleted_id"] = bool(row and row["deleted_at"] is not None)
-                    if item["deleted_id"]:
-                        item["status"] = "blocked_deleted_id"
-                    if row:
-                        current = db.execute("SELECT name,aliases_json,gender,enabled FROM characters WHERE id=?", (item["id"],)).fetchone()
-                        old_pools = [str(value[0]) for value in db.execute("SELECT pool_id FROM pool_members WHERE character_id=? ORDER BY pool_id", (item["id"],)).fetchall()]
-                        old_images = [str(value[0]) for value in db.execute("SELECT media_hash FROM character_images WHERE character_id=? ORDER BY ordinal,media_hash", (item["id"],)).fetchall()]
-                        item["existing"] = {"name": current["name"], "aliases": json.loads(current["aliases_json"]),
-                                             "gender": current["gender"], "enabled": bool(current["enabled"]),
-                                             "pool_ids": old_pools, "image_hashes": old_images}
-                        item["diff"] = {"name": {"before": current["name"], "after": item["name"]},
-                                         "aliases": {"before": json.loads(current["aliases_json"]), "after": item["aliases"]},
-                                         "gender": {"before": current["gender"], "after": item["gender"]},
-                                         "enabled": {"before": bool(current["enabled"]), "after": item["enabled"]},
-                                         "pool_ids": {"before": old_pools, "after": item["pool_ids"]}}
-                    item["valid"] = True
-                for pool in pool_rows:
-                    if pool["id"] in pool_errors:
-                        continue
-                    row = db.execute("SELECT mode,deleted_at,revision FROM pools WHERE id=?", (pool["id"],)).fetchone()
-                    pool["status"] = "conflict" if row else "new"
-                    pool["existing_mode"] = row["mode"] if row else None
-                    pool["deleted_id"] = bool(row and row["deleted_at"] is not None)
-                    if pool["deleted_id"] or (row and row["mode"] != pool["mode"]):
-                        pool["status"] = "blocked_conflict"
+            await asyncio.to_thread(
+                self._compare_import, planned_characters, pool_rows, pool_errors
+            )
+            plan = {
+                "schema_version": 1,
+                "pack_id": pack_id,
+                "pack_version": pack_version,
+                "pools": pool_rows,
+                "characters": planned_characters,
+                "created_at": now,
+                "image_count": image_total,
+            }
+            for item in planned_characters:
+                if item.get("valid"):
+                    item["_pack_id"] = pack_id
+                    item["_pack_version"] = pack_version
+            plan_bytes = json.dumps(
+                plan,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")
+            plan_hash = hashlib.sha256(plan_bytes).hexdigest()
+            plan_path = stage / "plan.json"
+            await asyncio.to_thread(_atomic_content_write, plan_path, plan_bytes)
+            summary = self._summary(plan)
+            report = {"summary": summary, "items": self._public_items(plan)}
+            await asyncio.to_thread(
+                self._save_import_preview, job_id, actor, plan_hash, report, now
+            )
+            return {
+                "job_id": job_id,
+                "pack_id": pack_id,
+                "pack_version": pack_version,
+                **summary,
+                "items": report["items"],
+                "expires_at": now + 86400,
+            }
+        except Exception:
+            await asyncio.to_thread(shutil.rmtree, stage, ignore_errors=True)
+            raise
+        finally:
+            if archive is not None:
+                await asyncio.to_thread(archive.close)
+
+    def _compare_import(self, planned_characters, pool_rows, pool_errors):
+        with self.storage._lock:
+            db = self.storage._connection()
+            for item in planned_characters:
+                if item.get("status") == "invalid":
+                    continue
+                row = db.execute(
+                    "SELECT revision,deleted_at FROM characters WHERE id=?",
+                    (item["id"],),
+                ).fetchone()
+                item["status"] = "conflict" if row is not None else "new"
+                item["existing_revision"] = int(row["revision"]) if row else 0
+                item["deleted_id"] = bool(row and row["deleted_at"] is not None)
+                if item["deleted_id"]:
+                    item["status"] = "blocked_deleted_id"
+                if row:
+                    current = db.execute(
+                        "SELECT name,aliases_json,gender,enabled FROM characters WHERE id=?",
+                        (item["id"],),
+                    ).fetchone()
+                    old_pools = [
+                        str(value[0])
+                        for value in db.execute(
+                            "SELECT pool_id FROM pool_members WHERE character_id=? ORDER BY pool_id",
+                            (item["id"],),
+                        ).fetchall()
+                    ]
+                    old_images = [
+                        str(value[0])
+                        for value in db.execute(
+                            "SELECT media_hash FROM character_images WHERE character_id=? ORDER BY ordinal,media_hash",
+                            (item["id"],),
+                        ).fetchall()
+                    ]
+                    item["existing"] = {
+                        "name": current["name"],
+                        "aliases": json.loads(current["aliases_json"]),
+                        "gender": current["gender"],
+                        "enabled": bool(current["enabled"]),
+                        "pool_ids": old_pools,
+                        "image_hashes": old_images,
+                    }
+                    item["diff"] = {
+                        "name": {"before": current["name"], "after": item["name"]},
+                        "aliases": {
+                            "before": json.loads(current["aliases_json"]),
+                            "after": item["aliases"],
+                        },
+                        "gender": {
+                            "before": current["gender"],
+                            "after": item["gender"],
+                        },
+                        "enabled": {
+                            "before": bool(current["enabled"]),
+                            "after": item["enabled"],
+                        },
+                        "pool_ids": {"before": old_pools, "after": item["pool_ids"]},
+                    }
+                item["valid"] = True
+            for pool in pool_rows:
+                if pool["id"] in pool_errors:
+                    continue
+                row = db.execute(
+                    "SELECT mode,deleted_at,revision FROM pools WHERE id=?",
+                    (pool["id"],),
+                ).fetchone()
+                pool["status"] = "conflict" if row else "new"
+                pool["existing_mode"] = row["mode"] if row else None
+                pool["deleted_id"] = bool(row and row["deleted_at"] is not None)
+                if pool["deleted_id"] or (row and row["mode"] != pool["mode"]):
+                    pool["status"] = "blocked_conflict"
             for pool in pool_rows:
                 if pool["id"] in pool_errors:
                     pool["status"] = "invalid"
@@ -172,44 +333,58 @@ class CatalogImportService:
 
             for item in planned_characters:
                 if item.get("valid"):
-                    expected_mode = "wife" if item["gender"] == "female" else "husband" if item["gender"] == "male" else None
+                    expected_mode = (
+                        "wife"
+                        if item["gender"] == "female"
+                        else "husband"
+                        if item["gender"] == "male"
+                        else None
+                    )
                     unresolved = []
                     for pool_id in item["pool_ids"]:
-                        imported_pool = next((pool for pool in pool_rows if pool["id"] == pool_id), None)
+                        imported_pool = next(
+                            (pool for pool in pool_rows if pool["id"] == pool_id), None
+                        )
                         if imported_pool:
-                            if imported_pool.get("status") == "invalid" or (expected_mode and imported_pool["mode"] != expected_mode):
+                            if imported_pool.get("status") == "invalid" or (
+                                expected_mode and imported_pool["mode"] != expected_mode
+                            ):
                                 unresolved.append(pool_id)
                             continue
-                        existing_pool = self.storage._connection().execute("SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)).fetchone()
-                        if existing_pool is None or existing_pool["deleted_at"] is not None or (expected_mode and existing_pool["mode"] != expected_mode):
+                        existing_pool = (
+                            self.storage._connection()
+                            .execute(
+                                "SELECT mode,deleted_at FROM pools WHERE id=?",
+                                (pool_id,),
+                            )
+                            .fetchone()
+                        )
+                        if (
+                            existing_pool is None
+                            or existing_pool["deleted_at"] is not None
+                            or (
+                                expected_mode and existing_pool["mode"] != expected_mode
+                            )
+                        ):
                             unresolved.append(pool_id)
                     item["unresolved_pool_ids"] = unresolved
                     item["status_before_commit"] = item.pop("status")
                     item.pop("deleted_id", None)
-            plan = {"schema_version": 1, "pack_id": pack_id, "pack_version": pack_version,
-                    "pools": pool_rows, "characters": planned_characters,
-                    "created_at": now, "image_count": image_total}
-            for item in planned_characters:
-                if item.get("valid"):
-                    item["_pack_id"] = pack_id
-                    item["_pack_version"] = pack_version
-            plan_bytes = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
-            plan_hash = hashlib.sha256(plan_bytes).hexdigest()
-            plan_path = stage / "plan.json"
-            await asyncio.to_thread(_atomic_content_write, plan_path, plan_bytes)
-            summary = self._summary(plan)
-            report = {"summary": summary, "items": self._public_items(plan)}
-            with self.storage.transaction() as db:
-                db.execute("INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,'import',?,'ready',?,?,?,?,?)",
-                           (job_id, actor, "catalog", plan_hash, json.dumps(report, ensure_ascii=False), now, now + 86400))
-            return {"job_id": job_id, "pack_id": pack_id, "pack_version": pack_version, **summary,
-                    "items": report["items"], "expires_at": now + 86400}
-        except Exception:
-            shutil.rmtree(stage, ignore_errors=True)
-            raise
-        finally:
-            if archive is not None:
-                archive.close()
+
+    def _save_import_preview(self, job_id, actor, plan_hash, report, now):
+        with self.storage.transaction() as db:
+            db.execute(
+                "INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,'import',?,'ready',?,?,?,?,?)",
+                (
+                    job_id,
+                    actor,
+                    "catalog",
+                    plan_hash,
+                    json.dumps(report, ensure_ascii=False),
+                    now,
+                    now + 86400,
+                ),
+            )
 
     def commit(self, payload: dict[str, Any], *, actor: str, now: int) -> dict[str, Any]:
         job_id = self._text(payload.get("job_id"), "job_id", 64)
@@ -691,3 +866,10 @@ class _PublicResolver:
 
     async def close(self) -> None:
         return None
+
+
+def _read_archive_image(
+    archive: zipfile.ZipFile, info: zipfile.ZipInfo, max_bytes: int
+) -> bytes:
+    with archive.open(info, "r") as stream:
+        return stream.read(max_bytes + 1)

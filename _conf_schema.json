@@ -296,6 +296,13 @@
                   "取消赠送"
                 ],
                 "hint": "触发词列表，每项为一条关键词。"
+              },
+              "query_affection": {
+                "type": "list",
+                "default": [
+                  "查询好感度"
+                ],
+                "description": "查询双方好感度关键词"
               }
             }
           }
@@ -390,6 +397,18 @@
                   "wuwa_wife"
                 ],
                 "hint": "每行一个角色池 ID；空列表表示无候选池。"
+              },
+              "designated_capacity": {
+                "type": "int",
+                "default": 1,
+                "description": "指定次数与槽位上限",
+                "hint": "每周期共享一个上限，0关闭，最大100；失败不扣，强制解除不退次数。"
+              },
+              "designated_unique": {
+                "type": "bool",
+                "default": true,
+                "description": "指定角色只能有一段关系",
+                "hint": "只影响指定抽取。关闭可多人共享、同人重复；重新开启不清理已有关系。"
               }
             }
           },
@@ -478,6 +497,18 @@
                   "wuwa_husband"
                 ],
                 "hint": "每行一个角色池 ID；空列表表示无候选池。"
+              },
+              "designated_capacity": {
+                "type": "int",
+                "default": 1,
+                "description": "指定次数与槽位上限",
+                "hint": "每周期共享一个上限，0关闭，最大100；失败不扣，强制解除不退次数。"
+              },
+              "designated_unique": {
+                "type": "bool",
+                "default": true,
+                "description": "指定角色只能有一段关系",
+                "hint": "只影响指定抽取。关闭可多人共享、同人重复；重新开启不清理已有关系。"
               }
             }
           },
@@ -667,6 +698,18 @@
             "type": "bool",
             "description": "显示活跃度排行",
             "default": true
+          },
+          "rank_merge_rows": {
+            "type": "int",
+            "default": 20,
+            "description": "排行合并消息条数阈值",
+            "hint": "超过任一阈值时分段后发送合并消息。"
+          },
+          "rank_max_height": {
+            "type": "int",
+            "default": 2000,
+            "description": "排行单图高度上限（像素）",
+            "hint": "超过任一阈值时分段后发送合并消息。"
           }
         }
       },
@@ -692,182 +735,302 @@
               "draw_wife": {
                 "type": "text",
                 "description": "抽到老婆",
-                "default": "娶到老婆：{name}"
+                "default": "娶到老婆：{name}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "draw_husband": {
                 "type": "text",
                 "description": "抽到老公",
-                "default": "娶到老公：{name}"
+                "default": "娶到老公：{name}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "draw_member": {
                 "type": "text",
                 "description": "抽到群友",
-                "default": "娶到群友：{name}"
+                "default": "娶到群友：{name}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "capacity_full": {
                 "type": "text",
                 "description": "持有名额已满",
-                "default": "持有名额已满：{names}"
+                "default": "持有名额已满：{names}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "steal_slot_full": {
                 "type": "text",
                 "description": "抢夺槽位已满",
-                "default": "你今天已经抢过{role}啦～"
+                "default": "你今天已经抢过{role}啦～",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "relationship_locked": {
                 "type": "text",
-                "description": "抢夺关系不可解除或赠送",
-                "default": "抢夺槽位关系今日不可解除或赠送。"
+                "description": "受保护关系不可操作",
+                "default": "抢夺或指定槽位关系不可主动解除或赠送。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "steal_slot_locked": {
                 "type": "text",
-                "description": "抢夺关系不可再次被抢",
-                "default": "对方的抢夺槽位关系今日不可再次抢夺。"
+                "description": "目标关系不可被抢",
+                "default": "对方的抢夺或指定槽位关系不可抢夺。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "capacity_full_single_wife": {
                 "type": "text",
-                "description": "已有一个老婆时再次抽取",
-                "default": "你今日已有老婆啦，请明日再来。"
+                "description": "已有老婆",
+                "default": "你今日已有老婆啦，请明日再来。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "capacity_full_single_husband": {
                 "type": "text",
-                "description": "已有一个老公时再次抽取",
-                "default": "你今日已有老公啦，请明日再来。"
+                "description": "已有老公",
+                "default": "你今日已有老公啦，请明日再来。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "no_draw_quota": {
                 "type": "text",
                 "description": "普通抽取额度用完",
-                "default": "今天的普通抽取额度已用完"
+                "default": "今天的普通抽取额度已用完",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "no_candidate": {
                 "type": "text",
                 "description": "没有候选对象",
-                "default": "当前没有可抽取对象"
+                "default": "当前没有可抽取对象",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "steal_failed": {
                 "type": "text",
                 "description": "抢夺失败",
-                "default": "抢夺失败；配偶保留原关系"
+                "default": "抢夺失败；配偶保留原关系",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "stolen": {
                 "type": "text",
                 "description": "抢夺成功",
-                "default": "抢夺成功"
+                "default": "抢夺成功",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "divorced": {
                 "type": "text",
                 "description": "解除关系成功",
-                "default": "关系已解除，你获得一次补抽资格"
+                "default": "关系已解除，你获得一次补抽资格",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "gifted": {
                 "type": "text",
                 "description": "赠送成功",
-                "default": "赠送完成"
+                "default": "赠送完成",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_created": {
                 "type": "text",
                 "description": "赠送邀请已创建",
-                "default": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。"
+                "default": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "gift_accepted": {
                 "type": "text",
                 "description": "赠送已接受",
-                "default": "赠送已接受"
+                "default": "赠送已接受",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_rejected": {
                 "type": "text",
                 "description": "赠送已拒绝",
-                "default": "已拒绝赠送"
+                "default": "已拒绝赠送",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_cancelled": {
                 "type": "text",
                 "description": "赠送已取消",
-                "default": "已取消赠送"
+                "default": "已取消赠送",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_expired": {
                 "type": "text",
                 "description": "赠送邀请过期",
-                "default": "赠送邀请已过期"
+                "default": "赠送邀请已过期",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_invalidated": {
                 "type": "text",
                 "description": "赠送邀请失效",
-                "default": "赠送邀请已失效"
+                "default": "赠送邀请已失效",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_not_owned": {
                 "type": "text",
                 "description": "无权处理邀请",
-                "default": "你无权处理这条邀请"
+                "default": "你无权处理这条邀请",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "steal_cooldown": {
                 "type": "text",
                 "description": "抢夺冷却",
-                "default": "抢夺冷却中"
+                "default": "抢夺冷却中",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "steal_limit": {
                 "type": "text",
                 "description": "抢夺次数用完",
-                "default": "本周期抢夺尝试次数已用完"
+                "default": "本周期抢夺尝试次数已用完",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "target_protected": {
                 "type": "text",
                 "description": "目标受保护",
-                "default": "该持有者本周期已受抢夺保护"
+                "default": "该持有者本周期已受抢夺保护",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "divorce_limit": {
                 "type": "text",
                 "description": "解除关系次数用完",
-                "default": "本周期解除关系次数已用完"
+                "default": "本周期解除关系次数已用完",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "relationship_not_found": {
                 "type": "text",
                 "description": "关系不存在",
-                "default": "没有找到可处理的关系"
+                "default": "没有找到可处理的关系",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invalid_target": {
                 "type": "text",
                 "description": "目标无效",
-                "default": "目标无效"
+                "default": "目标无效",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "no_target_relationship": {
                 "type": "text",
                 "description": "目标没有关系",
-                "default": "目标没有可抢夺的关系"
+                "default": "目标没有可抢夺的关系",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "mode_disabled": {
                 "type": "text",
                 "description": "玩法已关闭",
-                "default": "这个玩法当前已关闭"
+                "default": "这个玩法当前已关闭",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invalid_probability": {
                 "type": "text",
                 "description": "抢夺概率无效",
-                "default": "抢夺概率配置无效"
+                "default": "抢夺概率配置无效",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invalid_timeout": {
                 "type": "text",
                 "description": "赠送超时无效",
-                "default": "赠送超时配置无效"
+                "default": "赠送超时配置无效",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_already_pending": {
                 "type": "text",
                 "description": "已有待处理邀请",
-                "default": "该关系已有待处理赠送邀请，编号 {invite_id}"
+                "default": "该关系已有待处理赠送邀请，编号 {invite_id}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_limit": {
                 "type": "text",
                 "description": "待处理邀请达到上限",
-                "default": "待处理赠送邀请已达上限 {limit}"
+                "default": "待处理赠送邀请已达上限 {limit}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_invalid": {
                 "type": "text",
                 "description": "邀请无效",
-                "default": "赠送邀请已无效"
+                "default": "赠送邀请已无效",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "unknown_result": {
                 "type": "text",
                 "description": "其他操作结果",
-                "default": "操作未完成：{code}"
+                "default": "操作未完成：{code}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_wife": {
+                "type": "text",
+                "description": "指定老婆成功",
+                "default": "指定老婆：{name}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_husband": {
+                "type": "text",
+                "description": "指定老公成功",
+                "default": "指定老公：{name}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_disabled": {
+                "type": "text",
+                "description": "指定抽取关闭",
+                "default": "指定抽取当前已关闭。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_slot_full": {
+                "type": "text",
+                "description": "指定槽位已满",
+                "default": "指定槽位已满，请等待下个周期。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "no_designated_quota": {
+                "type": "text",
+                "description": "指定次数用完",
+                "default": "本周期指定次数已用完。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_occupied": {
+                "type": "text",
+                "description": "指定角色已被持有",
+                "default": "该角色已有关系，当前开启了指定角色独占。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_drawn": {
+                "type": "text",
+                "description": "指定抽取成功",
+                "default": "指定成功：{name}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "designated_relationship_locked": {
+                "type": "text",
+                "description": "指定关系不可操作",
+                "default": "指定槽位关系不可抢夺、赠送或主动解除。",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "list_wife": {
+                "type": "text",
+                "description": "老婆列表回复",
+                "default": "{title}（共 {count}）\n{lines}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "list_husband": {
+                "type": "text",
+                "description": "老公列表回复",
+                "default": "{title}（共 {count}）\n{lines}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "list_member": {
+                "type": "text",
+                "description": "群友列表回复",
+                "default": "{title}（共 {count}）\n{lines}{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "rank_intimacy": {
+                "type": "text",
+                "description": "亲密度排行回复",
+                "default": "{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "rank_activity": {
+                "type": "text",
+                "description": "活跃度排行回复",
+                "default": "{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "query_affection": {
+                "type": "text",
+                "description": "好感度查询回复",
+                "default": "{image}",
+                "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               }
             }
           },
@@ -878,107 +1041,146 @@
               "syntax_error": {
                 "type": "text",
                 "description": "指令格式错误",
-                "default": "{detail}"
+                "default": "{detail}",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "operation_error": {
                 "type": "text",
                 "description": "操作错误",
-                "default": "{detail}"
+                "default": "{detail}",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "mode_closed": {
                 "type": "text",
                 "description": "玩法关闭",
-                "default": "这个玩法当前已关闭。"
+                "default": "这个玩法当前已关闭。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "command_cooldown": {
                 "type": "text",
                 "description": "通用指令冷却",
-                "default": "指令冷却中，请在 {remaining_seconds} 秒后重试。"
+                "default": "指令冷却中，请在 {remaining_seconds} 秒后重试。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "steal_disabled": {
                 "type": "text",
                 "description": "抢夺关闭",
-                "default": "这个玩法当前不允许抢夺。"
+                "default": "这个玩法当前不允许抢夺。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "steal_target_required": {
                 "type": "text",
                 "description": "抢夺目标无效",
-                "default": "请 @ 一位当前群内且允许参与的持有者。"
+                "default": "请 @ 一位当前群内且允许参与的持有者。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "steal_relation_ambiguous": {
                 "type": "text",
                 "description": "抢夺关系不明确",
-                "default": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。"
+                "default": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "gift_disabled": {
                 "type": "text",
                 "description": "赠送关闭",
-                "default": "这个玩法当前不允许赠送。"
+                "default": "这个玩法当前不允许赠送。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "gift_target_required": {
                 "type": "text",
                 "description": "赠送目标无效",
-                "default": "请 @ 一位当前群内且允许参与的接收者。"
+                "default": "请 @ 一位当前群内且允许参与的接收者。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "gift_relation_ambiguous": {
                 "type": "text",
                 "description": "赠送关系不明确",
-                "default": "你没有唯一匹配的配偶；请使用准确名称或 #ID。"
+                "default": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "divorce_ambiguous": {
                 "type": "text",
                 "description": "离婚关系不明确",
-                "default": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID："
+                "default": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID：",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "divorce_disabled": {
                 "type": "text",
                 "description": "解除关系关闭",
-                "default": "这个玩法当前不允许解除关系。"
+                "default": "这个玩法当前不允许解除关系。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "divorce_relation_missing": {
                 "type": "text",
                 "description": "解除关系未找到",
-                "default": "没有找到匹配的当前关系。"
+                "default": "没有找到匹配的当前关系。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "invite_multiple": {
                 "type": "text",
                 "description": "有多条待处理邀请",
-                "default": "你有多条待处理赠送，请在命令后填写邀请编号。"
+                "default": "你有多条待处理赠送，请在命令后填写邀请编号。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "invite_none": {
                 "type": "text",
                 "description": "没有待处理邀请",
-                "default": "没有可处理的待赠送邀请。"
+                "default": "没有可处理的待赠送邀请。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "invite_invalid_id": {
                 "type": "text",
                 "description": "邀请编号无效",
-                "default": "邀请编号无效或不属于当前群。"
+                "default": "邀请编号无效或不属于当前群。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "rank_intimacy_disabled": {
                 "type": "text",
                 "description": "亲密度排行关闭",
-                "default": "亲密度排行当前已关闭。"
+                "default": "亲密度排行当前已关闭。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "rank_activity_disabled": {
                 "type": "text",
                 "description": "活跃度排行关闭",
-                "default": "活跃度排行当前已关闭。"
+                "default": "活跃度排行当前已关闭。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "activity_disabled": {
                 "type": "text",
                 "description": "活跃度统计关闭",
-                "default": "活跃度统计已关闭；当前保留历史排行。"
+                "default": "活跃度统计已关闭；当前保留历史排行。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "page_out_of_range": {
                 "type": "text",
                 "description": "页码超出范围",
-                "default": "页码超出范围；共 {pages} 页。"
+                "default": "页码超出范围；共 {pages} 页。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "list_empty": {
                 "type": "text",
                 "description": "关系列表为空",
-                "default": "{title}：当前没有关系。"
+                "default": "{title}：当前没有关系。",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "designated_missing": {
+                "type": "text",
+                "description": "未找到指定角色",
+                "default": "未找到当前角色池内可指定的角色；请使用精确名称、别名或 ID。",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "designated_ambiguous": {
+                "type": "text",
+                "description": "指定角色有多个匹配",
+                "default": "匹配到多个角色，请使用明确 ID：\n{candidates}",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "affection_target_required": {
+                "type": "text",
+                "description": "好感度查询目标无效",
+                "default": "请 @ 一位当前群内且允许参与的其他成员。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               }
             }
           },
@@ -989,12 +1191,164 @@
               "restart_invalidated": {
                 "type": "text",
                 "description": "重启后邀请失效",
-                "default": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。"
+                "default": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
+                "hint": "支持声明的简单变量，最长1000字符。"
               },
               "invite_expired": {
                 "type": "text",
                 "description": "赠送邀请过期",
-                "default": "以下赠送邀请已超时：{invite_ids}"
+                "default": "以下赠送邀请已超时：{invite_ids}",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "member_reconcile": {
+                "type": "text",
+                "description": "成员资格变化通知",
+                "default": "成员资格变化，以下关系或邀请已结束：{details}",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "member_redraw": {
+                "type": "text",
+                "description": "群友离开补抽说明",
+                "default": "{name}（持有人 {owner_id} 获得补抽资格）",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "owner_ineligible": {
+                "type": "text",
+                "description": "持有人失去资格说明",
+                "default": "{name}（持有人 {owner_id} 已失去资格）",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "participant_ineligible": {
+                "type": "text",
+                "description": "赠送参与者失去资格说明",
+                "default": "赠送邀请 {invite_id}（参与者已失去资格）",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              }
+            }
+          },
+          "titles": {
+            "type": "object",
+            "description": "图片内标题与统计标签",
+            "items": {
+              "list_wife": {
+                "type": "text",
+                "description": "老婆列表标题",
+                "default": "老婆列表",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "list_husband": {
+                "type": "text",
+                "description": "老公列表标题",
+                "default": "老公列表",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "list_member": {
+                "type": "text",
+                "description": "群友列表标题",
+                "default": "群友配偶列表",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "existing": {
+                "type": "text",
+                "description": "已有关系标题",
+                "default": "已有关系",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "rank_intimacy": {
+                "type": "text",
+                "description": "个人亲密度排行标题",
+                "default": "{name}与群友的亲密度排行",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "rank_group_intimacy": {
+                "type": "text",
+                "description": "全群亲密度排行标题",
+                "default": "全群有向亲密度排行",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "rank_activity": {
+                "type": "text",
+                "description": "活跃度排行标题",
+                "default": "近 {days} 天活跃度排行",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "query_affection": {
+                "type": "text",
+                "description": "好感度查询标题",
+                "default": "{name}与{target_name}的好感度",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "page": {
+                "type": "text",
+                "description": "分页标题",
+                "default": "{title} 第 {page}/{pages} 页",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "empty": {
+                "type": "text",
+                "description": "空榜文案",
+                "default": "暂无记录。",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "rank_summary": {
+                "type": "text",
+                "description": "排行摘要",
+                "default": "{title}（共 {count}）",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "intimacy_value": {
+                "type": "text",
+                "description": "亲密度数值标签",
+                "default": "亲密度：{score}",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "activity_value": {
+                "type": "text",
+                "description": "活跃度数值标签",
+                "default": "消息数：{messages} · 活跃天数：{active_days}",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "affection_value": {
+                "type": "text",
+                "description": "有向好感度标签",
+                "default": "{name} → {target_name}：{score}",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "normal_slot": {
+                "type": "text",
+                "description": "普通槽位标签",
+                "default": "普通",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "steal_slot": {
+                "type": "text",
+                "description": "抢夺槽位标签",
+                "default": "抢夺",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "designated_slot": {
+                "type": "text",
+                "description": "指定槽位标签",
+                "default": "指定",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "wife": {
+                "type": "text",
+                "description": "老婆玩法名称",
+                "default": "老婆",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "husband": {
+                "type": "text",
+                "description": "老公玩法名称",
+                "default": "老公",
+                "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "member": {
+                "type": "text",
+                "description": "群友玩法名称",
+                "default": "群友",
+                "hint": "支持声明的简单变量，最长1000字符。"
               }
             }
           }
@@ -1099,6 +1453,394 @@
             "type": "int",
             "description": "并发下载数",
             "default": 4
+          }
+        }
+      },
+      "reply_quote": {
+        "type": "object",
+        "description": "逐条回复引用消息源",
+        "items": {
+          "results": {
+            "type": "object",
+            "description": "操作回复",
+            "items": {
+              "draw_wife": {
+                "type": "bool",
+                "default": false,
+                "description": "抽到老婆引用消息源"
+              },
+              "draw_husband": {
+                "type": "bool",
+                "default": false,
+                "description": "抽到老公引用消息源"
+              },
+              "draw_member": {
+                "type": "bool",
+                "default": false,
+                "description": "抽到群友引用消息源"
+              },
+              "capacity_full": {
+                "type": "bool",
+                "default": false,
+                "description": "持有名额已满引用消息源"
+              },
+              "steal_slot_full": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺槽位已满引用消息源"
+              },
+              "relationship_locked": {
+                "type": "bool",
+                "default": false,
+                "description": "受保护关系不可操作引用消息源"
+              },
+              "steal_slot_locked": {
+                "type": "bool",
+                "default": false,
+                "description": "目标关系不可被抢引用消息源"
+              },
+              "capacity_full_single_wife": {
+                "type": "bool",
+                "default": false,
+                "description": "已有老婆引用消息源"
+              },
+              "capacity_full_single_husband": {
+                "type": "bool",
+                "default": false,
+                "description": "已有老公引用消息源"
+              },
+              "no_draw_quota": {
+                "type": "bool",
+                "default": false,
+                "description": "普通抽取额度用完引用消息源"
+              },
+              "no_candidate": {
+                "type": "bool",
+                "default": false,
+                "description": "没有候选对象引用消息源"
+              },
+              "steal_failed": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺失败引用消息源"
+              },
+              "stolen": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺成功引用消息源"
+              },
+              "divorced": {
+                "type": "bool",
+                "default": false,
+                "description": "解除关系成功引用消息源"
+              },
+              "gifted": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送成功引用消息源"
+              },
+              "invite_created": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送邀请已创建引用消息源"
+              },
+              "gift_accepted": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送已接受引用消息源"
+              },
+              "invite_rejected": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送已拒绝引用消息源"
+              },
+              "invite_cancelled": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送已取消引用消息源"
+              },
+              "invite_expired": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送邀请过期引用消息源"
+              },
+              "invite_invalidated": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送邀请失效引用消息源"
+              },
+              "invite_not_owned": {
+                "type": "bool",
+                "default": false,
+                "description": "无权处理邀请引用消息源"
+              },
+              "steal_cooldown": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺冷却引用消息源"
+              },
+              "steal_limit": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺次数用完引用消息源"
+              },
+              "target_protected": {
+                "type": "bool",
+                "default": false,
+                "description": "目标受保护引用消息源"
+              },
+              "divorce_limit": {
+                "type": "bool",
+                "default": false,
+                "description": "解除关系次数用完引用消息源"
+              },
+              "relationship_not_found": {
+                "type": "bool",
+                "default": false,
+                "description": "关系不存在引用消息源"
+              },
+              "invalid_target": {
+                "type": "bool",
+                "default": false,
+                "description": "目标无效引用消息源"
+              },
+              "no_target_relationship": {
+                "type": "bool",
+                "default": false,
+                "description": "目标没有关系引用消息源"
+              },
+              "mode_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "玩法已关闭引用消息源"
+              },
+              "invalid_probability": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺概率无效引用消息源"
+              },
+              "invalid_timeout": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送超时无效引用消息源"
+              },
+              "invite_already_pending": {
+                "type": "bool",
+                "default": false,
+                "description": "已有待处理邀请引用消息源"
+              },
+              "invite_limit": {
+                "type": "bool",
+                "default": false,
+                "description": "待处理邀请达到上限引用消息源"
+              },
+              "invite_invalid": {
+                "type": "bool",
+                "default": false,
+                "description": "邀请无效引用消息源"
+              },
+              "unknown_result": {
+                "type": "bool",
+                "default": false,
+                "description": "其他操作结果引用消息源"
+              },
+              "designated_wife": {
+                "type": "bool",
+                "default": false,
+                "description": "指定老婆成功引用消息源"
+              },
+              "designated_husband": {
+                "type": "bool",
+                "default": false,
+                "description": "指定老公成功引用消息源"
+              },
+              "designated_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "指定抽取关闭引用消息源"
+              },
+              "designated_slot_full": {
+                "type": "bool",
+                "default": false,
+                "description": "指定槽位已满引用消息源"
+              },
+              "no_designated_quota": {
+                "type": "bool",
+                "default": false,
+                "description": "指定次数用完引用消息源"
+              },
+              "designated_occupied": {
+                "type": "bool",
+                "default": false,
+                "description": "指定角色已被持有引用消息源"
+              },
+              "designated_drawn": {
+                "type": "bool",
+                "default": false,
+                "description": "指定抽取成功引用消息源"
+              },
+              "designated_relationship_locked": {
+                "type": "bool",
+                "default": false,
+                "description": "指定关系不可操作引用消息源"
+              },
+              "list_wife": {
+                "type": "bool",
+                "default": false,
+                "description": "老婆列表回复引用消息源"
+              },
+              "list_husband": {
+                "type": "bool",
+                "default": false,
+                "description": "老公列表回复引用消息源"
+              },
+              "list_member": {
+                "type": "bool",
+                "default": false,
+                "description": "群友列表回复引用消息源"
+              },
+              "rank_intimacy": {
+                "type": "bool",
+                "default": false,
+                "description": "亲密度排行回复引用消息源"
+              },
+              "rank_activity": {
+                "type": "bool",
+                "default": false,
+                "description": "活跃度排行回复引用消息源"
+              },
+              "query_affection": {
+                "type": "bool",
+                "default": false,
+                "description": "好感度查询回复引用消息源"
+              }
+            }
+          },
+          "errors": {
+            "type": "object",
+            "description": "错误提示",
+            "items": {
+              "syntax_error": {
+                "type": "bool",
+                "default": false,
+                "description": "指令格式错误引用消息源"
+              },
+              "operation_error": {
+                "type": "bool",
+                "default": false,
+                "description": "操作错误引用消息源"
+              },
+              "mode_closed": {
+                "type": "bool",
+                "default": false,
+                "description": "玩法关闭引用消息源"
+              },
+              "command_cooldown": {
+                "type": "bool",
+                "default": false,
+                "description": "通用指令冷却引用消息源"
+              },
+              "steal_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺关闭引用消息源"
+              },
+              "steal_target_required": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺目标无效引用消息源"
+              },
+              "steal_relation_ambiguous": {
+                "type": "bool",
+                "default": false,
+                "description": "抢夺关系不明确引用消息源"
+              },
+              "gift_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送关闭引用消息源"
+              },
+              "gift_target_required": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送目标无效引用消息源"
+              },
+              "gift_relation_ambiguous": {
+                "type": "bool",
+                "default": false,
+                "description": "赠送关系不明确引用消息源"
+              },
+              "divorce_ambiguous": {
+                "type": "bool",
+                "default": false,
+                "description": "离婚关系不明确引用消息源"
+              },
+              "divorce_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "解除关系关闭引用消息源"
+              },
+              "divorce_relation_missing": {
+                "type": "bool",
+                "default": false,
+                "description": "解除关系未找到引用消息源"
+              },
+              "invite_multiple": {
+                "type": "bool",
+                "default": false,
+                "description": "有多条待处理邀请引用消息源"
+              },
+              "invite_none": {
+                "type": "bool",
+                "default": false,
+                "description": "没有待处理邀请引用消息源"
+              },
+              "invite_invalid_id": {
+                "type": "bool",
+                "default": false,
+                "description": "邀请编号无效引用消息源"
+              },
+              "rank_intimacy_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "亲密度排行关闭引用消息源"
+              },
+              "rank_activity_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "活跃度排行关闭引用消息源"
+              },
+              "activity_disabled": {
+                "type": "bool",
+                "default": false,
+                "description": "活跃度统计关闭引用消息源"
+              },
+              "page_out_of_range": {
+                "type": "bool",
+                "default": false,
+                "description": "页码超出范围引用消息源"
+              },
+              "list_empty": {
+                "type": "bool",
+                "default": false,
+                "description": "关系列表为空引用消息源"
+              },
+              "designated_missing": {
+                "type": "bool",
+                "default": false,
+                "description": "未找到指定角色引用消息源"
+              },
+              "designated_ambiguous": {
+                "type": "bool",
+                "default": false,
+                "description": "指定角色有多个匹配引用消息源"
+              },
+              "affection_target_required": {
+                "type": "bool",
+                "default": false,
+                "description": "好感度查询目标无效引用消息源"
+              }
+            }
           }
         }
       }

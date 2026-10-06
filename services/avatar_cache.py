@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
+from astrbot.api import logger
 from PIL import Image
-
 
 _ALLOWED_REDIRECT_SUFFIXES = (".qlogo.cn", ".gtimg.cn", ".qpic.cn")
 _ALLOWED_REDIRECT_HOSTS = {"qlogo.cn", "gtimg.cn", "qpic.cn"}
@@ -50,55 +50,75 @@ class AvatarCache:
     ) -> dict[str, Path | None]:
         ttl = self.ttl_seconds if ttl_seconds is None else max(0, int(ttl_seconds))
         capacity = max(1, int(max_entries))
-        valid_ids = tuple(dict.fromkeys(user_id for user_id in user_ids if _valid_qq_id(user_id)))
+        valid_ids = tuple(
+            dict.fromkeys(user_id for user_id in user_ids if _valid_qq_id(user_id))
+        )
         if not valid_ids:
             return {}
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(self.cache_dir.mkdir, parents=True, exist_ok=True)
         try:
             import aiohttp
         except ImportError:
-            await asyncio.to_thread(_prune_files, self.cache_dir, capacity, set(valid_ids))
-            return {user_id: self._cached_path(user_id) if ttl > 0 else None for user_id in valid_ids}
+            logger.warning("今日姻缘：缺少 aiohttp，头像使用缓存或占位。")
+            await asyncio.to_thread(
+                _prune_files, self.cache_dir, capacity, set(valid_ids)
+            )
+            return {
+                user_id: self._cached_path(user_id) if ttl > 0 else None
+                for user_id in valid_ids
+            }
         timeout = aiohttp.ClientTimeout(total=self.timeout_seconds)
         connector = aiohttp.TCPConnector(limit=8, ttl_dns_cache=60)
         semaphore = asyncio.Semaphore(8)
         resolved: dict[str, Path | None] = {}
         deadline = asyncio.get_running_loop().time() + self.max_total_seconds
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector, raise_for_status=False) as session:
+        async with aiohttp.ClientSession(
+            timeout=timeout, connector=connector, raise_for_status=False
+        ) as session:
             for offset in range(0, len(valid_ids), 100):
                 batch = valid_ids[offset : offset + 100]
                 tasks = {
-                    user_id: asyncio.create_task(self._get_one(session, semaphore, user_id, ttl))
+                    user_id: asyncio.create_task(
+                        self._get_one(session, semaphore, user_id, ttl)
+                    )
                     for user_id in batch
                 }
                 remaining = deadline - asyncio.get_running_loop().time()
-                if remaining <= 0:
+                try:
+                    if remaining <= 0:
+                        break
+                    done, pending = await asyncio.wait(
+                        tasks.values(), timeout=remaining
+                    )
+                finally:
                     for task in tasks.values():
-                        task.cancel()
-                    break
-                done, pending = await asyncio.wait(tasks.values(), timeout=remaining)
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    await asyncio.gather(*pending, return_exceptions=True)
+                        if not task.done():
+                            task.cancel()
+                    await asyncio.gather(*tasks.values(), return_exceptions=True)
                 reverse = {task: user_id for user_id, task in tasks.items()}
                 for task in done:
                     user_id = reverse[task]
                     try:
                         result = task.result()
                     except Exception:
+                        logger.exception("今日姻缘：头像缓存任务失败，使用缓存或占位。")
                         result = None
                     resolved[user_id] = result if isinstance(result, Path) else None
                 if pending:
                     break
         await asyncio.to_thread(_prune_files, self.cache_dir, capacity, set(valid_ids))
         return {
-            user_id: resolved.get(user_id) or (self._cached_path(user_id) if ttl > 0 else None)
+            user_id: resolved.get(user_id)
+            or (self._cached_path(user_id) if ttl > 0 else None)
             for user_id in valid_ids
         }
 
     async def _get_one(
-        self, session: Any, semaphore: asyncio.Semaphore, user_id: str, ttl_seconds: int | None = None
+        self,
+        session: Any,
+        semaphore: asyncio.Semaphore,
+        user_id: str,
+        ttl_seconds: int | None = None,
     ) -> Path | None:
         ttl = self.ttl_seconds if ttl_seconds is None else max(0, int(ttl_seconds))
         existing = self._cached_path(user_id)
@@ -109,18 +129,25 @@ class AvatarCache:
         async with semaphore:
             try:
                 payload = await self._download(session, user_id)
-                width, height, extension = await asyncio.to_thread(_inspect_avatar, payload, self.max_pixels)
+                width, height, extension = await asyncio.to_thread(
+                    _inspect_avatar, payload, self.max_pixels
+                )
                 if width * height > self.max_pixels:
                     return cached
                 target = self.cache_dir / f"{user_id}{extension}"
                 downloaded_at = time.time()
                 await asyncio.to_thread(_atomic_replace, target, payload)
-                await asyncio.to_thread(_write_cache_times, target, downloaded_at, downloaded_at)
+                await asyncio.to_thread(
+                    _write_cache_times, target, downloaded_at, downloaded_at
+                )
                 if existing is not None and existing != target:
                     existing.unlink(missing_ok=True)
                     _cache_metadata_path(existing).unlink(missing_ok=True)
                 return target
             except Exception:
+                logger.warning(
+                    "今日姻缘：头像获取或缓存失败，使用缓存或占位。", exc_info=True
+                )
                 if cached is not None:
                     await asyncio.to_thread(_touch_cache, cached, time.time())
                 return cached

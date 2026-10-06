@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from ..models import StorageError
+from .statistics import StatisticsService
 from .storage import SQLiteStorage
 
 
@@ -13,7 +13,16 @@ class AdminQueryService:
     def __init__(self, storage: SQLiteStorage) -> None:
         self.storage = storage
 
-    def relationships(self, scope_id: int, *, period_id: str | None, mode: str | None, query: str, limit: int, offset: int) -> dict[str, Any]:
+    def relationships(
+        self,
+        scope_id: int,
+        *,
+        period_id: str | None,
+        mode: str | None,
+        query: str,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
         where = ["r.scope_id=?"]
         args: list[Any] = [scope_id]
         if period_id:
@@ -33,28 +42,40 @@ class AdminQueryService:
         clause = " AND ".join(where)
         with self.storage._lock:
             db = self.storage._connection()
-            total = int(db.execute(
-                f"SELECT COUNT(*) FROM relationships r JOIN periods p ON p.id=r.period_id AND p.scope_id=r.scope_id JOIN subject_snapshots ss ON ss.id=r.snapshot_id WHERE {clause}", args
-            ).fetchone()[0])
+            total = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM relationships r JOIN periods p ON p.id=r.period_id AND p.scope_id=r.scope_id JOIN subject_snapshots ss ON ss.id=r.snapshot_id WHERE {clause}",
+                    args,
+                ).fetchone()[0]
+            )
             rows = db.execute(
                 f"""SELECT r.id,r.period_id,r.mode,r.owner_id,r.subject_kind,r.subject_id,r.slot_kind,
-                           CASE r.slot_kind WHEN 'steal' THEN '抢夺' ELSE '普通' END AS slot_label,
+                           CASE r.slot_kind WHEN 'steal' THEN '抢夺' WHEN 'designated' THEN '指定' ELSE '普通' END AS slot_label,
                            r.state,r.acquired_at,r.ended_at,
                            r.end_reason,r.version,ss.name AS snapshot_name,ss.source_revision,p.starts_at,p.ends_at,
                            COALESCE((SELECT GROUP_CONCAT(si.media_hash,char(31)) FROM snapshot_images si WHERE si.snapshot_id=ss.id),'') AS image_hashes
                     FROM relationships r JOIN periods p ON p.id=r.period_id AND p.scope_id=r.scope_id
                     JOIN subject_snapshots ss ON ss.id=r.snapshot_id WHERE {clause}
-                    ORDER BY r.acquired_at DESC,r.id DESC LIMIT ? OFFSET ?""", (*args, limit, offset)
+                    ORDER BY r.acquired_at DESC,r.id DESC LIMIT ? OFFSET ?""",
+                (*args, limit, offset),
             ).fetchall()
         items = []
         for row in rows:
             item = dict(row)
-            item["image_hashes"] = item["image_hashes"].split(chr(31)) if item["image_hashes"] else []
+            item["image_hashes"] = (
+                item["image_hashes"].split(chr(31)) if item["image_hashes"] else []
+            )
             items.append(item)
         return {"items": items, "total": total, "limit": limit, "offset": offset}
 
-    def quota(self, scope_id: int, mode: str, user_id: str, *, period_id: str | None) -> dict[str, Any]:
-        if mode not in {"wife", "husband", "member"} or not user_id or len(user_id) > 128:
+    def quota(
+        self, scope_id: int, mode: str, user_id: str, *, period_id: str | None
+    ) -> dict[str, Any]:
+        if (
+            mode not in {"wife", "husband", "member"}
+            or not user_id
+            or len(user_id) > 128
+        ):
             raise ValueError("mode 或 user_id 无效。")
         with self.storage._lock:
             db = self.storage._connection()
@@ -63,35 +84,91 @@ class AdminQueryService:
                 raise ValueError("所选作用域没有当前周期或周期不存在。")
             period_id = str(period["id"])
             counter = db.execute(
-                "SELECT normal_draws,steal_attempts,stolen_successes,divorces,last_steal_at FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+                "SELECT normal_draws,designated_draws,steal_attempts,stolen_successes,divorces,last_steal_at FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
                 (scope_id, period_id, mode, user_id),
             ).fetchone()
-            active = int(db.execute(
-                "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='normal' AND state='active'",
-                (scope_id, period_id, mode, user_id),
-            ).fetchone()[0])
-            stolen = int(db.execute(
-                "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='steal' AND state='active'",
-                (scope_id, period_id, mode, user_id),
-            ).fetchone()[0])
+            active = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='normal' AND state='active'",
+                    (scope_id, period_id, mode, user_id),
+                ).fetchone()[0]
+            )
+            stolen = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='steal' AND state='active'",
+                    (scope_id, period_id, mode, user_id),
+                ).fetchone()[0]
+            )
+            designated = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind='designated' AND state='active'",
+                    (scope_id, period_id, mode, user_id),
+                ).fetchone()[0]
+            )
             credits = db.execute(
                 "SELECT reason,state,COUNT(*) AS amount FROM redraw_credits WHERE scope_id=? AND period_id=? AND mode=? AND user_id=? GROUP BY reason,state",
                 (scope_id, period_id, mode, user_id),
             ).fetchall()
-            sent = int(db.execute("SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND sender_id=? AND state='pending'", (scope_id, period_id, user_id)).fetchone()[0])
-            received = int(db.execute("SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND recipient_id=? AND state='pending'", (scope_id, period_id, user_id)).fetchone()[0])
+            sent = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND sender_id=? AND state='pending'",
+                    (scope_id, period_id, user_id),
+                ).fetchone()[0]
+            )
+            received = int(
+                db.execute(
+                    "SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND recipient_id=? AND state='pending'",
+                    (scope_id, period_id, user_id),
+                ).fetchone()[0]
+            )
         config, revision = self.storage.get_settings(scope_id)
         settings = config["modes"][mode]
-        counter_value = dict(counter) if counter else {"normal_draws": 0, "steal_attempts": 0, "stolen_successes": 0, "divorces": 0, "last_steal_at": None}
+        counter_value = (
+            dict(counter)
+            if counter
+            else {
+                "normal_draws": 0,
+                "designated_draws": 0,
+                "steal_attempts": 0,
+                "stolen_successes": 0,
+                "divorces": 0,
+                "last_steal_at": None,
+            }
+        )
         credit_rows = [dict(row) for row in credits]
-        available = sum(int(row["amount"]) for row in credit_rows if row["state"] == "available")
+        available = sum(
+            int(row["amount"]) for row in credit_rows if row["state"] == "available"
+        )
         capacity = int(settings["capacity"])
-        counter_value.update({"active_relationships": active, "active_steal_relationships": stolen,
-                              "steal_slot_capacity": int(settings["steal_slot_capacity"]),
-                              "capacity": capacity, "normal_quota_remaining": max(0, capacity - int(counter_value["normal_draws"])),
-                              "available_redraw_credits": available, "redraw_credits": credit_rows,
-                              "pending_invites_sent": sent, "pending_invites_received": received})
-        return {"scope_id": scope_id, "period": dict(period), "mode": mode, "user_id": user_id, "data": counter_value, "config_revision": revision}
+        designated_capacity = int(settings.get("designated_capacity", 0))
+        counter_value.update(
+            {
+                "active_relationships": active,
+                "active_steal_relationships": stolen,
+                "active_designated_relationships": designated,
+                "designated_capacity": designated_capacity,
+                "designated_quota_remaining": max(
+                    0, designated_capacity - int(counter_value["designated_draws"])
+                ),
+                "steal_slot_capacity": int(settings["steal_slot_capacity"]),
+                "capacity": capacity,
+                "normal_quota_remaining": max(
+                    0, capacity - int(counter_value["normal_draws"])
+                ),
+                "available_redraw_credits": available,
+                "redraw_credits": credit_rows,
+                "pending_invites_sent": sent,
+                "pending_invites_received": received,
+            }
+        )
+        return {
+            "scope_id": scope_id,
+            "period": dict(period),
+            "mode": mode,
+            "user_id": user_id,
+            "data": counter_value,
+            "config_revision": revision,
+        }
 
     def intimacy(self, scope_id: int, *, source_id: str | None, limit: int, offset: int) -> dict[str, Any]:
         with self.storage._lock:
@@ -104,10 +181,28 @@ class AdminQueryService:
                 rows = db.execute("SELECT source_id,target_id,score,updated_at FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id LIMIT ? OFFSET ?", (scope_id, limit, offset)).fetchall()
         return {"items": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset, "directed": True}
 
-    def activity(self, scope_id: int, *, user_id: str | None, window_days: int, now: int, limit: int, offset: int) -> dict[str, Any]:
+    def activity(
+        self,
+        scope_id: int,
+        *,
+        user_id: str | None,
+        window_days: int,
+        now: int,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
         if not 1 <= window_days <= 365:
             raise ValueError("window_days 必须在 1 到 365 之间。")
         start = now - window_days * 86400
+        config, _revision = self.storage.get_settings(scope_id)
+        ranked = StatisticsService(self.storage).activity_rows(
+            scope_id,
+            now=now,
+            window_days=window_days,
+            timezone=config["reset"]["timezone"],
+        )
+        if user_id:
+            ranked = [row for row in ranked if row["user_id"] == user_id]
         with self.storage._lock:
             db = self.storage._connection()
             args: list[Any] = [scope_id, start, now]
@@ -115,16 +210,41 @@ class AdminQueryService:
             if user_id:
                 user_clause = " AND user_id=?"
                 args.append(user_id)
-            total = int(db.execute(f"SELECT COUNT(DISTINCT user_id) FROM activity_seconds WHERE scope_id=? AND observed_second>? AND observed_second<=?{user_clause}", args).fetchone()[0])
             rows = db.execute(
-                f"""SELECT user_id,SUM(message_count) AS messages,MIN(observed_second) AS first_observed,MAX(observed_second) AS last_observed
+                f"""SELECT user_id,MIN(observed_second) AS first_observed,MAX(observed_second) AS last_observed
                     FROM activity_seconds WHERE scope_id=? AND observed_second>? AND observed_second<=?{user_clause}
-                    GROUP BY user_id ORDER BY messages DESC,user_id LIMIT ? OFFSET ?""", (*args, limit, offset)
+                    GROUP BY user_id""",
+                args,
             ).fetchall()
-            coverage = db.execute(f"SELECT MIN(observed_second),MAX(observed_second),SUM(message_count) FROM activity_seconds WHERE scope_id=? AND observed_second>? AND observed_second<=?{user_clause}", args).fetchone()
-        return {"items": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset,
-                "window_days": window_days, "window_start": start, "window_end": now,
-                "coverage": {"first_observed": coverage[0], "last_observed": coverage[1], "messages": int(coverage[2] or 0)}}
+            coverage = db.execute(
+                f"SELECT MIN(observed_second),MAX(observed_second),SUM(message_count) FROM activity_seconds WHERE scope_id=? AND observed_second>? AND observed_second<=?{user_clause}",
+                args,
+            ).fetchone()
+        bounds = {row["user_id"]: row for row in rows}
+        items = []
+        for row in ranked[offset : offset + limit]:
+            observed = bounds.get(row["user_id"])
+            items.append(
+                {
+                    **row,
+                    "first_observed": observed["first_observed"] if observed else None,
+                    "last_observed": observed["last_observed"] if observed else None,
+                }
+            )
+        return {
+            "items": items,
+            "total": len(ranked),
+            "limit": limit,
+            "offset": offset,
+            "window_days": window_days,
+            "window_start": start,
+            "window_end": now,
+            "coverage": {
+                "first_observed": coverage[0],
+                "last_observed": coverage[1],
+                "messages": int(coverage[2] or 0),
+            },
+        }
 
     def invites(self, scope_id: int, *, state: str | None, limit: int, offset: int) -> dict[str, Any]:
         where = ["i.scope_id=?"]
