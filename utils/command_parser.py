@@ -38,6 +38,24 @@ def parse_command(
     if not parts:
         return None
 
+    # 固定管理命令不依赖可配置裸关键词或宿主前缀。
+    admin_parts = parts.copy()
+    if (
+        admin_parts[0].kind == "at"
+        and admin_parts[0].value in bot_ids
+        and allow_leading_bot_mention
+    ):
+        admin_parts.pop(0)
+        _trim_leading_text(admin_parts)
+    if admin_parts and all(part.kind == "text" for part in admin_parts):
+        raw_text = "".join(part.value for part in admin_parts).strip()
+        admin_match = re.fullmatch(r"/设置老婆(?:\s+(.*))?", raw_text)
+        if admin_match:
+            name = (admin_match.group(1) or "").strip()
+            if not name or len(name) > 80:
+                raise CommandSyntaxError("请填写 1～80 字符的角色名或别名。")
+            return ParsedCommand("set_wife", argument=name)
+
     if (
         parts[0].kind == "at"
         and parts[0].value in bot_ids
@@ -128,7 +146,7 @@ def _consume_prefix(parts: list[_Part], prefixes: Sequence[str]) -> bool:
     text = parts[0].value
     for prefix in prefixes:
         if text.startswith(prefix):
-            parts[0] = _Part("text", text[len(prefix):])
+            parts[0] = _Part("text", text[len(prefix) :])
             _trim_leading_text(parts)
             return True
     return False
@@ -143,14 +161,22 @@ def _trim_leading_text(parts: list[_Part]) -> None:
         parts.pop(0)
 
 
-def _was_prefixed(segments: Sequence[Mapping[str, Any]], bot_ids: set[str] | frozenset[str], prefixes: Sequence[str]) -> bool:
+def _was_prefixed(
+    segments: Sequence[Mapping[str, Any]],
+    bot_ids: set[str] | frozenset[str],
+    prefixes: Sequence[str],
+) -> bool:
     parts = _parts(segments)
     while parts and parts[0].kind == "reply":
         parts.pop(0)
     if parts and parts[0].kind == "at" and parts[0].value in bot_ids:
         parts.pop(0)
         _trim_leading_text(parts)
-    return bool(parts and parts[0].kind == "text" and any(parts[0].value.startswith(prefix) for prefix in prefixes))
+    return bool(
+        parts
+        and parts[0].kind == "text"
+        and any(parts[0].value.startswith(prefix) for prefix in prefixes)
+    )
 
 
 def _render(part: _Part) -> str:
@@ -231,7 +257,9 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
     raise CommandSyntaxError("该命令尚未配置语法。")
 
 
-def _target_and_argument(suffix: str, *, optional_argument: bool) -> tuple[str, str | None]:
+def _target_and_argument(
+    suffix: str, *, optional_argument: bool
+) -> tuple[str, str | None]:
     target, rest = _leading_at(suffix)
     if target is None:
         match = re.match(r"^(.+?)\s+<@([0-9]+)>(?:\s+(.*))?$", suffix)
@@ -240,7 +268,9 @@ def _target_and_argument(suffix: str, *, optional_argument: bool) -> tuple[str, 
         else:
             raise CommandSyntaxError("请通过原始 @消息段 指定目标用户。")
     argument = rest.strip() or None
-    if argument is not None and ("<@" in argument or "<UNSUPPORTED_SEGMENT>" in argument):
+    if argument is not None and (
+        "<@" in argument or "<UNSUPPORTED_SEGMENT>" in argument
+    ):
         raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
     if not optional_argument and argument:
         raise CommandSyntaxError("命令包含多余参数。")

@@ -27,7 +27,9 @@ FROM relationships;
 DROP TABLE relationships;
 ALTER TABLE relationships_new RENAME TO relationships;
 CREATE UNIQUE INDEX uq_active_subject ON relationships(scope_id,period_id,mode,subject_id)
-  WHERE state='active' AND slot_kind<>'designated';
+  WHERE state='active' AND slot_kind<>'designated' AND mode IN ('husband','member');
+CREATE UNIQUE INDEX uq_active_wife_owner_subject ON relationships(scope_id,period_id,owner_id,subject_id)
+  WHERE state='active' AND mode='wife' AND slot_kind<>'designated';
 CREATE INDEX ix_owner_active ON relationships(scope_id,period_id,mode,owner_id,state);
 CREATE INDEX ix_owner_active_slot ON relationships(scope_id,period_id,mode,owner_id,slot_kind,state);
 ALTER TABLE daily_counters ADD COLUMN designated_draws INTEGER NOT NULL DEFAULT 0 CHECK(designated_draws>=0);

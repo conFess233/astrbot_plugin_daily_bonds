@@ -19,6 +19,7 @@ from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
 from ..models import CommandSyntaxError, ParsedCommand, StorageError
 from ..utils.command_parser import parse_command
 from .access import AccessService
+from .admin_permissions import may_set_wife
 from .avatar_cache import AvatarCache
 from .gameplay import Candidate, GameplayService
 from .member_lifecycle import reconcile_member_eligibility
@@ -216,6 +217,10 @@ class CommandRuntime:
             return render_message(config, "errors", "syntax_error", detail=str(exc))
         if command is None:
             return None
+        if command.action == "set_wife" and not may_set_wife(
+            event, raw_event.sender_id, global_config
+        ):
+            return render_message(config, "errors", "admin_set_denied")
 
         revision = f"{global_revision}:{local_revision}"
         event_key, payload_hash = _event_key(raw_event.raw)
@@ -246,7 +251,8 @@ class CommandRuntime:
         cooldown_seconds = config["commands"]["cooldown_seconds"]
         cooldown_claimed = bool(
             cooldown_seconds
-            and command.action not in {"gift_accept", "gift_reject", "gift_cancel"}
+            and command.action
+            not in {"gift_accept", "gift_reject", "gift_cancel", "set_wife"}
         )
         if cooldown_claimed:
             allowed, remaining, replay = await asyncio.to_thread(
@@ -269,7 +275,55 @@ class CommandRuntime:
 
         reply: str | RuntimeReply | None = None
         try:
-            if command.action.startswith("draw_"):
+            if command.action == "set_wife":
+                candidates = await asyncio.to_thread(
+                    self._candidates, scope_id, "wife", mode_config, eligible
+                )
+                matches = [item for item in candidates if command.argument == item.name]
+                if not matches:
+                    matches = [
+                        item for item in candidates if command.argument in item.aliases
+                    ]
+                if not matches:
+                    reply = render_message(
+                        config, "errors", "admin_set_missing", name=command.argument
+                    )
+                elif len(matches) > 1:
+                    reply = render_message(
+                        config, "errors", "admin_set_ambiguous", name=command.argument
+                    )
+                else:
+                    result = await asyncio.to_thread(
+                        self.gameplay.set_wife,
+                        scope_id=scope_id,
+                        period_id=str(period["id"]),
+                        owner_id=raw_event.sender_id,
+                        character_id=matches[0].subject_id,
+                        pool_ids=mode_config["pool_ids"],
+                        event_key=event_key,
+                        payload_hash=payload_hash,
+                        config_revision=revision,
+                        now=raw_event.observed_at,
+                    )
+                    if result.code == "ALREADY_HELD":
+                        reply = render_message(
+                            config, "results", "already_held", name=matches[0].name
+                        )
+                    elif result.code == "NO_CANDIDATE":
+                        reply = render_message(
+                            config,
+                            "errors",
+                            "admin_set_unavailable",
+                            name=matches[0].name,
+                        )
+                    else:
+                        reply = await self._result_reply(
+                            result.code,
+                            {**result.data, "admin_set": True},
+                            "wife",
+                            config,
+                        )
+            elif command.action.startswith("draw_"):
                 candidates = await asyncio.to_thread(
                     self._candidates, scope_id, mode, mode_config, eligible
                 )
@@ -1377,7 +1431,11 @@ class CommandRuntime:
             return render_message(
                 config,
                 "results",
-                f"designated_{mode}" if code == "DESIGNATED_DRAWN" else f"draw_{mode}",
+                "admin_set_wife"
+                if data.get("admin_set")
+                else f"designated_{mode}"
+                if code == "DESIGNATED_DRAWN"
+                else f"draw_{mode}",
                 name=data["candidate"]["name"],
             )
         if code == "INVITE_CREATED":
@@ -1415,6 +1473,8 @@ class CommandRuntime:
 
 
 def _action_mode(action: str) -> str | None:
+    if action == "set_wife":
+        return "wife"
     if action.endswith("wife") or action == "list_characters":
         return "wife"
     if action.endswith("husband"):

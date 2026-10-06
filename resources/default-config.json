@@ -10,7 +10,8 @@
       "mode": "unrestricted",
       "ids": []
     },
-    "extra_bot_ids": []
+    "extra_bot_ids": [],
+    "extra_admin_ids": []
   },
   "reset": {
     "timezone": "Asia/Shanghai",
@@ -228,7 +229,9 @@
       "list_member": "{title}（共 {count}）\n{lines}{image}",
       "rank_intimacy": "{image}",
       "rank_activity": "{image}",
-      "query_affection": "{image}"
+      "query_affection": "{image}",
+      "admin_set_wife": "设置今日老婆：{name}{image}",
+      "already_held": "你今天已持有 {name}。"
     },
     "errors": {
       "syntax_error": "{detail}",
@@ -254,7 +257,11 @@
       "list_empty": "{title}：当前没有关系。",
       "designated_missing": "未找到当前角色池内可指定的角色；请使用精确名称、别名或 ID。",
       "designated_ambiguous": "匹配到多个角色，请使用明确 ID：\n{candidates}",
-      "affection_target_required": "请 @ 一位当前群内且允许参与的其他成员。"
+      "affection_target_required": "请 @ 一位当前群内且允许参与的其他成员。",
+      "admin_set_denied": "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。",
+      "admin_set_missing": "未找到可用的今日老婆角色：{name}",
+      "admin_set_ambiguous": "角色名或别名不唯一：{name}；请使用完整角色名。",
+      "admin_set_unavailable": "角色当前不可用：{name}"
     },
     "notifications": {
       "restart_invalidated": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
@@ -360,7 +367,9 @@
       "list_member": false,
       "rank_intimacy": false,
       "rank_activity": false,
-      "query_affection": false
+      "query_affection": false,
+      "admin_set_wife": false,
+      "already_held": false
     },
     "errors": {
       "syntax_error": false,
@@ -386,7 +395,11 @@
       "list_empty": false,
       "designated_missing": false,
       "designated_ambiguous": false,
-      "affection_target_required": false
+      "affection_target_required": false,
+      "admin_set_denied": false,
+      "admin_set_missing": false,
+      "admin_set_ambiguous": false,
+      "admin_set_unavailable": false
     }
   }
 }

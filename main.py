@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import replace
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.event.filter import EventMessageType
 from astrbot.api.star import Context, Star, StarTools
+from PIL import Image as PILImage
 
 from .adapters.onebot import OneBotAdapter
 from .services.access import AccessService
@@ -17,7 +19,9 @@ from .services.catalog import CatalogService
 from .services.command_runtime import CommandRuntime, RuntimeReply
 from .services.gameplay import GameplayService
 from .services.host_config import HostConfigBridge
+from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
+from .services.outgoing_images import prepare_outgoing_image
 from .services.reply_messages import reply_chain
 from .services.retention import RetentionService
 from .services.statistics import StatisticsService
@@ -107,11 +111,28 @@ class DailyBondsPlugin(Star):
             logger.exception("今日姻缘：处理群消息失败。")
             return
         if response:
+            temporary_paths = []
             try:
+                if isinstance(response, RuntimeReply) and IMAGE_TOKEN in response.text:
+                    send_paths = []
+                    for path in response.image_paths:
+                        try:
+                            send_path, temporary = await asyncio.to_thread(
+                                prepare_outgoing_image, path
+                            )
+                        except (OSError, ValueError, PILImage.DecompressionBombError):
+                            logger.exception("今日姻缘：缩放发送图片失败，使用原图。")
+                            send_path, temporary = path, False
+                        send_paths.append(send_path)
+                        if temporary:
+                            temporary_paths.append(send_path)
+                    response = replace(response, image_paths=tuple(send_paths))
                 chain = reply_chain(response, event)
                 if chain:
                     yield event.chain_result(chain)
             finally:
+                for image_path in temporary_paths:
+                    image_path.unlink(missing_ok=True)
                 if isinstance(response, RuntimeReply):
                     for image_path in response.cleanup_paths:
                         image_path.unlink(missing_ok=True)

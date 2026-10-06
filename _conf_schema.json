@@ -74,6 +74,12 @@
             "description": "补充机器人 QQ 号",
             "default": [],
             "hint": "每行一个机器人 QQ 数字 ID。"
+          },
+          "extra_admin_ids": {
+            "type": "list",
+            "default": [],
+            "description": "额外命令管理员 QQ 号",
+            "hint": "每行一个 QQ 数字 ID，可使用 /设置老婆；仅全局设置。"
           }
         }
       },
@@ -1031,6 +1037,18 @@
                 "description": "好感度查询回复",
                 "default": "{image}",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
+              },
+              "admin_set_wife": {
+                "type": "text",
+                "description": "管理员设置老婆成功",
+                "default": "设置今日老婆：{name}{image}",
+                "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
+              },
+              "already_held": {
+                "type": "text",
+                "description": "管理员已持有角色",
+                "default": "你今天已持有 {name}。",
+                "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
               }
             }
           },
@@ -1181,6 +1199,30 @@
                 "description": "好感度查询目标无效",
                 "default": "请 @ 一位当前群内且允许参与的其他成员。",
                 "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "admin_set_denied": {
+                "type": "text",
+                "description": "设置老婆权限不足",
+                "default": "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。",
+                "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
+              },
+              "admin_set_missing": {
+                "type": "text",
+                "description": "设置老婆未找到角色",
+                "default": "未找到可用的今日老婆角色：{name}",
+                "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
+              },
+              "admin_set_ambiguous": {
+                "type": "text",
+                "description": "设置老婆角色不明确",
+                "default": "角色名或别名不唯一：{name}；请使用完整角色名。",
+                "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
+              },
+              "admin_set_unavailable": {
+                "type": "text",
+                "description": "设置老婆角色不可用",
+                "default": "角色当前不可用：{name}",
+                "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
               }
             }
           },
@@ -1713,6 +1755,16 @@
                 "type": "bool",
                 "default": false,
                 "description": "好感度查询回复引用消息源"
+              },
+              "admin_set_wife": {
+                "type": "bool",
+                "description": "管理员设置老婆成功引用消息源",
+                "default": false
+              },
+              "already_held": {
+                "type": "bool",
+                "description": "管理员已持有角色引用消息源",
+                "default": false
               }
             }
           },
@@ -1839,6 +1891,26 @@
                 "type": "bool",
                 "default": false,
                 "description": "好感度查询目标无效引用消息源"
+              },
+              "admin_set_denied": {
+                "type": "bool",
+                "description": "设置老婆权限不足引用消息源",
+                "default": false
+              },
+              "admin_set_missing": {
+                "type": "bool",
+                "description": "设置老婆未找到角色引用消息源",
+                "default": false
+              },
+              "admin_set_ambiguous": {
+                "type": "bool",
+                "description": "设置老婆角色不明确引用消息源",
+                "default": false
+              },
+              "admin_set_unavailable": {
+                "type": "bool",
+                "description": "设置老婆角色不可用引用消息源",
+                "default": false
               }
             }
           }

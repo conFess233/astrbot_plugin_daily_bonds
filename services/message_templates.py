@@ -14,6 +14,7 @@ from ..models import ConfigurationError
 _FORMATTER = string.Formatter()
 IMAGE_TOKEN = "\ue000image\ue001"
 IMAGE_KEYS = {
+    "admin_set_wife",
     "draw_wife", "draw_husband", "draw_member", "designated_wife", "designated_husband",
     "designated_drawn", "capacity_full", "capacity_full_single_wife", "capacity_full_single_husband",
     "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_activity", "query_affection", "list_empty",

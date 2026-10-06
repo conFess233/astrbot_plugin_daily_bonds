@@ -582,45 +582,111 @@ class MaintenanceService:
             integrity = connection.execute("PRAGMA integrity_check").fetchall()
             foreign = connection.execute("PRAGMA foreign_key_check").fetchall()
             if len(integrity) != 1 or integrity[0][0] != "ok" or foreign:
-                raise ValueError("backup database integrity or foreign-key validation failed")
-            tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-            required = {"schema_migrations", "settings", "characters", "pools", "relationships", "media_blobs", "scopes",
-                        "maintenance_jobs", "web_admin_dedup", "web_admin_audit"}
+                raise ValueError(
+                    "backup database integrity or foreign-key validation failed"
+                )
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            required = {
+                "schema_migrations",
+                "settings",
+                "characters",
+                "pools",
+                "relationships",
+                "media_blobs",
+                "scopes",
+                "maintenance_jobs",
+                "web_admin_dedup",
+                "web_admin_audit",
+            }
             if not required.issubset(tables):
-                raise ValueError("backup database does not contain required plugin tables")
-            migrations = connection.execute("SELECT version,checksum FROM schema_migrations ORDER BY version").fetchall()
-            applied = [{"version": int(row[0]), "sha256": str(row[1])} for row in migrations]
-            bundled = sorted(self.storage.schema_path.glob("[0-9][0-9][0-9]_*.sql"))
-            expected = [{"version": version, "sha256": hashlib.sha256(file.read_bytes()).hexdigest()}
-                        for version, file in enumerate(bundled, 1)]
-            database_schema = {"version": max((item["version"] for item in applied), default=0),
-                               "migrations": applied}
-            if applied != expected or database_schema != manifest.get("database_schema"):
-                raise ValueError("backup database migration version or checksum does not match this plugin")
-            configuration_versions = [{"scope_key": str(row[0]), "revision": int(row[1]),
-                                       "schema_version": int(row[2])}
-                                      for row in connection.execute(
-                                          "SELECT scope_key,revision,schema_version FROM settings ORDER BY scope_key")]
+                raise ValueError(
+                    "backup database does not contain required plugin tables"
+                )
+            migrations = connection.execute(
+                "SELECT version,checksum FROM schema_migrations ORDER BY version"
+            ).fetchall()
+            applied = [
+                {"version": int(row[0]), "sha256": str(row[1])} for row in migrations
+            ]
+            database_schema = {
+                "version": max((item["version"] for item in applied), default=0),
+                "migrations": applied,
+            }
+            if not self.storage.accepts_migration_chain(
+                applied
+            ) or database_schema != manifest.get("database_schema"):
+                raise ValueError(
+                    "backup database migration version or checksum does not match this plugin"
+                )
+            configuration_versions = [
+                {
+                    "scope_key": str(row[0]),
+                    "revision": int(row[1]),
+                    "schema_version": int(row[2]),
+                }
+                for row in connection.execute(
+                    "SELECT scope_key,revision,schema_version FROM settings ORDER BY scope_key"
+                )
+            ]
             if configuration_versions != manifest.get("configuration_versions"):
-                raise ValueError("backup configuration version metadata does not match its database")
-            media_rows = connection.execute("SELECT hash,relative_path,byte_size FROM media_blobs ORDER BY hash").fetchall()
+                raise ValueError(
+                    "backup configuration version metadata does not match its database"
+                )
+            media_rows = connection.execute(
+                "SELECT hash,relative_path,byte_size FROM media_blobs ORDER BY hash"
+            ).fetchall()
             for row in media_rows:
                 raw_relative = str(row["relative_path"])
                 relative = PurePosixPath(raw_relative)
-                if "\\" in raw_relative or ":" in raw_relative or relative.as_posix() != raw_relative or relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+                if (
+                    "\\" in raw_relative
+                    or ":" in raw_relative
+                    or relative.as_posix() != raw_relative
+                    or relative.is_absolute()
+                    or not relative.parts
+                    or any(part in {"", ".", ".."} for part in relative.parts)
+                ):
                     raise ValueError("backup database contains an unsafe media path")
                 media_file = path.parent.joinpath("media", *relative.parts)
-                if not media_file.is_file() or media_file.stat().st_size != int(row["byte_size"]) or self._hash_file(media_file) != row["hash"]:
-                    raise ValueError(f"backup media reference {row['hash']} is missing or corrupt")
-            counts = {name: int(connection.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0])
-                      for name in sorted(required)}
-            scopes = [dict(row) for row in connection.execute(
-                "SELECT id,platform_id,self_id,group_id,umo FROM scopes ORDER BY id").fetchall()]
-            pending_invites = int(connection.execute("SELECT COUNT(*) FROM gift_invites WHERE state='pending'").fetchone()[0])
-            return {"integrity": "ok", "foreign_key_errors": 0, "tables": counts,
-                    "database_bytes": path.stat().st_size, "scopes": scopes,
-                    "pending_invites_to_invalidate": pending_invites,
-                    "configuration_versions": configuration_versions}
+                if (
+                    not media_file.is_file()
+                    or media_file.stat().st_size != int(row["byte_size"])
+                    or self._hash_file(media_file) != row["hash"]
+                ):
+                    raise ValueError(
+                        f"backup media reference {row['hash']} is missing or corrupt"
+                    )
+            counts = {
+                name: int(
+                    connection.execute(f'SELECT COUNT(*) FROM "{name}"').fetchone()[0]
+                )
+                for name in sorted(required)
+            }
+            scopes = [
+                dict(row)
+                for row in connection.execute(
+                    "SELECT id,platform_id,self_id,group_id,umo FROM scopes ORDER BY id"
+                ).fetchall()
+            ]
+            pending_invites = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM gift_invites WHERE state='pending'"
+                ).fetchone()[0]
+            )
+            return {
+                "integrity": "ok",
+                "foreign_key_errors": 0,
+                "tables": counts,
+                "database_bytes": path.stat().st_size,
+                "scopes": scopes,
+                "pending_invites_to_invalidate": pending_invites,
+                "configuration_versions": configuration_versions,
+            }
         finally:
             connection.close()
 

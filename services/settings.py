@@ -83,6 +83,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "access.groups.ids",
         "access.users.ids",
         "access.extra_bot_ids",
+        "access.extra_admin_ids",
         "commands.extra_prefixes",
     ):
         values = _value(config, path)
@@ -92,7 +93,11 @@ def validate_config(config: Mapping[str, Any]) -> None:
             raise ConfigurationError(f"{path} 必须是非空字符串组成的数组")
         if len(values) != len(set(values)):
             raise ConfigurationError(f"{path} 不可包含重复项")
-    for user_id in config["access"]["users"]["ids"] + config["access"]["extra_bot_ids"]:
+    for user_id in (
+        config["access"]["users"]["ids"]
+        + config["access"]["extra_bot_ids"]
+        + config["access"]["extra_admin_ids"]
+    ):
         if not user_id.isdecimal():
             raise ConfigurationError("用户和机器人名单必须使用 QQ 数字字符串")
 

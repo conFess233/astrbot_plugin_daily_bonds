@@ -17,7 +17,12 @@ from zoneinfo import ZoneInfo
 from ..models import Scope, StorageError
 from .settings import default_config, effective_config, merge_sparse, validate_config
 
-_SCHEMA_VERSION = 11
+_SCHEMA_VERSION = 12
+_LOCAL_MIGRATION_CHECKSUMS = (
+    "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
+    "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
+    "a939983fc85a3e652fe573ef935e5b342204724174290ad22409ace8f1ec24a7",
+)
 _NAMESPACE = uuid.UUID("1dc04dd2-af4f-4585-b350-0aa574597b9f")
 
 
@@ -279,6 +284,7 @@ class SQLiteStorage:
         capacity: int,
         now: int,
         slot_kind: str = "normal",
+        ignore_capacity: bool = False,
     ) -> str:
         """在当前事务中统一检查容量、自配偶和 subject 唯一归属。"""
 
@@ -290,6 +296,8 @@ class SQLiteStorage:
             raise StorageError("玩法或持有容量无效。")
         if slot_kind == "designated" and mode == "member":
             raise StorageError("群友玩法不支持指定槽位。")
+        if ignore_capacity and (mode != "wife" or slot_kind != "normal"):
+            raise StorageError("只有管理员设置的普通老婆关系可绕过容量。")
         if mode == "member":
             if subject_kind != "member" or owner_id == subject_id:
                 raise StorageError("群友关系类型无效，禁止娶自己。")
@@ -318,7 +326,7 @@ class SQLiteStorage:
             "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind=? AND state='active'",
             (scope_id, period_id, mode, owner_id, slot_kind),
         ).fetchone()["amount"]
-        if int(count) >= capacity:
+        if int(count) >= capacity and not ignore_capacity:
             raise StorageError("持有名额已满。")
         relation_id = str(uuid.uuid4())
         connection.execute(
@@ -339,6 +347,29 @@ class SQLiteStorage:
         )
         return relation_id
 
+    def accepts_migration_chain(self, applied: list[dict[str, Any]]) -> bool:
+        """识别远端或已发布本地分支的完整迁移链，用于恢复预检。"""
+        files = sorted(self.schema_path.glob("[0-9][0-9][0-9]_*.sql"))
+        expected = [
+            {
+                "version": version,
+                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            }
+            for version, path in enumerate(files, 1)
+        ]
+        if not 8 <= len(applied) <= _SCHEMA_VERSION:
+            return False
+        if (
+            len(applied) <= 11
+            and applied[8:]
+            and applied[8]["sha256"] == _LOCAL_MIGRATION_CHECKSUMS[0]
+        ):
+            expected = expected[:8] + [
+                {"version": version, "sha256": checksum}
+                for version, checksum in enumerate(_LOCAL_MIGRATION_CHECKSUMS, 9)
+            ]
+        return applied == expected[: len(applied)]
+
     def _migrate(self) -> None:
         connection = self._connection()
         migration_dir = self.schema_path
@@ -351,9 +382,10 @@ class SQLiteStorage:
             migration_dir / "006_period_resets.sql",
             migration_dir / "007_steal_slots.sql",
             migration_dir / "008_catalog_sync.sql",
-            migration_dir / "009_designated_slots.sql",
-            migration_dir / "010_activity_days.sql",
-            migration_dir / "011_message_templates.sql",
+            migration_dir / "009_admin_set_wife.sql",
+            migration_dir / "010_designated_slots.sql",
+            migration_dir / "011_activity_days.sql",
+            migration_dir / "012_message_templates.sql",
         ]
         checksums = [
             hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files
@@ -383,12 +415,53 @@ class SQLiteStorage:
                 if has_migrations
                 else {}
             )
+            if applied.get(9) == _LOCAL_MIGRATION_CHECKSUMS[0]:
+                # 兼容已发布的本地分支：9～11 顺延，保留其数据与已执行的迁移。
+                if (
+                    current > 11
+                    or any(
+                        applied.get(version) != checksums[version - 1]
+                        for version in range(1, 9)
+                    )
+                    or any(
+                        applied.get(version) != _LOCAL_MIGRATION_CHECKSUMS[version - 9]
+                        for version in range(9, current + 1)
+                    )
+                ):
+                    raise StorageError("本地分支迁移校验和无效，已保留原数据库。")
+                connection.execute("BEGIN IMMEDIATE")
+                for version in range(current, 8, -1):
+                    connection.execute(
+                        "UPDATE schema_migrations SET version=?,checksum=? WHERE version=?",
+                        (version + 1, checksums[version], version),
+                    )
+                connection.execute(
+                    "INSERT INTO schema_migrations(version,applied_at,checksum) VALUES(9,unixepoch(),?)",
+                    (checksums[8],),
+                )
+                connection.execute("DROP INDEX uq_active_subject")
+                connection.execute(
+                    "CREATE UNIQUE INDEX uq_active_subject ON relationships(scope_id,period_id,mode,subject_id) WHERE state='active' AND slot_kind<>'designated' AND mode IN ('husband','member')"
+                )
+                connection.execute(
+                    "CREATE UNIQUE INDEX uq_active_wife_owner_subject ON relationships(scope_id,period_id,owner_id,subject_id) WHERE state='active' AND mode='wife' AND slot_kind<>'designated'"
+                )
+                if connection.execute("PRAGMA foreign_key_check").fetchone():
+                    raise StorageError("分支迁移的外键校验失败，已保留原数据库。")
+                connection.commit()
+                current += 1
+                applied = {
+                    int(row["version"]): row["checksum"]
+                    for row in connection.execute(
+                        "SELECT version,checksum FROM schema_migrations"
+                    )
+                }
             for version in range(1, current + 1):
                 if version not in applied or applied[version] != checksums[version - 1]:
                     raise StorageError(f"数据库迁移 {version} 的校验和无效。")
             for version in range(current + 1, _SCHEMA_VERSION + 1):
                 migration = migration_files[version - 1].read_text(encoding="utf-8")
-                rebuild = version == 9
+                rebuild = version == 10
                 if rebuild:
                     # SQLite 重建被其他表引用的父表，FK 开关必须在 BEGIN 之前设置。
                     connection.execute("PRAGMA foreign_keys=OFF")

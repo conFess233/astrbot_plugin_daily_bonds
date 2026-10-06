@@ -206,6 +206,9 @@ const MESSAGE_LABELS = {
   rank_activity_disabled: "活跃度排行关闭", activity_disabled: "活跃度统计关闭",
   page_out_of_range: "页码超出范围", list_empty: "关系列表为空",
   restart_invalidated: "重启后邀请失效",
+  admin_set_wife: "管理员设置老婆成功", already_held: "管理员已持有角色",
+  admin_set_denied: "设置老婆权限不足", admin_set_missing: "设置老婆未找到角色",
+  admin_set_ambiguous: "设置老婆角色不明确", admin_set_unavailable: "设置老婆角色不可用",
   steal_slot_full: "抢夺槽位已满", relationship_locked: "受保护关系不可操作",
   steal_slot_locked: "目标关系不可被抢", capacity_full_single_wife: "已有老婆",
   capacity_full_single_husband: "已有老公", designated_wife: "指定老婆成功",
@@ -230,7 +233,7 @@ const TITLE_LABELS = {
 };
 const CONFIG_LABELS = {
   schema_version: "配置格式版本", enabled: "启用", mode: "名单模式", ids: "名单 ID",
-  extra_bot_ids: "补充机器人 QQ 号", timezone: "时区", time: "重置时间",
+  extra_bot_ids: "补充机器人 QQ 号", extra_admin_ids: "额外命令管理员 QQ 号", timezone: "时区", time: "重置时间",
   allow_bare: "允许裸关键词", allow_leading_bot_mention: "允许开头 @机器人",
   allow_host_prefix: "允许宿主命令前缀", extra_prefixes: "额外命令前缀",
   cooldown_seconds: "通用冷却（秒）", capacity: "每日容量", steal_enabled: "允许抢夺",
@@ -281,6 +284,7 @@ const CONFIG_HINTS = {
   "access.groups.ids": "每行一个群身份 ID。",
   "access.users.ids": "每行一个 QQ 数字 ID；空白名单会拒绝全部用户。",
   "access.extra_bot_ids": "每行一个机器人 QQ 数字 ID。",
+  "access.extra_admin_ids": "每行一个 QQ 数字 ID，可使用 /设置老婆 命令；仅全局设置，群级不能修改管理员身份。",
   "commands.extra_prefixes": "每行一个字面前缀。",
   "modes.wife.pool_ids": "每个角色池独立开关；全部关闭时没有可抽取角色。群级覆盖关闭时继承全局开关。",
   "modes.husband.pool_ids": "每个角色池独立开关；全部关闭时没有可抽取角色。群级覆盖关闭时继承全局开关。",
@@ -341,7 +345,7 @@ function configGroup(path) {
 }
 
 function configIsGlobalOnly(path) {
-  return path === "schema_version" || path.startsWith("access.groups.") ||
+  return path === "schema_version" || path.startsWith("access.groups.") || path === "access.extra_admin_ids" ||
     path.startsWith("resources.") || path.startsWith("history.");
 }
 
@@ -1166,16 +1170,27 @@ $("#image-preview").addEventListener("close", () => {
 });
 
 $("#character-image").addEventListener("change", (event) => withCatalogWrite(async () => {
-  const file = event.target.files?.[0];
-  if (!file) return;
+  const files = [...(event.target.files || [])];
+  if (!files.length) return;
+  const uploaded = [];
+  const failed = [];
   try {
-    const result = await apiUpload("media/upload", file);
-    const item = result.data || result;
-    if (!state.characterImages.includes(item.hash)) state.characterImages.push(item.hash);
+    for (const file of files) {
+      if (state.characterImages.length >= 20) {
+        failed.push(`${file.name}：角色最多关联 20 张图片`);
+        continue;
+      }
+      try {
+        const result = await apiUpload("media/upload", file);
+        const item = result.data || result;
+        if (!state.characterImages.includes(item.hash)) state.characterImages.push(item.hash);
+        uploaded.push(file.name);
+      } catch (error) {
+        failed.push(`${file.name}：${error.message || "上传失败"}`);
+      }
+    }
     renderCharacterImages();
-    showNotice(`图片已验证并上传：${item.width} × ${item.height}`, "success");
-  } catch (error) {
-    showNotice(error.message || "图片上传失败。", "error");
+    showNotice(`成功上传 ${uploaded.length} 张${failed.length ? `；失败 ${failed.length} 张：${failed.join("；")}` : ""}`, failed.length ? "error" : "success");
   } finally {
     event.target.value = "";
   }
