@@ -401,5 +401,17 @@
       "admin_set_ambiguous": false,
       "admin_set_unavailable": false
     }
+  },
+  "batch_import": {
+    "male_keywords": [
+      "男",
+      "male"
+    ],
+    "female_keywords": [
+      "女",
+      "female"
+    ],
+    "male_pool_id": "",
+    "female_pool_id": ""
   }
 }

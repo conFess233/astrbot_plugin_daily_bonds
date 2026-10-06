@@ -204,6 +204,24 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .import-item p { margin: 6px 0 0; line-height: 1.45; }
 .import-decision { max-width: 300px; }
 [hidden] { display: none !important; }
+.batch-dialog { width: min(1100px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 22px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); overflow: auto; }
+.batch-dialog::backdrop { background: var(--overlay); }
+.batch-dialog textarea { min-height: 60px; }
+.batch-drop { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 8px; padding: 24px; margin: 18px 0; text-align: center; border: 2px dashed var(--primary); border-radius: 12px; background: var(--primary-soft); cursor: pointer; }
+.batch-drop.dragging { outline: 3px solid var(--focus); }
+.batch-drop input { width: 100%; min-width: 0; max-width: 100%; }
+.batch-drop:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.batch-rows { display: grid; gap: 14px; }
+.batch-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
+.batch-row.manual { border-color: var(--warning); }
+.batch-row img { width: 120px; height: 150px; object-fit: contain; background: var(--surface); border-radius: 8px; }
+.batch-row h3, .batch-row p { overflow-wrap: anywhere; }
+.batch-row .form-grid { margin: 12px 0; }
+.batch-error { border: 1px solid var(--danger); background: var(--danger-soft); color: var(--danger-text); padding: 12px; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.batch-dialog progress { width: 100%; height: 20px; margin-top: 12px; }
+.batch-dialog li { overflow-wrap: anywhere; }
+.batch-dialog .actions > .button { flex: 0 0 auto; }
+@media (max-width: 560px) { .batch-dialog { padding: 14px; } .batch-dialog .section-heading, .batch-dialog .actions { flex-direction: column; align-items: stretch; } .batch-row { grid-template-columns: 1fr; padding: 12px; } .batch-row img { width: 100%; } }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }

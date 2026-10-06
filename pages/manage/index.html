@@ -49,7 +49,7 @@
             <h2>角色与角色池</h2>
             <p class="muted">编辑不会改写既有关系快照。删除会先显示影响并要求确认。</p>
           </div>
-          <button id="catalog-refresh" class="button secondary" type="button">刷新目录</button>
+          <div class="actions"><button id="batch-images-open" class="button primary" type="button">批量导入角色图</button><button id="catalog-refresh" class="button secondary" type="button">刷新目录</button></div>
         </div>
         <div class="editor-card catalog-sync-card">
           <div class="editor-meta"><h3>同步仓库角色配置</h3><button id="catalog-sync-check" class="button secondary" type="button">重新检查仓库</button></div>
@@ -239,6 +239,30 @@
         <button id="period-reset-cancel" class="button secondary" type="button">取消</button>
         <button id="period-reset-confirm" class="button danger" type="button">确认执行</button>
       </div>
+    </dialog>
+    <dialog id="batch-images-dialog" class="batch-dialog" aria-labelledby="batch-images-title">
+      <header class="section-heading"><div><h2 id="batch-images-title">批量导入角色图</h2><p class="muted">上传只暂存，确认后按角色追加；未完成批次保留 24 小时。</p></div><button id="batch-images-close" class="button secondary" type="button">关闭并保留</button></header>
+      <fieldset id="batch-images-controls" class="control-group">
+        <div class="form-grid">
+          <label class="field"><span>女类关键词（逗号分隔）</span><input id="batch-female-keywords" maxlength="5000" /></label>
+          <label class="field"><span>男类关键词（逗号分隔）</span><input id="batch-male-keywords" maxlength="5000" /></label>
+          <label class="field"><span>默认女卡池</span><select id="batch-female-pool"></select></label>
+          <label class="field"><span>默认男卡池</span><select id="batch-male-pool"></select></label>
+        </div>
+        <div class="actions"><button id="batch-defaults-save" class="button secondary" type="button">保存为全局默认</button><button id="batch-settings-apply" class="button secondary" type="button">应用检测并重新匹配</button></div>
+        <p class="hint">已有角色采用原档案。新角色未识别性别时暂按男标注；男女冲突、名称歧义或图片超限都须人工确认。</p>
+        <div class="form-grid"><label class="field"><span>恢复未完成批次</span><select id="batch-resume-job"></select></label><div class="actions"><button id="batch-resume" class="button secondary" type="button">恢复选中批次</button><button id="batch-new" class="button secondary" type="button">开始新批次</button></div></div>
+        <label id="batch-drop-zone" class="batch-drop" tabindex="0"><span>点击选择图片，或拖入此区域</span><small>PNG / JPEG / WebP，每张最多 12 MiB；同角色总图上限 20 张。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
+        <div class="form-grid"><label class="field"><span>搜索已有角色（为关联 ID 提供候选）</span><input id="batch-character-search" type="search" /></label><label class="field"><span>显示条目</span><select id="batch-filter"><option value="pending">未完成</option><option value="ready">可靠项</option><option value="manual">待人工 / 失败</option><option value="all">全部</option></select></label></div>
+        <datalist id="batch-character-options"></datalist>
+        <div id="batch-image-rows" class="batch-rows"></div>
+        <div class="list-pagination"><button id="batch-prev" class="button secondary" type="button">上一页</button><span id="batch-page" class="muted"></span><button id="batch-next" class="button secondary" type="button">下一页</button></div>
+        <div class="actions"><button id="batch-draft-save" class="button secondary" type="button">保存修正草稿</button><button id="batch-import-ready" class="button primary" type="button">确认导入可靠项</button><button id="batch-import-manual" class="button primary" type="button">确认导入已审核项</button></div>
+      </fieldset>
+      <progress id="batch-upload-progress" max="1" value="0" aria-label="批量图片上传进度" hidden></progress>
+      <p id="batch-status" class="hint" role="status" aria-live="polite"></p>
+      <div id="batch-error" class="batch-error" role="alert" hidden></div>
+      <section id="batch-import-result" class="card" hidden><h3>本次导入结果</h3><ul id="batch-success-list"></ul><ul id="batch-failure-list"></ul><button id="batch-result-confirm" class="button primary" type="button">确认结果，进入待人工处理</button></section>
     </dialog>
     <script type="module" src="./app.js"></script>
   </body>

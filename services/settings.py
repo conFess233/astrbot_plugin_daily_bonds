@@ -209,6 +209,25 @@ def validate_config(config: Mapping[str, Any]) -> None:
     for section, entries in config["reply_quote"].items():
         for key in entries:
             _boolean(config, f"reply_quote.{section}.{key}")
+    batch = config["batch_import"]
+    for key in ("male_keywords", "female_keywords"):
+        values = batch[key]
+        if (
+            not isinstance(values, list)
+            or len(values) > 30
+            or any(
+                not isinstance(value, str) or not 1 <= len(value.strip()) <= 80
+                for value in values
+            )
+        ):
+            raise ConfigurationError(
+                f"batch_import.{key} 必须是最多30项、每项1～80字符的文本数组"
+            )
+    for key in ("male_pool_id", "female_pool_id"):
+        if not isinstance(batch[key], str) or (
+            batch[key] and not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,127}", batch[key])
+        ):
+            raise ConfigurationError(f"batch_import.{key} 必须为空或有效卡池 ID")
     validate_keywords(config["commands"]["keywords"])
     validate_messages(config["messages"], defaults["messages"])
 

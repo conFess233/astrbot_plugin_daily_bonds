@@ -1915,6 +1915,42 @@
             }
           }
         }
+      },
+      "batch_import": {
+        "type": "object",
+        "description": "批量角色图导入默认检测",
+        "items": {
+          "male_keywords": {
+            "type": "list",
+            "default": [
+              "男",
+              "male"
+            ],
+            "description": "男类检测关键词",
+            "hint": "最多30项，每项1～80字符；英文忽略大小写。"
+          },
+          "female_keywords": {
+            "type": "list",
+            "default": [
+              "女",
+              "female"
+            ],
+            "description": "女类检测关键词",
+            "hint": "长关键词优先，独立命中两类时转人工。"
+          },
+          "male_pool_id": {
+            "type": "string",
+            "default": "",
+            "description": "默认男卡池 ID",
+            "hint": "须为老公玩法的有效卡池，可在批量导入窗口选择。"
+          },
+          "female_pool_id": {
+            "type": "string",
+            "default": "",
+            "description": "默认女卡池 ID",
+            "hint": "须为老婆玩法的有效卡池；空值需人工选择。"
+          }
+        }
       }
     }
   },

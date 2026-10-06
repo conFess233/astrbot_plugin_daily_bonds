@@ -1,3 +1,5 @@
+import { initBatchImages } from "./batch-images.js";
+
 const bridge = window.AstrBotPluginPage;
 const $ = (selector) => document.querySelector(selector);
 let activeRequests = 0;
@@ -180,6 +182,7 @@ const CONFIG_GROUPS = {
   "messages.results": "群内操作结果", "messages.errors": "群内错误提示",
   "messages.notifications": "赠送与重启通知", "messages.titles": "标题与统计标签",
   "reply_quote.results": "结果回复引用", "reply_quote.errors": "错误回复引用",
+  batch_import: "批量图片检测默认值",
 };
 const MESSAGE_LABELS = {
   draw_wife: "抽到老婆", draw_husband: "抽到老公", draw_member: "抽到群友",
@@ -233,6 +236,8 @@ const TITLE_LABELS = {
 };
 const CONFIG_LABELS = {
   schema_version: "配置格式版本", enabled: "启用", mode: "名单模式", ids: "名单 ID",
+  male_keywords: "男类检测关键词", female_keywords: "女类检测关键词",
+  male_pool_id: "默认男卡池 ID", female_pool_id: "默认女卡池 ID",
   extra_bot_ids: "补充机器人 QQ 号", extra_admin_ids: "额外命令管理员 QQ 号", timezone: "时区", time: "重置时间",
   allow_bare: "允许裸关键词", allow_leading_bot_mention: "允许开头 @机器人",
   allow_host_prefix: "允许宿主命令前缀", extra_prefixes: "额外命令前缀",
@@ -345,7 +350,7 @@ function configGroup(path) {
 }
 
 function configIsGlobalOnly(path) {
-  return path === "schema_version" || path.startsWith("access.groups.") || path === "access.extra_admin_ids" ||
+  return path === "schema_version" || path.startsWith("access.groups.") || path === "access.extra_admin_ids" || path.startsWith("batch_import.") ||
     path.startsWith("resources.") || path.startsWith("history.");
 }
 
@@ -1704,4 +1709,12 @@ $("#restore-commit").addEventListener("click", async () => {
   } finally {
     button.disabled = !state.restorePlan;
   }
+});
+
+initBatchImages({ apiGet, apiPost, apiUpload, showNotice,
+  onImported: () => loadCatalog(),
+  onDefaultsSaved: async () => {
+    if (!isConfigDirty()) await loadConfig();
+    else showNotice("默认设置已保存，现有配置草稿保留。");
+  },
 });

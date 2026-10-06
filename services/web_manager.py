@@ -21,6 +21,7 @@ from PIL import Image, ImageOps
 from ..models import ConfigurationError, StorageError
 from .admin_corrections import AdminCorrectionService
 from .admin_queries import AdminQueryService
+from .batch_images import BatchImagesService
 from .catalog_admin import CatalogAdminService
 from .catalog_import import CatalogImportService
 from .catalog_sync import CatalogSyncService
@@ -36,13 +37,19 @@ PLUGIN_NAME = "astrbot_plugin_daily_bonds"
 class WebManager:
     """Register authenticated, revision-checked management APIs."""
 
-    def __init__(self, context: Any, storage: SQLiteStorage, host_config: HostConfigBridge) -> None:
+    def __init__(
+        self, context: Any, storage: SQLiteStorage, host_config: HostConfigBridge
+    ) -> None:
         self.context = context
         self.storage = storage
-        self.catalog = CatalogAdminService(storage, storage.database_path.parent / "media")
+        self.catalog = CatalogAdminService(
+            storage, storage.database_path.parent / "media"
+        )
         self.queries = AdminQueryService(storage)
         self.corrections = AdminCorrectionService(storage)
         self.imports = CatalogImportService(storage, storage.database_path.parent)
+        self.batch_images = BatchImagesService(storage, storage.database_path.parent)
+        self._batch_previews = asyncio.Semaphore(2)
         self.catalog_sync = CatalogSyncService(storage)
         self.maintenance = MaintenanceService(storage, storage.database_path.parent)
         self.runtime_reset = None
@@ -53,42 +60,469 @@ class WebManager:
             ("overview", self.overview, ["GET"], "Today Bonds overview"),
             ("scopes", self.scopes, ["GET"], "Today Bonds scopes"),
             ("config", self.get_config, ["GET"], "Read Today Bonds configuration"),
-            ("config/preview", self.preview_config, ["POST"], "Validate a configuration draft"),
+            (
+                "config/preview",
+                self.preview_config,
+                ["POST"],
+                "Validate a configuration draft",
+            ),
             ("config/save", self.save_config, ["POST"], "Save a configuration draft"),
             ("characters", self.characters, ["GET"], "List catalog characters"),
             ("character", self.character, ["GET"], "Read catalog character by ID"),
-            ("characters/<character_id>", self.character, ["GET"], "Read catalog character"),
-            ("characters/save", self.save_character, ["POST"], "Create or update catalog character"),
-            ("characters/delete-preview", self.character_delete_preview, ["POST"], "Preview character deletion"),
-            ("characters/delete", self.character_delete, ["POST"], "Soft-delete catalog character"),
+            (
+                "characters/<character_id>",
+                self.character,
+                ["GET"],
+                "Read catalog character",
+            ),
+            (
+                "characters/save",
+                self.save_character,
+                ["POST"],
+                "Create or update catalog character",
+            ),
+            (
+                "characters/delete-preview",
+                self.character_delete_preview,
+                ["POST"],
+                "Preview character deletion",
+            ),
+            (
+                "characters/delete",
+                self.character_delete,
+                ["POST"],
+                "Soft-delete catalog character",
+            ),
             ("pools", self.pools, ["GET"], "List catalog pools"),
             ("pools/save", self.save_pool, ["POST"], "Create or update catalog pool"),
-            ("pools/delete-preview", self.pool_delete_preview, ["POST"], "Preview pool deletion"),
+            (
+                "pools/delete-preview",
+                self.pool_delete_preview,
+                ["POST"],
+                "Preview pool deletion",
+            ),
             ("pools/delete", self.pool_delete, ["POST"], "Soft-delete catalog pool"),
-            ("media/upload", self.upload_media, ["POST"], "Upload and validate catalog image"),
-            ("media/preview/<media_hash>", self.preview_media, ["GET"], "Preview protected catalog image"),
-            ("media/<media_hash>", self.get_media, ["GET"], "Read protected catalog image"),
+            (
+                "media/upload",
+                self.upload_media,
+                ["POST"],
+                "Upload and validate catalog image",
+            ),
+            (
+                "media/preview/<media_hash>",
+                self.preview_media,
+                ["GET"],
+                "Preview protected catalog image",
+            ),
+            (
+                "media/<media_hash>",
+                self.get_media,
+                ["GET"],
+                "Read protected catalog image",
+            ),
             ("relationships", self.relationships, ["GET"], "List scoped relationships"),
-            ("users/<user_id>/quota", self.user_quota, ["GET"], "Read scoped user quota"),
-            ("statistics/intimacy", self.intimacy, ["GET"], "Read directed intimacy scores"),
-            ("statistics/activity", self.activity, ["GET"], "Read activity window and coverage"),
+            (
+                "users/<user_id>/quota",
+                self.user_quota,
+                ["GET"],
+                "Read scoped user quota",
+            ),
+            (
+                "statistics/intimacy",
+                self.intimacy,
+                ["GET"],
+                "Read directed intimacy scores",
+            ),
+            (
+                "statistics/activity",
+                self.activity,
+                ["GET"],
+                "Read activity window and coverage",
+            ),
             ("invites", self.invites, ["GET"], "List scoped gift invitations"),
             ("history", self.history, ["GET"], "List scoped operation history"),
-            ("admin/preview", self.admin_preview, ["POST"], "Preview an audited administrative correction"),
-            ("admin/commit", self.admin_commit, ["POST"], "Commit a preflighted administrative correction"),
-            ("imports/preview", self.import_preview, ["POST"], "Validate a JSON or ZIP catalog import"),
-            ("imports/commit", self.import_commit, ["POST"], "Commit selected valid catalog items"),
-            ("catalog-sync/check", self.catalog_sync_check, ["POST"], "Check official catalog updates"),
-            ("catalog-sync/commit", self.catalog_sync_commit, ["POST"], "Apply selected official catalog updates"),
+            (
+                "admin/preview",
+                self.admin_preview,
+                ["POST"],
+                "Preview an audited administrative correction",
+            ),
+            (
+                "admin/commit",
+                self.admin_commit,
+                ["POST"],
+                "Commit a preflighted administrative correction",
+            ),
+            (
+                "imports/preview",
+                self.import_preview,
+                ["POST"],
+                "Validate a JSON or ZIP catalog import",
+            ),
+            (
+                "imports/commit",
+                self.import_commit,
+                ["POST"],
+                "Commit selected valid catalog items",
+            ),
+            (
+                "batch-images",
+                self.batch_images_get,
+                ["GET"],
+                "Read owned batch image jobs and defaults",
+            ),
+            (
+                "batch-images/create",
+                self.batch_images_create,
+                ["POST"],
+                "Create a batch image draft",
+            ),
+            (
+                "batch-images/update",
+                self.batch_images_update,
+                ["POST"],
+                "Save editable image draft rows",
+            ),
+            (
+                "batch-images/commit",
+                self.batch_images_commit,
+                ["POST"],
+                "Commit selected image draft rows",
+            ),
+            (
+                "batch-images/failure",
+                self.batch_images_failure,
+                ["POST"],
+                "Record an individual upload error",
+            ),
+            (
+                "batch-images/defaults",
+                self.batch_images_defaults,
+                ["POST"],
+                "Save global batch detection defaults",
+            ),
+            (
+                "batch-images/<job_id>/upload",
+                self.batch_images_upload,
+                ["POST"],
+                "Upload one staged batch image",
+            ),
+            (
+                "batch-images/<job_id>/preview/<row_id>",
+                self.batch_images_preview,
+                ["GET"],
+                "Read protected staged thumbnail",
+            ),
+            (
+                "catalog-sync/check",
+                self.catalog_sync_check,
+                ["POST"],
+                "Check official catalog updates",
+            ),
+            (
+                "catalog-sync/commit",
+                self.catalog_sync_commit,
+                ["POST"],
+                "Apply selected official catalog updates",
+            ),
             ("jobs/<job_id>", self.get_job, ["GET"], "Read an owned maintenance job"),
-            ("exports/create", self.create_export, ["POST"], "Create an owned catalog role-pack export"),
-            ("backups/create", self.create_backup, ["POST"], "Create a consistent complete backup"),
-            ("downloads/<job_id>", self.download_job, ["GET"], "Download an owned export or backup"),
-            ("restore/preview", self.restore_preview, ["POST"], "Validate a full backup before restore"),
-            ("restore/commit", self.restore_commit, ["POST"], "Restore a confirmed full backup"),
+            (
+                "exports/create",
+                self.create_export,
+                ["POST"],
+                "Create an owned catalog role-pack export",
+            ),
+            (
+                "backups/create",
+                self.create_backup,
+                ["POST"],
+                "Create a consistent complete backup",
+            ),
+            (
+                "downloads/<job_id>",
+                self.download_job,
+                ["GET"],
+                "Download an owned export or backup",
+            ),
+            (
+                "restore/preview",
+                self.restore_preview,
+                ["POST"],
+                "Validate a full backup before restore",
+            ),
+            (
+                "restore/commit",
+                self.restore_commit,
+                ["POST"],
+                "Restore a confirmed full backup",
+            ),
         )
         for endpoint, handler, methods, description in routes:
-            self.context.register_web_api(f"/{PLUGIN_NAME}/{endpoint}", handler, methods, description)
+            self.context.register_web_api(
+                f"/{PLUGIN_NAME}/{endpoint}", handler, methods, description
+            )
+
+    async def batch_images_get(self):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        try:
+            job_id = request.query.get("job_id")
+            if job_id:
+                data = await asyncio.to_thread(
+                    self.batch_images.get, job_id, actor=actor, now=int(time.time())
+                )
+            else:
+                data = await asyncio.to_thread(self._batch_options, actor)
+            return json_response({"ok": True, "data": data})
+        except (ValueError, TypeError, StorageError) as exc:
+            return self._error("BATCH_UNAVAILABLE", str(exc), 409)
+
+    def _batch_options(self, actor: str) -> dict[str, Any]:
+        config, revision = self.storage.get_settings()
+        jobs = self.batch_images.list_jobs(actor=actor, now=int(time.time()))
+        summaries = [
+            {
+                "job_id": job["job_id"],
+                "created_at": job["created_at"],
+                "expires_at": job["expires_at"],
+                "count": len(job["items"]),
+            }
+            for job in jobs
+            if any(item["status"] in {"pending", "failed"} for item in job["items"])
+        ]
+        return {
+            "settings": config["batch_import"],
+            "revision": revision,
+            "jobs": summaries,
+            "pools": self.catalog.list_pools(),
+            "limits": config["resources"],
+        }
+
+    async def batch_images_create(self):
+        return await self._batch_change("create")
+
+    async def batch_images_update(self):
+        return await self._batch_change("update")
+
+    async def batch_images_commit(self):
+        return await self._batch_change("commit")
+
+    async def batch_images_failure(self):
+        return await self._batch_change("record_failure")
+
+    async def _batch_change(self, method: str):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        try:
+            payload = await request.json(default={})
+            if not isinstance(payload, dict):
+                raise ValueError("请求内容必须是 JSON 对象。")
+            if method == "create":
+                config, _revision = await asyncio.to_thread(self.storage.get_settings)
+                args = {
+                    "settings": payload.get("settings", config["batch_import"]),
+                    "limits": config["resources"],
+                }
+            elif method == "update":
+                args = {
+                    "job_id": payload.get("job_id"),
+                    "items": payload.get("items"),
+                    "settings": payload.get("settings"),
+                }
+            elif method == "commit":
+                if payload.get("confirm") is not True:
+                    raise ValueError("请核对预览后确认导入。")
+                args = {
+                    "job_id": payload.get("job_id"),
+                    "row_ids": payload.get("row_ids"),
+                    "request_id": payload.get("request_id"),
+                }
+            else:
+                args = {
+                    "job_id": payload.get("job_id"),
+                    "filename": payload.get("filename"),
+                    "error": payload.get("error"),
+                }
+            data = await asyncio.to_thread(
+                getattr(self.batch_images, method),
+                **args,
+                actor=actor,
+                now=int(time.time()),
+            )
+            if method == "record_failure":
+                data = {"job_id": data["job_id"], "item": data["items"][-1]}
+            return json_response({"ok": True, "data": data})
+        except (ValueError, TypeError) as exc:
+            return self._error("BATCH_INVALID", str(exc), 400)
+        except StorageError as exc:
+            return self._error("BATCH_CONFLICT", str(exc), 409)
+        except Exception:
+            logger.exception("今日姻缘：批量图片导入操作失败。")
+            return self._error("BATCH_FAILED", "批量导入操作失败，草稿仍保留。", 500)
+
+    async def batch_images_upload(self, job_id: str):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        temporary = None
+        filename = "未命名图片"
+        try:
+            await asyncio.to_thread(
+                self.batch_images.get, job_id, actor=actor, now=int(time.time())
+            )
+            files = await request.files()
+            upload = files.get("file")
+            if upload is None or not callable(getattr(upload, "save", None)):
+                raise ValueError("请选择图片文件。")
+            filename = getattr(upload, "filename", None) or filename
+            with tempfile.NamedTemporaryFile(
+                prefix="batch-image-", suffix=".upload", delete=False
+            ) as stream:
+                temporary = stream.name
+            await upload.save(temporary)
+            payload = await asyncio.to_thread(_read_batch_upload, temporary)
+            data = await asyncio.to_thread(
+                self.batch_images.add_image,
+                job_id,
+                filename,
+                payload,
+                actor=actor,
+                now=int(time.time()),
+            )
+            return json_response(
+                {
+                    "ok": True,
+                    "data": {"job_id": data["job_id"], "item": data["items"][-1]},
+                }
+            )
+        except (
+            ValueError,
+            TypeError,
+            StorageError,
+            OSError,
+            Image.DecompressionBombError,
+        ) as exc:
+            try:
+                data = await asyncio.to_thread(
+                    self.batch_images.record_failure,
+                    job_id,
+                    filename,
+                    str(exc),
+                    actor=actor,
+                    now=int(time.time()),
+                )
+                return json_response(
+                    {
+                        "ok": True,
+                        "data": {"job_id": data["job_id"], "item": data["items"][-1]},
+                    }
+                )
+            except (ValueError, TypeError) as failure:
+                return self._error("BATCH_UPLOAD_INVALID", str(failure), 400)
+            except StorageError as failure:
+                return self._error("BATCH_CONFLICT", str(failure), 409)
+        except Exception:
+            logger.exception("今日姻缘：批量图片上传失败。")
+            return self._error(
+                "BATCH_UPLOAD_FAILED", "上传失败，请重新选择该图片；其他条目保留。", 500
+            )
+        finally:
+            if temporary:
+                Path(temporary).unlink(missing_ok=True)
+
+    async def batch_images_preview(self, job_id: str, row_id: str):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        try:
+            image = await asyncio.to_thread(
+                self.batch_images.get_image,
+                job_id,
+                row_id,
+                actor=actor,
+                now=int(time.time()),
+            )
+            if image is None:
+                return self._error(
+                    "BATCH_IMAGE_MISSING", "暂存图片不存在或已过期。", 404
+                )
+            async with self._batch_previews:
+                src = await asyncio.to_thread(_batch_thumbnail, image[0])
+            return json_response({"ok": True, "data": {"src": src}})
+        except (
+            ValueError,
+            TypeError,
+            StorageError,
+            OSError,
+            Image.DecompressionBombError,
+        ) as exc:
+            return self._error("BATCH_PREVIEW_FAILED", str(exc), 400)
+
+    async def batch_images_defaults(self):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        try:
+            payload = await request.json(default={})
+            if not isinstance(payload, dict):
+                raise ValueError("默认检测设置必须是 JSON 对象。")
+            data = await asyncio.to_thread(self._save_batch_defaults, payload, actor)
+            if not data.pop("host_synced"):
+                return self._error(
+                    "BATCH_DEFAULTS_SYNC_FAILED",
+                    "默认设置已写入运行库，但宿主同步失败；请重试本次保存。",
+                    503,
+                )
+            return json_response({"ok": True, "data": data})
+        except (ValueError, TypeError, ConfigurationError) as exc:
+            return self._error("BATCH_DEFAULTS_INVALID", str(exc), 400)
+        except StorageError as exc:
+            return self._error("BATCH_DEFAULTS_CONFLICT", str(exc), 409)
+        except Exception:
+            logger.exception("今日姻缘：保存全局检测设置失败。")
+            return self._error(
+                "BATCH_DEFAULTS_FAILED", "保存检测默认值失败，请刷新检查当前配置。", 500
+            )
+
+    def _save_batch_defaults(
+        self, payload: dict[str, Any], actor: str
+    ) -> dict[str, Any]:
+        settings = self.batch_images._settings(payload.get("settings"))
+        self.batch_images._validate_pools(settings)
+        revision = payload.get("expected_revision")
+        if isinstance(revision, bool) or not isinstance(revision, int) or revision < 0:
+            raise ValueError("配置版本必须是非负整数。")
+        request_id = self.catalog._request_id(payload.get("request_id"))
+        digest = hashlib.sha256(
+            json.dumps(settings, sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()
+        with self.storage._lock:
+            config, _revision = self.storage.get_settings()
+            config["batch_import"] = settings
+            validate_config(config)
+            self.storage.save_settings(
+                None,
+                config,
+                expected_revision=revision,
+                updated_by=actor,
+                now=int(time.time()),
+                request_id=request_id,
+                request_hash=digest,
+            )
+            current, revision = self.storage.get_settings()
+            try:
+                self.host_config.mirror(current, revision)
+                synced = True
+            except Exception:
+                logger.exception("今日姻缘：全局检测设置已保存，但宿主同步失败。")
+                synced = False
+        return {
+            "settings": current["batch_import"],
+            "revision": revision,
+            "host_synced": synced,
+        }
 
     async def overview(self):
         _, denied = self._authorize()
@@ -1260,3 +1694,21 @@ def _upload_media_file(catalog: CatalogAdminService, path: str, now: int) -> dic
     with open(path, "rb") as stream:
         payload = stream.read(12 * 1024 * 1024 + 1)
     return catalog.upload_media(payload, now=now)
+
+
+def _read_batch_upload(path: str) -> bytes:
+    with open(path, "rb") as stream:
+        return stream.read(12 * 1024 * 1024 + 1)
+
+
+def _batch_thumbnail(path: Path) -> str:
+    with Image.open(path) as source:
+        image = ImageOps.exif_transpose(source)
+        image.thumbnail((320, 320))
+        if image.mode not in ("RGB", "RGBA"):
+            image = image.convert("RGBA")
+        output = io.BytesIO()
+        image.save(output, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode(
+        "ascii"
+    )
