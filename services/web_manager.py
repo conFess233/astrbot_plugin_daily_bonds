@@ -326,7 +326,7 @@ class WebManager:
             return denied
         try:
             data = await asyncio.to_thread(
-                font_preview, request.args.get("font_id", "bundled")
+                font_preview, request.query.get("font_id", "bundled")
             )
             return json_response({"ok": True, "data": data})
         except (ValueError, OSError):
@@ -395,7 +395,7 @@ class WebManager:
             return denied
         temporary = None
         filename = "未命名图片"
-        relative_path = request.args.get("relative_path", "")
+        relative_path = request.query.get("relative_path", "")
         try:
             await asyncio.to_thread(
                 self.batch_images.get, job_id, actor=actor, now=int(time.time())

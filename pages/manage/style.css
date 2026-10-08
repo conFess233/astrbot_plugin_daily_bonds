@@ -282,7 +282,7 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .switch-matrix td { width: 25%; }
 .switch-matrix .config-switch-cell { border: 0; box-shadow: none; padding: 0; background: transparent; }
 .config-switch-cell .field > span, .config-switch-cell > .config-note { display: none; }
-.config-switch-cell .field { align-items: center; }
+.config-switch-cell .field { display: flex; justify-content: center; align-items: center; }
 .config-switch-cell .config-origin { display: block; }
 .config-search-results { margin: 8px 0; max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
 .config-search-result { display: block; width: 100%; padding: 10px 12px; text-align: left; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -311,7 +311,7 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .config-advanced-toggle, .config-mode-copy { margin: 12px 0; }
 .config-advanced-toggle summary, .config-mode-copy summary { cursor: pointer; color: var(--primary); padding: 8px 0; }
 .template-variables { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
-.variable-chip { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); color: var(--primary); cursor: pointer; padding: 4px 7px; font-size: 12px; }
+.variable-chip { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); color: var(--primary); cursor: pointer; padding: 4px 7px; font-size: 12px; max-width: 100%; text-align: left; overflow-wrap: anywhere; }
 .font-preview { width: 100%; max-width: 720px; height: auto; border-radius: 8px; margin-top: 12px; }
 .config-field:has([data-config-path^="messages."]) { min-width: 0; }
 .config-field textarea { resize: vertical; }

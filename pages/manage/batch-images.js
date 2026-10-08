@@ -86,9 +86,10 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
           if (card.isConnected) image.src = thumbnails.get(key);
         } catch { if (card.isConnected) image.alt = "图片暂不可预览"; }
       });
-    } else image.alt = "上传失败，需重新选择原文件";
+    } else image.alt = row.upload_error ? "上传失败" : "暂无图片预览";
     if (row.status !== "imported") checkbox(card, "选择", selectedRows.has(row.row_id), (value) => { value ? selectedRows.add(row.row_id) : selectedRows.delete(row.row_id); updateSelection(); });
     card.append(node("strong", row.filename), node("span", row.name ? `${row.name} · ${row.target_id}` : "尚未关联角色", "muted"));
+    if (row.upload_error) card.append(node("p", `上传失败：${(row.errors || []).join("；") || "请重新上传原文件"}`, "batch-row-note"));
     if (row.duplicate_sources?.length) card.append(node("p", `重复来源：${row.duplicate_sources.join("、")}${row.duplicate_skip ? " · 已自动跳过" : " · 可跨角色复用"}`, "batch-row-note"));
     const body = node("details", "", "batch-row-details"); body.append(node("summary", "详情与编辑")); card.append(body);
     body.append(node("h3", row.filename), node("p", `${row.width || "—"} × ${row.height || "—"} · ${Math.round((row.byte_size || 0) / 1024)} KiB · ${row.mime_type || "未通过格式校验"}`, "muted"));

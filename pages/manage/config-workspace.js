@@ -88,8 +88,8 @@ export function initConfigWorkspace({ fields, state, changed, apiGet, label, glo
     const input = inputFor(path); if (!input) return;
     const card = input.closest('.config-field'); activate(card.dataset.page); showSection(card.dataset.section);
     const editor = card.querySelector('.template-editor'); if (editor) editor.open = true;
-    $('#config-search-results').hidden = true;
-    queueMicrotask(() => { card.scrollIntoView({ block: 'center' }); if (input.type === 'hidden') card.querySelector('.pool-picker input:not(:disabled)')?.focus(); else input.focus(); });
+    $('#config-search-results').hidden = true; $('#config-search').value = '';
+    queueMicrotask(() => { card.scrollIntoView({ block: 'center' }); if (input.disabled) { card.tabIndex = -1; card.focus(); } else if (input.type === 'hidden') card.querySelector('.pool-picker input:not(:disabled)')?.focus(); else input.focus(); });
   }
   function search() {
     const results = $('#config-search-results'); results.replaceChildren();
@@ -131,7 +131,12 @@ export function initConfigWorkspace({ fields, state, changed, apiGet, label, glo
         const updatePreview = () => { preview.textContent = input.value.split('\n')[0].slice(0, 60) || (path.startsWith('messages.titles.') ? '空文字，隐藏对应标题或标签' : '空文案，不发送'); }; updatePreview(); input.addEventListener('input', updatePreview); summary.append(preview); editor.append(summary);
         for (const child of [...card.children]) if (child !== heading) editor.append(child);
         const variables = document.createElement('div'); variables.className = 'template-variables';
-        for (const variable of state.templateFields[path]?.allowed || []) { const button = document.createElement('button'); button.type = 'button'; button.className = 'variable-chip'; button.textContent = `{${variable}}`; button.addEventListener('click', () => { input.focus(); input.setRangeText(button.textContent, input.selectionStart, input.selectionEnd, 'end'); input.dispatchEvent(new Event('input', { bubbles: true })); }); variables.append(button); }
+        const variableHint = document.createElement('p'); variableHint.className = 'muted'; variableHint.textContent = '点击变量插入文案；名称优先使用群名片，无对应对象时显示“群友”或“对象”。'; editor.append(variableHint);
+        for (const variable of state.templateFields[path]?.allowed || []) {
+          const token = `{${variable}}`; const meaning = state.templateFields[path].descriptions?.[variable];
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'variable-chip'; button.textContent = meaning ? `${token} · ${meaning}` : token;
+          button.addEventListener('click', () => { input.focus(); input.setRangeText(token, input.selectionStart, input.selectionEnd, 'end'); input.dispatchEvent(new Event('input', { bubbles: true })); }); variables.append(button);
+        }
         editor.append(variables); card.append(controls, editor);
       }
       if (path === 'resources.font_id') {

@@ -22,6 +22,40 @@ NAME_FIELDS = {
     "target_name",
     "subject_name",
 }
+FIELD_DESCRIPTIONS = {
+    "actor_name": "触发指令或执行操作的用户名称",
+    "owner_name": "关系原持有者名称（抢夺时为被抢者）",
+    "sender_name": "赠送发起者名称",
+    "recipient_name": "赠送接收者名称",
+    "target_name": "指令指定或 @ 的目标群员名称",
+    "subject_name": "本次操作涉及的配偶名称（角色或群友）",
+    "name": "抽中、指定或查询的对象名称",
+    "names": "当前持有的配偶名称列表",
+    "image": "结果图片的插入位置，可代替必要文字变量",
+    "role": "玩法名称：老婆、老公或群友",
+    "invite_id": "当前赠送邀请编号",
+    "accept_keyword": "接受赠送邀请的指令关键词",
+    "limit": "待处理赠送邀请数量上限",
+    "code": "操作结果代码",
+    "detail": "具体错误原因",
+    "remaining_seconds": "指令冷却剩余秒数",
+    "pages": "列表或排行总页数",
+    "page": "当前页码",
+    "candidates": "名称匹配到的候选角色列表",
+    "title": "当前列表或排行标题",
+    "count": "列表或排行记录总数",
+    "lines": "已排版的排行内容",
+    "amount": "重启后失效的赠送邀请数量",
+    "invite_ids": "已超时赠送邀请的编号列表",
+    "details": "成员资格变化导致结束的关系或邀请明细",
+    "owner_id": "原持有者 QQ 号（兼容旧文案，默认不展示）",
+    "days": "活跃度统计窗口天数",
+    "score": "当前记录的亲密度或有向好感度数值",
+    "messages": "统计窗口内的消息数量",
+    "active_days": "统计窗口内有发言的天数",
+    "forward_score": "发起者对目标群员的好感度",
+    "reverse_score": "目标群员对发起者的好感度",
+}
 MESSAGE_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
     "daily_bonds_reply", default=MappingProxyType({})
 )
@@ -154,9 +188,28 @@ def template_fields() -> dict[str, dict[str, Any]]:
             )
             result[path] = {
                 "allowed": sorted(allowed),
+                "descriptions": {
+                    field: FIELD_DESCRIPTIONS[field] for field in sorted(allowed)
+                },
                 "required": sorted(_REQUIRED.get(path, set())),
                 "image": image,
             }
+            if "name" in allowed and key in {
+                "rank_intimacy",
+                "query_affection",
+                "affection_value",
+            }:
+                result[path]["descriptions"]["name"] = "查询或排行所属的用户名称"
+            elif (
+                "name" in allowed
+                and key.startswith("admin_set_")
+                and section == "errors"
+            ):
+                result[path]["descriptions"]["name"] = "指令中输入的角色名称或别名"
+            elif "name" in allowed and key.startswith("capacity_full"):
+                result[path]["descriptions"]["name"] = (
+                    "当前持有的配偶名称（多段关系时为名称列表）"
+                )
     return result
 
 
