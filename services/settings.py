@@ -76,6 +76,8 @@ def merge_sparse(
 
     result = copy.deepcopy(dict(base))
     for key, value in override.items():
+        if _path == "resources" and key == "font_id" and value == "bundled":
+            value = "auto"
         if _path == "resources" and key in {
             "render_concurrency",
             "render_max_height",
@@ -285,7 +287,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
             raise ConfigurationError(f"batch_import.{key} 必须为空或有效卡池 ID")
     font_id = config["resources"]["font_id"]
     if not isinstance(font_id, str) or not (
-        font_id == "bundled" or re.fullmatch(r"[0-9a-f]{24}", font_id)
+        font_id == "auto" or re.fullmatch(r"[0-9a-f]{24}", font_id)
     ):
         raise ConfigurationError("图片字体标识无效，请从管理页选择字体。")
     validate_keywords(config["commands"]["keywords"])

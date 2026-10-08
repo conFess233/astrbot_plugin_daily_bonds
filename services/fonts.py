@@ -11,10 +11,6 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-BUNDLED_FONT = (
-    Path(__file__).resolve().parents[1] / "resources/fonts/NotoSansSC-wght.ttf"
-)
-
 
 @lru_cache(maxsize=1)
 def available_fonts() -> list[dict[str, str]]:
@@ -31,7 +27,10 @@ def available_fonts() -> list[dict[str, str]]:
         Path("/System/Library/Fonts"),
         Path.home() / "Library/Fonts",
     ]
-    paths = {BUNDLED_FONT}
+    paths = set()
+    configured = os.environ.get("DAILY_BONDS_CJK_FONT")
+    if configured:
+        paths.add(Path(configured))
     for root in roots:
         if root.is_dir():
             paths.update(
@@ -46,40 +45,68 @@ def available_fonts() -> list[dict[str, str]]:
             family, style = font.getname()
         except (OSError, ValueError):
             continue
-        font_id = (
-            "bundled"
-            if path == BUNDLED_FONT
-            else hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:24]
-        )
+        font_id = hashlib.sha256(str(path.resolve()).encode()).hexdigest()[:24]
         result.append(
             {
                 "id": font_id,
-                "name": "内置 Noto Sans SC"
-                if font_id == "bundled"
-                else f"{family} · {style}",
+                "name": f"{family} · {style}",
                 "path": str(path),
             }
         )
+    # 自动选择优先使用常见中文字体；用户仍可手动选取任意读取到的字体。
+    cjk_names = (
+        "msyh",
+        "simhei",
+        "simsun",
+        "notosanssc",
+        "notosanscjk",
+        "noto sans sc",
+        "noto sans cjk",
+        "wqy",
+        "wenquanyi",
+        "pingfang",
+        "ukai",
+        "uming",
+        "microsoft yahei",
+        "微软雅黑",
+        "黑体",
+        "宋体",
+    )
     return sorted(
-        result, key=lambda item: (item["id"] != "bundled", item["name"].casefold())
+        result,
+        key=lambda item: (
+            not (
+                configured
+                and Path(item["path"]).resolve() == Path(configured).resolve()
+            ),
+            not any(
+                name in (item["name"] + item["path"]).casefold() for name in cjk_names
+            ),
+            item["name"].casefold(),
+        ),
     )
 
 
-def resolve_font(font_id: str = "bundled") -> str | None:
-    for item in available_fonts():
-        if item["id"] == font_id and Path(item["path"]).is_file():
+def resolve_font(font_id: str = "auto") -> str | None:
+    fonts = available_fonts()
+    # 显式选择优先；旧 bundled 标识与已失效的选择均使用本地自动选择。
+    candidates = sorted(fonts, key=lambda item: item["id"] != font_id)
+    for item in candidates:
+        if Path(item["path"]).is_file():
             try:
                 ImageFont.truetype(item["path"], 24)
                 return item["path"]
             except (OSError, ValueError):
-                break
-    return str(BUNDLED_FONT) if BUNDLED_FONT.is_file() else None
+                continue
+    return None
 
 
 def font_preview(font_id: str) -> dict[str, str | bool]:
     path = resolve_font(font_id)
     if path is None:
-        raise ValueError("没有可用的预览字体。")
+        raise ValueError(
+            "未读取到可用的本地字体，请在 AstrBot 所在机器安装字体后重载插件。"
+        )
     canvas = Image.new("RGB", (720, 150), "#f7f7f9")
     draw = ImageDraw.Draw(canvas)
     font = ImageFont.truetype(path, 28)
@@ -89,7 +116,8 @@ def font_preview(font_id: str) -> dict[str, str | bool]:
     canvas.save(stream, format="PNG")
     return {
         "src": "data:image/png;base64," + base64.b64encode(stream.getvalue()).decode(),
-        "fallback": not any(
+        "fallback": font_id != "auto"
+        and not any(
             item["id"] == font_id and item["path"] == path for item in available_fonts()
         ),
     }

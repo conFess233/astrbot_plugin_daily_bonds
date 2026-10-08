@@ -1,9 +1,8 @@
-"""Pillow-based list cards with a bundled CJK font."""
+"""Pillow-based list cards using locally installed fonts."""
 
 from __future__ import annotations
 
 import hashlib
-import os
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -55,7 +54,7 @@ class CardRenderer:
         rows: Sequence[CardRow],
         *,
         cache_key: str,
-        font_id: str = "bundled",
+        font_id: str = "auto",
         header_avatar_path: Path | None = None,
         header_user_id: str = "",
         header_name: str = "",
@@ -63,13 +62,9 @@ class CardRenderer:
         max_rows: int = ROWS_PER_CARD,
         empty_text: str = "暂无记录。",
     ) -> tuple[Path, ...]:
-        """Return ordered card files, or an empty tuple if a CJK font is unavailable."""
+        """Return ordered card files, or an empty tuple if no local font is available."""
 
-        font_path = (
-            _find_cjk_font()
-            if font_id == "bundled"
-            else resolve_font(font_id) or _find_cjk_font()
-        )
+        font_path = _find_cjk_font() if font_id == "auto" else resolve_font(font_id)
         if font_path is None:
             return ()
         has_header_avatar = bool(header_avatar_path or header_user_id or header_name)
@@ -293,18 +288,7 @@ class CardRenderer:
 
 
 def _find_cjk_font() -> str | None:
-    candidates = (
-        os.environ.get("DAILY_BONDS_CJK_FONT"),
-        str(Path(__file__).resolve().parent.parent / "resources" / "fonts" / "NotoSansSC-wght.ttf"),
-        "C:/Windows/Fonts/msyh.ttc",
-        "C:/Windows/Fonts/simhei.ttf",
-        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-        "/usr/share/fonts/truetype/arphic/ukai.ttc",
-        "/System/Library/Fonts/PingFang.ttc",
-    )
-    return next((font for font in candidates if font and Path(font).is_file()), None)
+    return resolve_font()
 
 
 def _draw_thumbnail(canvas: Image.Image, source_path: Path, box: tuple[int, int, int, int]) -> None:

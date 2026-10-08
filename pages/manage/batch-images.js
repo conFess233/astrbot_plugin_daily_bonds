@@ -194,6 +194,8 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
       $("batch-bulk-pool").replaceChildren(new Option("不追加卡池", ""), ...options.pools.map((pool) => new Option(`${pool.name} · ${pool.id}`, pool.id)));
       const jobs = $("batch-resume-job"); jobs.replaceChildren(new Option("选择未完成批次", ""));
       for (const item of options.jobs) jobs.add(new Option(`${new Date(item.created_at * 1000).toLocaleString()} · ${item.items?.length ?? item.count ?? 0} 张 · ${item.job_id}`, item.job_id));
+      clearTimeout(searchTimer); $("batch-character-search").value = "";
+      await searchCharacters("", ++searchSequence);
       render();
     });
   }
@@ -328,14 +330,24 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     options.settings = value.settings; options.revision = value.revision; defaultsRequest = null;
     await onDefaultsSaved(); $("batch-status").textContent = "已保存全局检测默认值。本批草稿需点击应用检测才重新匹配。";
   }));
+  async function searchCharacters(query, sequence) {
+    const select = $("batch-bulk-target"), status = $("batch-character-search-status");
+    try {
+      const value = (await apiGet("characters", { q: query, limit: 100 })).data;
+      if (sequence !== searchSequence) return;
+      select.replaceChildren(new Option(value.items.length ? "请选择已有角色" : "没有匹配的角色", ""), ...value.items.map((character) => new Option(`${character.name} · ${character.id}`, character.id)));
+      $("batch-character-options").replaceChildren(...value.items.map((character) => new Option(`${character.name} · ${character.id}`, character.id)));
+      status.textContent = value.total > value.items.length ? `显示前 ${value.items.length} 个，共 ${value.total} 个；请输入搜索词缩小范围。` : `找到 ${value.items.length} 个角色。`;
+    } catch (failure) {
+      if (sequence !== searchSequence) return;
+      select.replaceChildren(new Option("角色加载失败，请重新搜索", ""));
+      status.textContent = failure.message || "角色搜索失败。";
+    } finally { if (sequence === searchSequence) select.disabled = false; }
+  }
   $("batch-character-search").addEventListener("input", (event) => {
     clearTimeout(searchTimer); const sequence = ++searchSequence, query = event.target.value.trim();
-    searchTimer = setTimeout(async () => {
-      try {
-        const value = (await apiGet("characters", {q: query, limit: 100})).data;
-        if (sequence !== searchSequence) return;
-        $("batch-character-options").replaceChildren(...value.items.map((character) => new Option(`${character.name} · ${character.id}`, character.id)));
-      } catch (failure) { error(failure.message); }
-    }, 250);
+    $("batch-bulk-target").value = ""; $("batch-bulk-target").disabled = true;
+    $("batch-character-search-status").textContent = "正在搜索…";
+    searchTimer = setTimeout(() => searchCharacters(query, sequence), 250);
   });
 }

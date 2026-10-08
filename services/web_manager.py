@@ -326,12 +326,12 @@ class WebManager:
             return denied
         try:
             data = await asyncio.to_thread(
-                font_preview, request.query.get("font_id", "bundled")
+                font_preview, request.query.get("font_id", "auto")
             )
             return json_response({"ok": True, "data": data})
-        except (ValueError, OSError):
+        except (ValueError, OSError) as exc:
             return self._error(
-                "FONT_UNAVAILABLE", "字体预览失败，请选择其他字体。", 400
+                "FONT_UNAVAILABLE", f"字体预览失败：{exc}", 400
             )
 
     async def batch_images_failure(self):

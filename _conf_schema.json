@@ -1474,8 +1474,8 @@
           "font_id": {
             "type": "string",
             "description": "图片字体",
-            "default": "bundled",
-            "hint": "在管理页选择 AstrBot 所在机器的字体；不可用时回退内置字体。"
+            "default": "auto",
+            "hint": "在管理页选择 AstrBot 所在机器的本地字体；默认自动选择，所选字体不可用时使用其他本地字体，无字体时使用文字回复。"
           }
         }
       },

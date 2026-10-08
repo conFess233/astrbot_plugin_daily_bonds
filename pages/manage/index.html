@@ -276,12 +276,13 @@
         <label id="batch-drop-zone" class="batch-drop" tabindex="0"><span>点击选择图片，或拖入此区域</span><small>PNG / JPEG / WebP，每张最多 12 MiB；相同图片按角色去重；图片数量不限。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
         <label class="field"><span>添加文件夹（可多次添加）</span><input id="batch-images-folders" type="file" webkitdirectory multiple /></label>
         <div class="batch-bulk editor-card"><h3>批量关联与卡池追加</h3><div class="form-grid">
-          <label class="field"><span>关联已有角色 ID</span><input id="batch-bulk-target" list="batch-character-options" /></label>
+          <label class="field"><span>搜索已有角色</span><input id="batch-character-search" type="search" placeholder="输入名称、别名或 ID" maxlength="100" aria-describedby="batch-character-search-status" /></label>
+          <label class="field"><span>选择已有角色</span><select id="batch-bulk-target"><option value="">请选择已有角色</option></select><small id="batch-character-search-status" class="muted" role="status"></small></label>
           <label class="field"><span>或新建角色名称</span><input id="batch-bulk-name" maxlength="120" /></label>
           <label class="field"><span>新角色性别</span><select id="batch-bulk-gender"><option value="female">女</option><option value="male">男</option><option value="unspecified">未指定</option></select></label>
           <label class="field"><span>追加卡池</span><select id="batch-bulk-pool"><option value="">不追加</option></select></label>
         </div><div class="actions"><button id="batch-select-all" type="button" class="button secondary">全选筛选结果</button><button id="batch-select-none" type="button" class="button secondary">清空选择</button><button id="batch-bulk-apply" type="button" class="button secondary">应用到选中图片</button><button id="batch-bulk-approve" type="button" class="button secondary">审核确认选中项</button><button id="batch-bulk-skip" type="button" class="button secondary">排除选中图片</button></div><p id="batch-selected-count" class="hint" role="status"></p></div>
-        <div class="form-grid"><label class="field"><span>搜索已有角色（为关联 ID 提供候选）</span><input id="batch-character-search" type="search" /></label><label class="field"><span>显示条目</span><select id="batch-filter"><option value="pending">未完成</option><option value="ready">可靠项</option><option value="manual">待人工 / 失败</option><option value="duplicate">重复图片</option><option value="all">全部</option></select></label></div>
+        <div class="form-grid"><label class="field"><span>显示条目</span><select id="batch-filter"><option value="pending">未完成</option><option value="ready">可靠项</option><option value="manual">待人工 / 失败</option><option value="duplicate">重复图片</option><option value="all">全部</option></select></label></div>
         <datalist id="batch-character-options"></datalist>
         <div id="batch-image-rows" class="batch-rows"></div>
         <div class="list-pagination"><button id="batch-prev" class="button secondary" type="button">上一页</button><span id="batch-page" class="muted"></span><button id="batch-next" class="button secondary" type="button">下一页</button></div>

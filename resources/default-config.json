@@ -310,7 +310,7 @@
     "dedupe_retention_days": 30,
     "backup_keep_count": 5,
     "download_concurrency": 4,
-    "font_id": "bundled"
+    "font_id": "auto"
   },
   "reply_quote": {
     "results": {

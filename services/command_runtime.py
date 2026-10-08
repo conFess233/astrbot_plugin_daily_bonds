@@ -1300,7 +1300,7 @@ class CommandRuntime:
                     title,
                     rows,
                     cache_key=str(uuid.uuid4()),
-                    font_id=MESSAGE_CONTEXT.get().get("font_id", "bundled"),
+                    font_id=MESSAGE_CONTEXT.get().get("font_id", "auto"),
                     **options,
                 )
             except Exception:

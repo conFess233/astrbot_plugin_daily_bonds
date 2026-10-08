@@ -105,12 +105,12 @@ def parse_command(
         raise CommandSyntaxError("这条命令的关键词存在配置冲突，请联系管理员。")
     alias, action = matches[0]
     suffix = rendered[len(alias) :].strip()
-    if action == "query_affection" and sum(part.kind == "at" for part in parts) != 1:
-        raise CommandSyntaxError("好感度查询需要一段真实的 @ 消息。")
     if leading_target is not None:
         if action not in {"steal_wife", "steal_husband", "steal_member"}:
-            raise CommandSyntaxError("此命令不接受开头的目标 @。")
+            return None
         suffix = f"<@{leading_target}>" + (f" {suffix}" if suffix else "")
+    if action == "query_affection" and sum(part.kind == "at" for part in parts) != 1:
+        raise CommandSyntaxError("好感度查询需要一段真实的 @ 消息。")
     return _parse_action(action, suffix)
 
 
