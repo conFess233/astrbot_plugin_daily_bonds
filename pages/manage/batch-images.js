@@ -213,8 +213,8 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
       try {
         for (const [index, entry] of files.entries()) {
           const file = entry.file || entry; const relativePath = entry.path || file.webkitRelativePath || "";
-          $("batch-status").textContent = `正在上传 ${index + 1}/${files.length}：${file.name}`;
-          let reason = !/\.(png|jpe?g|webp)$/i.test(file.name) ? "仅支持 PNG / JPEG / WebP" : file.size > 12 * 1024 * 1024 ? "超过单张 12 MiB 限制" : "";
+          $("batch-status").textContent = `正在处理并上传 ${index + 1}/${files.length}：${file.name}`;
+          let reason = !/\.(png|jpe?g|webp)$/i.test(file.name) ? "仅支持 PNG / JPEG / WebP" : "";
           let value;
           if (reason) value = await apiPost("batch-images/failure", { job_id: job.job_id, filename: file.name, relative_path: relativePath, error: reason });
           else {

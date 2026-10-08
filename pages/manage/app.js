@@ -1,6 +1,9 @@
 import { initConfigWorkspace, configPage, CONFIG_PAGES } from "./config-workspace.js";
 import { initBatchImages } from "./batch-images.js";
 import { confirmAction } from "./confirm-dialog.js";
+import { initUploadCompression, prepareUploadImage } from "./upload-images.js";
+
+initUploadCompression();
 
 const bridge = window.AstrBotPluginPage;
 const $ = (selector) => document.querySelector(selector);
@@ -72,7 +75,13 @@ async function apiPost(endpoint, body) {
 }
 
 async function apiUpload(endpoint, file) {
-  return withProgress(async () => normalizeApiResponse(await bridge.upload(endpoint, file)));
+  return withProgress(async () => {
+    if (endpoint === "media/upload" || /^batch-images\/[^/]+\/upload$/.test(endpoint)) {
+      file = await prepareUploadImage(file);
+      if (file.size > 12 * 1024 * 1024) throw new Error("压缩后仍超过单张 12 MiB 限制。");
+    }
+    return normalizeApiResponse(await bridge.upload(endpoint, file));
+  });
 }
 
 const configFields = $("#config-fields");

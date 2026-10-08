@@ -87,6 +87,11 @@
             </div>
             <label class="check-field"><input id="character-enabled" type="checkbox" checked /> 启用抽取</label>
             <label class="field"><span>头像与立绘图片（可多选，每张独立校验）</span><input id="character-image" type="file" accept="image/*" multiple /></label>
+            <div class="form-grid">
+              <label class="field"><span>上传目标大小（MiB）</span><input data-upload-setting="target" type="number" min="0.000001" max="12" step="any" value="6" /></label>
+              <label class="field"><span>压缩图片质量（%）</span><input data-upload-setting="quality" type="number" min="0" max="100" step="any" value="80" /></label>
+            </div>
+            <p class="hint">超出目标时在本地压缩为 WebP，必要时缩小尺寸，保留透明背景与原文件名；不修改原文件。两处上传区共用设置，刷新后恢复默认值。</p>
             <div id="character-images" class="image-gallery" aria-live="polite"></div>
             <fieldset class="pool-membership"><legend>角色池</legend><div id="character-pools" class="check-list"></div></fieldset>
             <div class="actions">
@@ -274,6 +279,11 @@
         <p class="hint">已有角色采用原档案。新角色未识别性别时暂按男标注；男女冲突、名称歧义或其他校验错误都须人工确认。</p>
         <div class="form-grid"><label class="field"><span>恢复未完成批次</span><select id="batch-resume-job"></select></label><div class="actions"><button id="batch-resume" class="button secondary" type="button">恢复选中批次</button><button id="batch-new" class="button secondary" type="button">开始新批次</button></div></div>
         <label id="batch-drop-zone" class="batch-drop" tabindex="0"><span>点击选择图片，或拖入此区域</span><small>PNG / JPEG / WebP，每张最多 12 MiB；相同图片按角色去重；图片数量不限。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
+        <div class="form-grid">
+          <label class="field"><span>上传目标大小（MiB）</span><input data-upload-setting="target" type="number" min="0.000001" max="12" step="any" value="6" /></label>
+          <label class="field"><span>压缩图片质量（%）</span><input data-upload-setting="quality" type="number" min="0" max="100" step="any" value="80" /></label>
+        </div>
+        <p class="hint">超过目标大小会先在本地压缩，必要时缩小尺寸；原文件不改动。图片质量越低，文件通常越小，两处上传区共用设置。</p>
         <label class="field"><span>添加文件夹（可多次添加）</span><input id="batch-images-folders" type="file" webkitdirectory multiple /></label>
         <div class="batch-bulk editor-card"><h3>批量关联与卡池追加</h3><div class="form-grid">
           <label class="field"><span>搜索已有角色</span><input id="batch-character-search" type="search" placeholder="输入名称、别名或 ID" maxlength="100" aria-describedby="batch-character-search-status" /></label>
