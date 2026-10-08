@@ -273,7 +273,7 @@ class WebManager:
             job_id = request.query.get("job_id")
             if job_id:
                 data = await asyncio.to_thread(
-                    self.batch_images.get, job_id, actor=actor, now=int(time.time())
+                    self.batch_images.refresh, job_id, actor=actor, now=int(time.time())
                 )
             else:
                 data = await asyncio.to_thread(self._batch_options, actor)

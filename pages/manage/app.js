@@ -234,7 +234,7 @@ const TITLE_LABELS = {
   rank_group_intimacy: "全群亲密度排行标题", rank_activity: "活跃度排行标题",
   query_affection: "好感度查询标题", page: "分页标题", empty: "空榜文案",
   rank_summary: "排行摘要", intimacy_value: "亲密度数值标签", activity_value: "活跃度数值标签",
-  affection_value: "有向好感度标签", normal_slot: "普通槽位标签", steal_slot: "抢夺槽位标签",
+  affection_value: "有向好感度标签", normal_slot: "抽取来源标签", gift_slot: "赠送来源标签", steal_slot: "抢夺来源标签",
   designated_slot: "指定槽位标签", wife: "老婆玩法名称", husband: "老公玩法名称", member: "群友玩法名称",
 };
 const CONFIG_LABELS = {

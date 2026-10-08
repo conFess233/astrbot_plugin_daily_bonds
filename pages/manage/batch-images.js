@@ -94,7 +94,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     if (row.status !== "imported") checkbox(card, "选择", selectedRows.has(row.row_id), (value) => { value ? selectedRows.add(row.row_id) : selectedRows.delete(row.row_id); updateSelection(); });
     card.append(node("strong", row.name || "尚未关联角色"), node("span", row.target_id ? `角色 ID：${row.target_id}` : "尚未关联角色", "muted"), node("span", `文件：${row.filename}`, "muted"));
     if (row.upload_error) card.append(node("p", `上传失败：${(row.errors || []).join("；") || "请重新上传原文件"}`, "batch-row-note"));
-    if (row.duplicate_sources?.length) card.append(node("p", `重复来源：${row.duplicate_sources.join("、")}${row.duplicate_skip ? " · 已自动跳过" : " · 可跨角色复用"}`, "batch-row-note"));
+    if (row.duplicate_sources?.length) card.append(node("p", `重复来源：${row.duplicate_sources.join("、")}${row.duplicate_skip ? " · 已自动跳过" : row.duplicate_image ? " · 重复图片不新增，仅处理所选卡池" : " · 可跨角色复用"}`, "batch-row-note"));
     const body = node("details", "", "batch-row-details"); body.append(node("summary", "详情与编辑")); card.append(body);
     body.append(node("h3", row.name || "尚未关联角色"), node("p", `原文件：${row.filename}`, "muted"), node("p", `${row.width || "—"} × ${row.height || "—"} · ${Math.round((row.byte_size || 0) / 1024)} KiB · ${row.mime_type || "未通过格式校验"}`, "muted"));
     const messages = [...(row.warnings || []), ...(row.errors || [])];
@@ -237,8 +237,9 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     await task(async () => {
       await saveDraft();
       if (!job) throw new Error("请先选择并上传图片。");
+      setJob((await apiGet("batch-images", { job_id: job.job_id })).data);
       const rows = job.items.filter((row) => ready(row) && (!manualPhase || row.manual_approved));
-      if (!rows.length) throw new Error(manualPhase ? "请修改待处理项，保存草稿并勾选审核确认。" : "没有可靠项，可进入待人工列表核对。");
+      if (!rows.length) throw new Error(job.items.some((row) => row.duplicate_skip) ? "重复图片已自动跳过；其余图片请在待人工列表核对并审核。" : manualPhase ? "请修改待处理项，保存草稿并勾选审核确认。" : "没有可靠项，可进入待人工列表核对。");
       if (!await confirmAction(`将确认导入 ${rows.length} 张图片，已有角色追加图片和所选卡池，新角色按预览创建。继续吗？`)) return;
       const signature = JSON.stringify([job.job_id, rows.map((row) => row.row_id)]);
       if (commitRequest?.signature !== signature) commitRequest = { signature, id: crypto.randomUUID() };
@@ -247,8 +248,9 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
       catch (failure) { try { setJob((await apiGet("batch-images", {job_id: job.job_id})).data); } catch { /* 保留本地草稿，等待用户明确重试。 */ } throw failure; }
       setJob(result.job);
       const success = $("batch-success-list"), failed = $("batch-failure-list"); success.replaceChildren(); failed.replaceChildren();
-      for (const item of result.imported) success.append(node("li", `${item.name} · ${item.images} 张图片 · 卡池：${(item.pool_ids || []).join("、")}`));
+      for (const item of result.imported) success.append(node("li", `${item.name} · 新增 ${item.images} 张图片${item.duplicate_images ? ` · 重复 ${item.duplicate_images} 张未新增` : ""} · 卡池：${(item.pool_ids || []).join("、")}`));
       for (const item of result.failed) failed.append(node("li", `${item.id}：${item.error}`));
+      if (result.skipped_duplicates) success.append(node("li", `${result.skipped_duplicates} 张已存在的重复图片已自动跳过。`));
       if (!result.imported.length) success.append(node("li", "本次没有成功导入的角色。"));
       $("batch-import-result").hidden = false; $("batch-images-controls").hidden = true;
       $("batch-images-title").textContent = "批量导入结果";

@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 from ..models import Scope, StorageError
 from .settings import default_config, effective_config, merge_sparse, validate_config
 
-_SCHEMA_VERSION = 12
+_SCHEMA_VERSION = 13
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -399,6 +399,7 @@ class SQLiteStorage:
             migration_dir / "010_designated_slots.sql",
             migration_dir / "011_activity_days.sql",
             migration_dir / "012_message_templates.sql",
+            migration_dir / "013_relationship_sources.sql",
         ]
         checksums = [
             hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files

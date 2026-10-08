@@ -123,6 +123,13 @@ class BatchImagesService:
             ]
         return job
 
+    def refresh(self, job_id: str, *, actor: str, now: int) -> dict[str, Any]:
+        with self._lock:
+            job = self.get(job_id, actor=actor, now=now)
+            self._overflow(job)
+            self._save(job, actor)
+            return job
+
     def get_image(
         self, job_id: str, row_id: str, *, actor: str, now: int
     ) -> tuple[Path, str] | None:
@@ -392,6 +399,7 @@ class BatchImagesService:
         """标记重复来源；仅同角色且无新增卡池时默认跳过，可改关联后重新参与。"""
         characters = {}
         seen = {}
+        planned_pools = {}
         with self.storage._lock:
             db = self.storage._connection()
             library = {}
@@ -425,6 +433,7 @@ class BatchImagesService:
                 any(c["id"] == target for c in library.get(item["hash"], []))
                 or key in seen
             )
+            item["duplicate_image"] = duplicate
             if key in seen:
                 item["duplicate_sources"].append("本批：" + seen[key])
             if item["status"] in {"pending", "failed"} and not item.get("excluded"):
@@ -436,11 +445,13 @@ class BatchImagesService:
                     )
                 current = characters[target]
                 pools = {p["id"] for p in current["pools"]} if current else set()
-                adds_pools = bool(set(item.get("pool_ids", [])) - pools)
+                planned = planned_pools.setdefault(target, pools)
+                adds_pools = bool(set(item.get("pool_ids", [])) - planned)
                 if duplicate and not adds_pools:
                     item.update(status="skipped", excluded=True, duplicate_skip=True)
                 else:
                     seen[key] = item["filename"]
+                    planned.update(item.get("pool_ids", []))
 
     def add_image(
         self,
@@ -692,6 +703,7 @@ class BatchImagesService:
             lookup = {r["row_id"]: r for r in job["items"]}
             if any(row_id not in lookup for row_id in row_ids):
                 raise ValueError("所选图片不存在。")
+            self._overflow(job)
             fields = (
                 "target_id",
                 "hash",
@@ -727,8 +739,12 @@ class BatchImagesService:
                     raise StorageError("request_id 已用于不同导入提交。")
                 return json.loads(prior["response_json"])
             groups: dict[str, list[dict[str, Any]]] = {}
+            skipped_duplicates = 0
             for row_id in row_ids:
                 item = lookup[row_id]
+                if item.get("duplicate_skip") and item["status"] == "skipped":
+                    skipped_duplicates += 1
+                    continue
                 if item["status"] != "imported":
                     groups.setdefault(item["target_id"], []).append(item)
             imported, failed = [], []
@@ -768,7 +784,12 @@ class BatchImagesService:
                     self._save(job, actor)
             self._overflow(job)
             self._save(job, actor)
-            response = {"job": job, "imported": imported, "failed": failed}
+            response = {
+                "job": job,
+                "imported": imported,
+                "failed": failed,
+                "skipped_duplicates": skipped_duplicates,
+            }
             with self.storage.transaction() as db:
                 db.execute(
                     "INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,'batch-images/commit',?,?,?,?)",
@@ -846,7 +867,9 @@ class BatchImagesService:
             )
             if data["pool_ids"] or not current:
                 self._validate_new({**first, "pool_ids": data["pool_ids"]})
+            previous_hashes = set(hashes)
             hashes = list(dict.fromkeys([*hashes, *(r["hash"] for r in rows)]))
+            added_images = len(set(hashes) - previous_hashes)
             for item, payload in payloads:
                 relative = Path("sha256") / f"{item['hash']}.{item['extension']}"
                 _atomic_content_write(self.catalog.media_root / relative, payload)
@@ -878,6 +901,7 @@ class BatchImagesService:
             "id": first["target_id"],
             "name": data["name"],
             "row_ids": [r["row_id"] for r in rows],
-            "images": len(hashes),
+            "images": added_images,
+            "duplicate_images": len(rows) - added_images,
             "pool_ids": data["pool_ids"],
         }

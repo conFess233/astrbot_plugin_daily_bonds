@@ -1160,7 +1160,7 @@ class CommandRuntime:
             rows = (
                 self.storage._connection()
                 .execute(
-                    """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,s.id AS snapshot_id,s.name,s.subject_kind,
+                    """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,r.acquisition_kind,r.source_owner_id,s.id AS snapshot_id,s.name,s.subject_kind,
                           (SELECT GROUP_CONCAT(mb.relative_path,'|') FROM snapshot_images si
                            JOIN media_blobs mb ON mb.hash=si.media_hash WHERE si.snapshot_id=s.id) AS image_paths
                    FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id
@@ -1203,16 +1203,31 @@ class CommandRuntime:
         rows, members = await asyncio.to_thread(
             self._relationship_rows, scope_id, period_id, mode
         )
-        mode_labels = {
-            key: render_message(config, "titles", key)
-            for key in ("wife", "husband", "member")
-        }
-        slots = {
-            key: render_message(config, "titles", f"{key}_slot")
-            for key in ("normal", "steal", "designated")
-        }
+        for row in rows:
+            kind = row.get("acquisition_kind", "draw")
+            source_id = str(row.get("source_owner_id") or "")
+            source_name = members.get(source_id, "群友")
+            key = {"gift": "gift_slot", "steal": "steal_slot"}.get(kind, "normal_slot")
+            row["source_label"] = (
+                "["
+                + render_message(config, "titles", key, owner_name=source_name)
+                + "]"
+            )
+            row["source_parts"] = None
+            if kind in {"gift", "steal"}:
+                marker = "\ue002source\ue002"
+                marked = (
+                    "[" + render_message(config, "titles", key, owner_name=marker) + "]"
+                )
+                before, separator, after = marked.partition(marker)
+                if separator:
+                    row["source_parts"] = (
+                        before,
+                        source_name,
+                        after.replace(marker, source_name),
+                    )
         entries = [
-            f"[{mode_labels[str(row['mode'])]}·{slots[row['slot_kind']]}] {members.get(str(row['owner_id']), '群友')} → {row['name']}"
+            f"{row['source_label']} {members.get(str(row['owner_id']), '群友')} → {row['name']}"
             for row in rows
         ]
         title = render_message(config, "titles", f"list_{mode}")
@@ -1252,10 +1267,15 @@ class CommandRuntime:
                 user_id
                 for row in selected_rows
                 for user_id in (
-                    [str(row["owner_id"]), str(row["subject_id"])]
+                    [
+                        str(row["owner_id"]),
+                        str(row["subject_id"]),
+                        str(row.get("source_owner_id") or ""),
+                    ]
                     if mode == "member"
-                    else [str(row["owner_id"])]
+                    else [str(row["owner_id"]), str(row.get("source_owner_id") or "")]
                 )
+                if user_id
             )
         )
         avatars = (
@@ -1270,7 +1290,10 @@ class CommandRuntime:
         card_rows = [
             CardRow(
                 primary=f"{members.get(str(row['owner_id']), '群友')} → {row['name']}",
-                secondary=f"{mode_labels[str(row['mode'])]} · {slots[row['slot_kind']]}",
+                secondary=row["source_label"],
+                source_label_parts=row["source_parts"],
+                source_avatar_path=avatars.get(str(row.get("source_owner_id") or "")),
+                source_user_id=str(row.get("source_owner_id") or ""),
                 image_path=self._snapshot_image_path(row["image_paths"])
                 if mode != "member"
                 else None,

@@ -1353,14 +1353,20 @@
               },
               "normal_slot": {
                 "type": "text",
-                "description": "普通槽位标签",
-                "default": "普通",
+                "description": "抽取来源标签",
+                "default": "抽取",
                 "hint": "支持声明的简单变量，最长1000字符。"
+              },
+              "gift_slot": {
+                "type": "text",
+                "description": "赠送来源标签",
+                "default": "来自{owner_name}的赠送",
+                "hint": "{owner_name} 为赠送者名称，图片中在名称前显示小头像。"
               },
               "steal_slot": {
                 "type": "text",
-                "description": "抢夺槽位标签",
-                "default": "抢夺",
+                "description": "抢夺来源标签",
+                "default": "抢夺自{owner_name}",
                 "hint": "支持声明的简单变量，最长1000字符。"
               },
               "designated_slot": {

@@ -27,6 +27,9 @@ class CardRow:
     show_user_ids: bool = False
     pair_scores: tuple[int, int] | None = None
     pair_score_labels: tuple[str, str] | None = None
+    source_label_parts: tuple[str, str, str] | None = None
+    source_avatar_path: Path | None = None
+    source_user_id: str = ""
 
 
 class CardRenderer:
@@ -239,6 +242,8 @@ class CardRenderer:
                         font=secondary_font,
                         fill=self.ACCENT,
                     )
+                elif row.source_label_parts is not None:
+                    _draw_source_label(image, row, (610, top + 19), secondary_font, 310)
                 else:
                     draw.text(
                         (610, top + 19),
@@ -274,7 +279,11 @@ class CardRenderer:
             ) - text_left
             primary = _fit_text(draw, row.primary, primary_font, available_width)
             draw.text((text_left, top + 9), primary, font=primary_font, fill=self.INK)
-            if row.secondary:
+            if row.source_label_parts is not None:
+                _draw_source_label(
+                    image, row, (text_left, top + 41), secondary_font, available_width
+                )
+            elif row.secondary:
                 secondary = _fit_text(
                     draw, row.secondary, secondary_font, available_width
                 )
@@ -291,7 +300,36 @@ def _find_cjk_font() -> str | None:
     return resolve_font()
 
 
-def _draw_thumbnail(canvas: Image.Image, source_path: Path, box: tuple[int, int, int, int]) -> None:
+def _draw_source_label(
+    canvas: Image.Image,
+    row: CardRow,
+    position: tuple[int, int],
+    font: ImageFont.FreeTypeFont,
+    max_width: int,
+) -> None:
+    draw = ImageDraw.Draw(canvas)
+    prefix, name, suffix = row.source_label_parts
+    prefix = _fit_text(draw, prefix, font, max_width // 3)
+    suffix = _fit_text(draw, suffix, font, max_width // 3)
+    x, y = position
+    draw.text((x, y), prefix, font=font, fill=CardRenderer.MUTED)
+    x += int(draw.textlength(prefix, font=font)) + 3
+    _draw_avatar(
+        canvas,
+        row.source_avatar_path,
+        (x, y, x + 22, y + 22),
+        row.source_user_id or "?",
+        font,
+    )
+    x += 26
+    remaining = position[0] + max_width - x - int(draw.textlength(suffix, font=font))
+    name = _fit_text(draw, name, font, remaining)
+    draw.text((x, y), name + suffix, font=font, fill=CardRenderer.MUTED)
+
+
+def _draw_thumbnail(
+    canvas: Image.Image, source_path: Path, box: tuple[int, int, int, int]
+) -> None:
     left, top, right, bottom = box
     try:
         with Image.open(source_path) as opened:

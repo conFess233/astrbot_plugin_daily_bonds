@@ -18,6 +18,8 @@ _DEFAULTS_PATH = (
     Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
 )
 LEGACY_MESSAGES = {
+    "titles.normal_slot": "普通",
+    "titles.steal_slot": "抢夺",
     "draw_wife": "娶到老婆：{name}{image}",
     "draw_husband": "娶到老公：{name}{image}",
     "draw_member": "娶到群友：{name}{image}",
@@ -92,6 +94,8 @@ def merge_sparse(
             if _path == "messages.results"
             else "notifications." + key
             if _path == "messages.notifications"
+            else "titles." + key
+            if _path == "messages.titles"
             else ""
         )
         if legacy_key in LEGACY_MESSAGES and value == LEGACY_MESSAGES[legacy_key]:

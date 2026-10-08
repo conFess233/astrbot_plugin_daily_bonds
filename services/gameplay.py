@@ -942,6 +942,14 @@ class GameplayService:
             now=now,
             slot_kind=slot_kind,
         )
+        db.execute(
+            "UPDATE relationships SET acquisition_kind=?,source_owner_id=? WHERE id=?",
+            (
+                "gift" if reason == "gifted" else "steal",
+                relationship["owner_id"],
+                new_id,
+            ),
+        )
         return new_id
 
     def _owner_relationships(self, db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, owner_id: str, slot_kind: str = "normal") -> list[dict[str, Any]]:
