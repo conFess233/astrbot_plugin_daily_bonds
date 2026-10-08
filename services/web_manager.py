@@ -1697,6 +1697,7 @@ def _validate_scope_override(value: Mapping[str, Any]) -> None:
         "members",
         "messages",
         "reply_quote",
+        "reply_enabled",
     }
     if set(value) - allowed:
         raise ConfigurationError("群覆盖包含仅允许全局设置的字段。")

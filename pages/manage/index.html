@@ -214,15 +214,28 @@
           <fieldset id="config-controls" class="control-group">
           <label class="field"><span>搜索设置、配置键或文案</span><input id="config-search" type="search" placeholder="例如：抢夺、引用、字体" /></label>
           <div id="config-tabs" class="config-tabs" role="tablist" aria-label="配置主题"></div>
-          <details class="config-advanced-toggle"><summary>高级设置</summary><label class="check-field"><input id="config-advanced" type="checkbox" /> 显示资源、缓存和维护参数</label></details>
-          <div class="config-bulk actions" aria-label="分区批量操作">
-            <button id="config-select-all" type="button" class="button secondary">全选当前分区</button><button id="config-select-none" type="button" class="button secondary">清空选择</button>
-            <button id="config-enable" type="button" class="button secondary">开启选中开关</button><button id="config-disable" type="button" class="button secondary">关闭选中开关</button><button id="config-inherit" type="button" class="button secondary">选中项恢复继承</button>
+          <div id="config-search-results" class="config-search-results" aria-label="设置搜索结果" hidden></div>
+          <div id="config-section-tabs" class="config-tabs config-section-tabs" role="tablist" aria-label="功能分区"></div>
+          <div id="config-reply-bulk" hidden>
+            <div class="config-bulk actions" aria-label="回复词批量操作">
+              <button id="config-select-all" type="button" class="button secondary">全选当前分区</button>
+              <button id="config-select-every-reply" type="button" class="button secondary">全选所有回复</button>
+              <button id="config-select-none" type="button" class="button secondary">清空选择</button>
+              <button id="config-enable" type="button" class="button secondary">开启回复</button>
+              <button id="config-disable" type="button" class="button secondary">关闭回复</button>
+              <button id="config-quote-enable" type="button" class="button secondary">开启引用</button>
+              <button id="config-quote-disable" type="button" class="button secondary">关闭引用</button>
+              <button id="config-inherit" type="button" class="button secondary">选中回复恢复继承</button>
+            </div>
+            <p id="config-selected-count" class="hint" role="status"></p>
           </div>
-          <details class="config-mode-copy"><summary>将所选规则应用到其他玩法</summary><div class="actions"><label class="check-field"><input type="checkbox" data-copy-mode="wife" />老婆</label><label class="check-field"><input type="checkbox" data-copy-mode="husband" />老公</label><label class="check-field"><input type="checkbox" data-copy-mode="member" />群友</label><button id="config-copy-modes" type="button" class="button secondary">应用所选规则</button></div><p class="hint">选择一个来源玩法的规则；专属字段只应用到支持的玩法，卡池按玩法分别勾选。</p></details>
-          <p id="config-selected-count" class="hint" role="status"></p>
+          <details id="config-mode-copy" class="config-mode-copy" hidden><summary>同步当前玩法本次修改的参数</summary>
+            <p id="config-copy-source" class="hint"></p>
+            <div class="actions"><label class="check-field"><input type="checkbox" data-copy-mode="wife" />老婆</label><label class="check-field"><input type="checkbox" data-copy-mode="husband" />老公</label><label class="check-field"><input type="checkbox" data-copy-mode="member" />群友</label><button id="config-copy-modes" type="button" class="button secondary">同步参数改动</button></div>
+            <p class="hint">未修改的参数保持原值，专属字段仅同步到支持的玩法。</p>
+          </details>
           <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
-          <p id="editor-help" class="hint">每项可单独编辑；群配置可逐项选择继承全局或覆盖。草稿仅在保存后写入，并由服务端统一校验。</p>
+          <p id="editor-help" class="hint">四页共用一份草稿，切换保留修改；群配置直接编辑会建立本群覆盖，每项可恢复继承。保存前由服务端统一校验。</p>
           </fieldset>
           <div class="actions">
             <button id="discard" class="button secondary" type="button" disabled>放弃草稿</button>

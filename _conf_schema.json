@@ -1932,6 +1932,546 @@
             "hint": "须为老婆玩法的有效卡池；空值需人工选择。"
           }
         }
+      },
+      "reply_enabled": {
+        "type": "object",
+        "description": "回复启用开关",
+        "items": {
+          "results": {
+            "type": "object",
+            "description": "结果回复",
+            "items": {
+              "draw_wife": {
+                "type": "bool",
+                "description": "抽到老婆启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "draw_husband": {
+                "type": "bool",
+                "description": "抽到老公启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "draw_member": {
+                "type": "bool",
+                "description": "抽到群友启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "capacity_full": {
+                "type": "bool",
+                "description": "持有名额已满启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_slot_full": {
+                "type": "bool",
+                "description": "抢夺槽位已满启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "relationship_locked": {
+                "type": "bool",
+                "description": "受保护关系不可操作启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_slot_locked": {
+                "type": "bool",
+                "description": "目标关系不可被抢启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "capacity_full_single_wife": {
+                "type": "bool",
+                "description": "已有老婆启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "capacity_full_single_husband": {
+                "type": "bool",
+                "description": "已有老公启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "no_draw_quota": {
+                "type": "bool",
+                "description": "普通抽取额度用完启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "no_candidate": {
+                "type": "bool",
+                "description": "没有候选对象启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_failed": {
+                "type": "bool",
+                "description": "抢夺失败启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "stolen": {
+                "type": "bool",
+                "description": "抢夺成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "divorced": {
+                "type": "bool",
+                "description": "解除关系成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "gifted": {
+                "type": "bool",
+                "description": "赠送成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_created": {
+                "type": "bool",
+                "description": "赠送邀请已创建启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "gift_accepted": {
+                "type": "bool",
+                "description": "赠送已接受启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_rejected": {
+                "type": "bool",
+                "description": "赠送已拒绝启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_cancelled": {
+                "type": "bool",
+                "description": "赠送已取消启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_expired": {
+                "type": "bool",
+                "description": "赠送邀请过期启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_invalidated": {
+                "type": "bool",
+                "description": "赠送邀请失效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_not_owned": {
+                "type": "bool",
+                "description": "无权处理邀请启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_cooldown": {
+                "type": "bool",
+                "description": "抢夺冷却启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_limit": {
+                "type": "bool",
+                "description": "抢夺次数用完启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "target_protected": {
+                "type": "bool",
+                "description": "目标受保护启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "divorce_limit": {
+                "type": "bool",
+                "description": "解除关系次数用完启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "relationship_not_found": {
+                "type": "bool",
+                "description": "关系不存在启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invalid_target": {
+                "type": "bool",
+                "description": "目标无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "no_target_relationship": {
+                "type": "bool",
+                "description": "目标没有关系启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "mode_disabled": {
+                "type": "bool",
+                "description": "玩法已关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invalid_probability": {
+                "type": "bool",
+                "description": "抢夺概率无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invalid_timeout": {
+                "type": "bool",
+                "description": "赠送超时无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_already_pending": {
+                "type": "bool",
+                "description": "已有待处理邀请启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_limit": {
+                "type": "bool",
+                "description": "待处理邀请达到上限启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_invalid": {
+                "type": "bool",
+                "description": "邀请无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "unknown_result": {
+                "type": "bool",
+                "description": "其他操作结果启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_wife": {
+                "type": "bool",
+                "description": "指定老婆成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_husband": {
+                "type": "bool",
+                "description": "指定老公成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_disabled": {
+                "type": "bool",
+                "description": "指定抽取关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_slot_full": {
+                "type": "bool",
+                "description": "指定槽位已满启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "no_designated_quota": {
+                "type": "bool",
+                "description": "指定次数用完启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_occupied": {
+                "type": "bool",
+                "description": "指定角色已被持有启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_drawn": {
+                "type": "bool",
+                "description": "指定抽取成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_relationship_locked": {
+                "type": "bool",
+                "description": "指定关系不可操作启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "list_wife": {
+                "type": "bool",
+                "description": "老婆列表回复启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "list_husband": {
+                "type": "bool",
+                "description": "老公列表回复启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "list_member": {
+                "type": "bool",
+                "description": "群友列表回复启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "rank_intimacy": {
+                "type": "bool",
+                "description": "亲密度排行回复启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "rank_activity": {
+                "type": "bool",
+                "description": "活跃度排行回复启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "query_affection": {
+                "type": "bool",
+                "description": "好感度查询回复启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "admin_set_wife": {
+                "type": "bool",
+                "description": "管理员设置老婆成功启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "already_held": {
+                "type": "bool",
+                "description": "管理员已持有角色启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              }
+            }
+          },
+          "errors": {
+            "type": "object",
+            "description": "错误回复",
+            "items": {
+              "syntax_error": {
+                "type": "bool",
+                "description": "指令格式错误启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "operation_error": {
+                "type": "bool",
+                "description": "操作错误启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "mode_closed": {
+                "type": "bool",
+                "description": "玩法关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "command_cooldown": {
+                "type": "bool",
+                "description": "通用指令冷却启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_disabled": {
+                "type": "bool",
+                "description": "抢夺关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_target_required": {
+                "type": "bool",
+                "description": "抢夺目标无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "steal_relation_ambiguous": {
+                "type": "bool",
+                "description": "抢夺关系不明确启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "gift_disabled": {
+                "type": "bool",
+                "description": "赠送关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "gift_target_required": {
+                "type": "bool",
+                "description": "赠送目标无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "gift_relation_ambiguous": {
+                "type": "bool",
+                "description": "赠送关系不明确启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "divorce_ambiguous": {
+                "type": "bool",
+                "description": "离婚关系不明确启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "divorce_disabled": {
+                "type": "bool",
+                "description": "解除关系关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "divorce_relation_missing": {
+                "type": "bool",
+                "description": "解除关系未找到启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_multiple": {
+                "type": "bool",
+                "description": "有多条待处理邀请启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_none": {
+                "type": "bool",
+                "description": "没有待处理邀请启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_invalid_id": {
+                "type": "bool",
+                "description": "邀请编号无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "rank_intimacy_disabled": {
+                "type": "bool",
+                "description": "亲密度排行关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "rank_activity_disabled": {
+                "type": "bool",
+                "description": "活跃度排行关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "activity_disabled": {
+                "type": "bool",
+                "description": "活跃度统计关闭启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "page_out_of_range": {
+                "type": "bool",
+                "description": "页码超出范围启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "list_empty": {
+                "type": "bool",
+                "description": "关系列表为空启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_missing": {
+                "type": "bool",
+                "description": "未找到指定角色启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "designated_ambiguous": {
+                "type": "bool",
+                "description": "指定角色有多个匹配启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "affection_target_required": {
+                "type": "bool",
+                "description": "好感度查询目标无效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "admin_set_denied": {
+                "type": "bool",
+                "description": "设置老婆权限不足启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "admin_set_missing": {
+                "type": "bool",
+                "description": "设置老婆未找到角色启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "admin_set_ambiguous": {
+                "type": "bool",
+                "description": "设置老婆角色不明确启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "admin_set_unavailable": {
+                "type": "bool",
+                "description": "设置老婆角色不可用启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              }
+            }
+          },
+          "notifications": {
+            "type": "object",
+            "description": "通知",
+            "items": {
+              "restart_invalidated": {
+                "type": "bool",
+                "description": "重启后邀请失效启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "invite_expired": {
+                "type": "bool",
+                "description": "赠送邀请过期启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "member_reconcile": {
+                "type": "bool",
+                "description": "成员资格变化通知启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "member_redraw": {
+                "type": "bool",
+                "description": "群友离开补抽说明启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "owner_ineligible": {
+                "type": "bool",
+                "description": "持有人失去资格说明启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              },
+              "participant_ineligible": {
+                "type": "bool",
+                "description": "赠送参与者失去资格说明启用回复",
+                "default": true,
+                "hint": "关闭保留文案；空文案仍不发送。"
+              }
+            }
+          }
+        }
       }
     }
   },

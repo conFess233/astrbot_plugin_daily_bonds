@@ -268,6 +268,40 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .image-gallery > .muted { grid-column: 1 / -1; }
 .notification-stack { max-height: min(40vh, 360px); overflow-y: auto; }
 
+/* 四类配置页面：主要开关总览，其他类别按功能导航。 */
+.config-group > .config-grid { display: block; }
+.config-group > .config-grid > .config-grid { margin: 18px 0; }
+.config-section-tabs { padding: 8px 0; border-bottom: 1px solid var(--border); }
+.config-origin { display: inline-block; color: var(--muted); font-size: 12px; margin-top: 8px; }
+.text-button { min-height: 28px; padding: 3px 8px; color: var(--primary); background: transparent; }
+.switch-matrix-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; }
+.switch-matrix { width: 100%; border-collapse: collapse; }
+.switch-matrix th, .switch-matrix td { padding: 10px; border-bottom: 1px solid var(--border); text-align: center; vertical-align: top; }
+.switch-matrix thead { background: var(--surface-soft); }
+.switch-matrix th:first-child { text-align: left; width: 24%; }
+.switch-matrix td { width: 25%; }
+.switch-matrix .config-switch-cell { border: 0; box-shadow: none; padding: 0; background: transparent; }
+.config-switch-cell .field > span, .config-switch-cell > .config-note { display: none; }
+.config-switch-cell .field { align-items: center; }
+.config-switch-cell .config-origin { display: block; }
+.config-search-results { margin: 8px 0; max-height: 300px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.config-search-result { display: block; width: 100%; padding: 10px 12px; text-align: left; color: var(--text); background: transparent; border: 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+.config-search-result:hover, .config-search-result:focus-visible { background: var(--primary-soft); }
+.reply-controls { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.reply-controls > .muted { flex-basis: 100%; font-size: 12px; }
+.config-inline-toggle .field { display: flex; flex-direction: row; align-items: center; gap: 8px; }
+.config-inline-toggle .field input { min-height: auto; }
+.config-inline-toggle .config-origin { display: block; }
+.config-inline-toggle .config-note { display: none; }
+#config-reply-bulk { margin-bottom: 12px; }
+@media (max-width: 560px) {
+  .switch-matrix th, .switch-matrix td { padding: 8px 3px; }
+  .switch-matrix .config-origin { font-size: 11px; overflow-wrap: anywhere; }
+  .switch-matrix .text-button { font-size: 11px; padding: 3px; }
+  .reply-controls { gap: 8px; }
+  .config-search-result { overflow-wrap: anywhere; }
+}
+
 /* 配置按任务组织；所有字段仍参与统一草稿保存。 */
 .config-bulk { padding: 12px; background: var(--surface-soft); border-radius: 8px; margin: 12px 0; }
 .config-selection { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; margin-bottom: 8px; }

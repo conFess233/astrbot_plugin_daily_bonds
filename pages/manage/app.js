@@ -1,4 +1,4 @@
-import { initConfigWorkspace } from "./config-workspace.js";
+import { initConfigWorkspace, configPage, CONFIG_PAGES } from "./config-workspace.js";
 import { initBatchImages } from "./batch-images.js";
 
 const bridge = window.AstrBotPluginPage;
@@ -30,7 +30,7 @@ const state = {
   savedOverride: {},
   templateFields: {},
   savedSignature: "",
-  configGroup: "common",
+  configGroup: "switches",
   revision: 0,
   globalRevision: 0,
   busy: false,
@@ -78,7 +78,7 @@ const configFields = $("#config-fields");
 const configTabs = $("#config-tabs");
 const scopeSelect = $("#scope-select");
 const notice = $("#notice");
-const configWorkspace = initConfigWorkspace({ fields: configFields, state, changed: updateDirtyState, apiGet, label: configLabel, globalOnly: configIsGlobalOnly });
+const configWorkspace = initConfigWorkspace({ fields: configFields, state, changed: updateDirtyState, apiGet, label: configLabel, globalOnly: configIsGlobalOnly, activate: selectConfigGroup, readValue: readConfigInput, renderPool: renderPoolPicker, showNotice });
 const imagePreviewCache = new Map();
 let configLoadSequence = 0;
 let catalogLoadSequence = 0;
@@ -346,11 +346,7 @@ function configLeaves(config, prefix = "") {
 }
 
 function configGroup(path) {
-  if (path.startsWith("messages.") || path.startsWith("reply_quote.")) return "messages";
-  if (path.startsWith("statistics.") || path.startsWith("weights.") || path.startsWith("display.")) return "stats";
-  if (path.startsWith("access.")) return "access";
-  if (path.startsWith("resources.") || path.startsWith("history.") || path.startsWith("members.") || path.startsWith("batch_import.")) return "maintenance";
-  return "rules";
+  return configPage(path, configAt(state.savedConfig, path));
 }
 
 function configIsGlobalOnly(path) {
@@ -360,6 +356,7 @@ function configIsGlobalOnly(path) {
 
 function configLabel(path) {
   const parts = path.split(".");
+  if (parts[0] === "reply_enabled") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}启用回复`;
   if (parts[0] === "reply_quote") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}引用消息源`;
   if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
@@ -445,9 +442,6 @@ function renderConfigFields() {
   configFields.replaceChildren();
   configTabs.replaceChildren();
   if (!state.savedConfig) return;
-  const commonTab = document.createElement("button");
-  commonTab.type = "button"; commonTab.className = "config-tab"; commonTab.dataset.configGroup = "common";
-  commonTab.setAttribute("role", "tab"); commonTab.textContent = "常用设置"; configTabs.append(commonTab);
   const groups = new Map();
   for (const [path, value] of configLeaves(state.savedConfig)) {
     const group = configGroup(path);
@@ -457,7 +451,7 @@ function renderConfigFields() {
       section.id = `config-group-${group.replaceAll(".", "-")}`;
       section.setAttribute("role", "tabpanel");
       const heading = document.createElement("h4");
-      heading.textContent = ({rules: "玩法与触发规则", messages: "回复文案与引用", stats: "统计与排行", access: "权限与名单", maintenance: "资源与维护"})[group] || group;
+      heading.textContent = CONFIG_PAGES[group];
       const fields = document.createElement("div");
       fields.className = "config-grid";
       section.append(heading, fields);
@@ -581,7 +575,11 @@ function renderConfigFields() {
     card.append(error);
     groups.get(group).fields.append(card);
   }
-  if (state.configGroup !== "common" && !groups.has(state.configGroup)) state.configGroup = "common";
+  if (!groups.has(state.configGroup)) state.configGroup = "switches";
+  for (const page of Object.keys(CONFIG_PAGES)) {
+    const tab = configTabs.querySelector(`[data-config-group="${page}"]`);
+    if (tab) configTabs.append(tab);
+  }
   configWorkspace.enhance();
   selectConfigGroup(state.configGroup);
 }
@@ -640,14 +638,10 @@ function showConfigError(message) {
   if (!path) return;
   const input = [...configFields.querySelectorAll("[data-config-path]")]
     .find((item) => item.dataset.configPath === path);
-  const error = input.closest(".config-field").querySelector(".config-error");
+  const error = input.closest("[data-config-slot]").querySelector(".config-error");
   error.textContent = message;
   error.hidden = false;
-  selectConfigGroup(configGroup(path));
-  queueMicrotask(() => {
-    if (isPoolConfig(path)) input.closest(".config-field").querySelector('.pool-picker input:not(:disabled)')?.focus();
-    else input.focus();
-  });
+  configWorkspace.focus(path);
 }
 
 async function describeConfigConflict() {

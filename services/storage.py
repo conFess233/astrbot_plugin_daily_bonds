@@ -179,6 +179,7 @@ class SQLiteStorage:
                     "members",
                     "messages",
                     "reply_quote",
+                    "reply_enabled",
                 }
                 if set(value) - allowed:
                     raise StorageError("群覆盖包含仅允许全局设置的字段。")

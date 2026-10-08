@@ -163,6 +163,8 @@ def template_fields() -> dict[str, dict[str, Any]]:
 def render_message(
     config: Mapping[str, Any], section: str, key: str, **values: Any
 ) -> str:
+    if not config.get("reply_enabled", {}).get(section, {}).get(key, True):
+        return MessageText("")
     template = str(config["messages"][section][key])
     if not template.strip():
         return MessageText("")
