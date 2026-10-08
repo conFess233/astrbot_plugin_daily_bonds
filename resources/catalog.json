@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "pack_id": "wuwa_builtin",
-  "pack_version": "2026.09.28",
-  "as_of": "2026-09-28",
-  "scope": "已上线可玩人物；男女漂泊者分开；同人物不同战斗形态合并",
+  "pack_version": "2026.10.09",
+  "as_of": "2026-10-09",
+  "scope": "已上线及本次指定的官方已公布可玩人物；男女漂泊者分开；同人物不同战斗形态合并",
   "source": "https://guide-server.aki-game.net/role/avatar/list",
-  "verification_note": "URL、解码、尺寸、SHA-256及半身构图已核验；gender为人工维护字段；53项素材可用、2项待补。此文件为设计期种子配置，未来导入器实现后才可导入。"
+  "verification_note": "保留既有素材核验记录；2026-10-09新增心的官方指南半身图、锁暝的官方Wiki单人半身图，已验证URL、解码、尺寸和SHA-256，无裁切或重绘；55项素材可用、2项待补。gender为人工维护字段。"
 }

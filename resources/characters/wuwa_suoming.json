@@ -1,0 +1,29 @@
+{
+  "id": "wuwa:suoming",
+  "name": "锁暝",
+  "aliases": [
+    "锁瞑"
+  ],
+  "gender": "female",
+  "gender_basis": "人工角色档案分类；官方目录接口未提供性别字段",
+  "game": "鸣潮",
+  "source_role_ids": [],
+  "enabled": true,
+  "release_status": "announced",
+  "material_status": "verified_official_wiki_half_body",
+  "source_url": "https://wiki.kurobbs.com/mc/item/1543075487722901504",
+  "images": [
+    {
+      "source_url": "https://prod-alicdn-community.kurobbs.com/forum/ef38965eeaa044f8b5ea93635abb161820260829.png",
+      "sha256": "46fc67c3639ec381acd825b443245f4b326be9ed96c684ea99535dab77dcfa70",
+      "width": 240,
+      "height": 320,
+      "bytes": 174872,
+      "kind": "official_wiki_half_body",
+      "edited": false
+    }
+  ],
+  "verified_on": "2026-10-09",
+  "source_wiki_entry_id": "1543075487722901504",
+  "identity_note": "官方指南目录暂未收录，使用稳定角色名标识，不推测 roleGbId。"
+}
