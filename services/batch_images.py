@@ -366,6 +366,8 @@ class BatchImagesService:
                 "pool_ids": [p["id"] for p in character["pools"]],
                 "expected_revision": character["revision"],
                 "enabled": character["enabled"],
+                "needs_manual": False,
+                "warnings": [],
             }
         )
 
@@ -598,7 +600,8 @@ class BatchImagesService:
                         item["pool_ids"] = list(
                             dict.fromkeys([*item["pool_ids"], *additions])
                         )
-                        self._validate_new(item)
+                        if item["pool_ids"]:
+                            self._validate_new(item)
                     for key in ("manual_approved", "excluded"):
                         if key in patch:
                             if not isinstance(patch[key], bool):

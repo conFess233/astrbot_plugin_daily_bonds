@@ -106,10 +106,17 @@ def parse_command(
     alias, action = matches[0]
     suffix = rendered[len(alias) :].strip()
     if leading_target is not None:
-        if action not in {"steal_wife", "steal_husband", "steal_member"}:
+        if action not in {
+            "steal_wife",
+            "steal_husband",
+            "steal_member",
+            "query_affection",
+        }:
             return None
         suffix = f"<@{leading_target}>" + (f" {suffix}" if suffix else "")
-    if action == "query_affection" and sum(part.kind == "at" for part in parts) != 1:
+    if action == "query_affection" and (
+        sum(part.kind == "at" for part in parts) + int(leading_target is not None) != 1
+    ):
         raise CommandSyntaxError("好感度查询需要一段真实的 @ 消息。")
     return _parse_action(action, suffix)
 

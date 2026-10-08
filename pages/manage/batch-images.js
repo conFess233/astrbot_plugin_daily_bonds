@@ -4,6 +4,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
   const dialog = $("batch-images-dialog");
   let options, job, busy = false, page = 0, defaultsRequest, commitRequest;
   const selectedRows = new Set();
+  let characterChoices = new Map();
   let dirty = new Map(), thumbnails = new Map(), previewQueue = Promise.resolve(), searchTimer, searchSequence = 0;
   const node = (tag, text = "", className = "") => {
     const value = document.createElement(tag);
@@ -12,8 +13,8 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     return value;
   };
   const pending = (row) => row.status === "pending";
-  const ready = (row) => pending(row) && !row.needs_manual && !row.errors?.length;
-  const manual = (row) => pending(row) && (row.needs_manual || row.errors?.length);
+  const ready = (row) => pending(row) && !row.upload_error && !row.excluded && (!row.needs_manual || row.manual_approved) && !row.errors?.length;
+  const manual = (row) => pending(row) && (row.needs_manual && !row.manual_approved || row.errors?.length);
   const error = (message) => { $("batch-error").textContent = message; $("batch-error").hidden = !message; };
   async function task(work) {
     if (busy) return;
@@ -44,8 +45,10 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
   }
   function setJob(value) { job = value; dirty.clear(); render(); }
   function changed(row, field, value) {
+    const targetChanged = field === "target_id" && row.existing && row.target_id !== value;
     row[field] = value;
     const patch = dirty.get(row.row_id) || { row_id: row.row_id };
+    if (targetChanged) { row.pool_ids = []; patch.pool_ids = []; }
     patch[field] = value; dirty.set(row.row_id, patch); commitRequest = null;
     if (["target_id", "existing", "name", "gender", "pool_ids", "enabled"].includes(field)) {
       row.manual_approved = false; patch.manual_approved = false;
@@ -88,11 +91,11 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
       });
     } else image.alt = row.upload_error ? "上传失败" : "暂无图片预览";
     if (row.status !== "imported") checkbox(card, "选择", selectedRows.has(row.row_id), (value) => { value ? selectedRows.add(row.row_id) : selectedRows.delete(row.row_id); updateSelection(); });
-    card.append(node("strong", row.filename), node("span", row.name ? `${row.name} · ${row.target_id}` : "尚未关联角色", "muted"));
+    card.append(node("strong", row.name || "尚未关联角色"), node("span", row.target_id ? `角色 ID：${row.target_id}` : "尚未关联角色", "muted"), node("span", `文件：${row.filename}`, "muted"));
     if (row.upload_error) card.append(node("p", `上传失败：${(row.errors || []).join("；") || "请重新上传原文件"}`, "batch-row-note"));
     if (row.duplicate_sources?.length) card.append(node("p", `重复来源：${row.duplicate_sources.join("、")}${row.duplicate_skip ? " · 已自动跳过" : " · 可跨角色复用"}`, "batch-row-note"));
     const body = node("details", "", "batch-row-details"); body.append(node("summary", "详情与编辑")); card.append(body);
-    body.append(node("h3", row.filename), node("p", `${row.width || "—"} × ${row.height || "—"} · ${Math.round((row.byte_size || 0) / 1024)} KiB · ${row.mime_type || "未通过格式校验"}`, "muted"));
+    body.append(node("h3", row.name || "尚未关联角色"), node("p", `原文件：${row.filename}`, "muted"), node("p", `${row.width || "—"} × ${row.height || "—"} · ${Math.round((row.byte_size || 0) / 1024)} KiB · ${row.mime_type || "未通过格式校验"}`, "muted"));
     const messages = [...(row.warnings || []), ...(row.errors || [])];
     if (messages.length) body.append(node("p", messages.join("；"), "batch-row-note"));
     if (row.status === "imported") { body.append(node("p", `已导入 ${row.name} · ${row.target_id}`)); return card; }
@@ -233,7 +236,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     await task(async () => {
       await saveDraft();
       if (!job) throw new Error("请先选择并上传图片。");
-      const rows = job.items.filter((row) => manualPhase ? pending(row) && row.manual_approved : ready(row));
+      const rows = job.items.filter((row) => ready(row) && (!manualPhase || row.manual_approved));
       if (!rows.length) throw new Error(manualPhase ? "请修改待处理项，保存草稿并勾选审核确认。" : "没有可靠项，可进入待人工列表核对。");
       if (!window.confirm(`将确认导入 ${rows.length} 张图片，已有角色追加图片和所选卡池，新角色按预览创建。继续吗？`)) return;
       const signature = JSON.stringify([job.job_id, rows.map((row) => row.row_id)]);
@@ -260,6 +263,8 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
   $("batch-select-none").addEventListener("click", () => { selectedRows.clear(); render(); });
   $("batch-bulk-apply").addEventListener("click", () => task(async () => {
     const target = $("batch-bulk-target").value.trim(), name = $("batch-bulk-name").value.trim(), pool = $("batch-bulk-pool").value;
+    const character = target ? characterChoices.get(target) : null;
+    if (target && !character) throw new Error("请搜索并选择一个有效的已有角色。");
     if (target && name) throw new Error("请选择已有角色或填写新角色名称，两者只选一种。");
     if (!target && !name && !pool) throw new Error("请填写关联角色或追加卡池。");
     const rows = job?.items.filter((row) => selectedRows.has(row.row_id) && row.status !== "imported" && !row.upload_error) || [];
@@ -268,6 +273,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     for (const row of rows) {
       if (target || newId) { changed(row, "existing", !!target); changed(row, "target_id", target || newId); }
       if (newId) { changed(row, "name", name); changed(row, "gender", $("batch-bulk-gender").value); changed(row, "pool_ids", pool ? [pool] : []); }
+      else if (target) { row.name = character.name; changed(row, "pool_ids", pool ? [pool] : []); }
       else if (pool) changed(row, "pool_ids", [...new Set([...row.pool_ids, pool])]);
       changed(row, "status", "pending");
     }
@@ -335,6 +341,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     try {
       const value = (await apiGet("characters", { q: query, limit: 100 })).data;
       if (sequence !== searchSequence) return;
+      characterChoices = new Map(value.items.map((character) => [character.id, character]));
       select.replaceChildren(new Option(value.items.length ? "请选择已有角色" : "没有匹配的角色", ""), ...value.items.map((character) => new Option(`${character.name} · ${character.id}`, character.id)));
       $("batch-character-options").replaceChildren(...value.items.map((character) => new Option(`${character.name} · ${character.id}`, character.id)));
       status.textContent = value.total > value.items.length ? `显示前 ${value.items.length} 个，共 ${value.total} 个；请输入搜索词缩小范围。` : `找到 ${value.items.length} 个角色。`;

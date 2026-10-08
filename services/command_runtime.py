@@ -996,6 +996,11 @@ class CommandRuntime:
         if isinstance(result, str):
             return result
         ranked, title, names, global_directed = result
+
+        def display_name(user_id: str, maximum: int = 12) -> str:
+            name = " ".join(names.get(user_id, "群友").split())
+            return name if len(name) <= maximum else name[: maximum - 1] + "…"
+
         page_size, page = config["display"]["page_size"], command.page or 1
         pages = max(1, (len(ranked) + page_size - 1) // page_size)
         pagination = config["display"]["pagination_enabled"]
@@ -1041,13 +1046,13 @@ class CommandRuntime:
             lines.append(f"{index}. {subject} · {detail}")
             cards.append(
                 CardRow(
-                    f"{index}. {subject}",
+                    f"{index}. {display_name(target if personal else source)}",
                     detail,
                     avatar_path=avatars.get(target if personal else source),
                     avatar_user_id=target if personal else source,
                     other_avatar_path=avatars.get(target) if global_directed else None,
                     other_avatar_user_id=target if global_directed else "",
-                    pair_names=(names.get(source, "群友"), names.get(target, "群友"))
+                    pair_names=(display_name(source), display_name(target))
                     if global_directed
                     else None,
                     pair_rank=index if global_directed else 0,
@@ -1064,6 +1069,19 @@ class CommandRuntime:
             "empty_text": render_message(config, "titles", "empty"),
         }
         if personal:
+            image_title = render_message(
+                config,
+                "titles",
+                "rank_intimacy",
+                name=display_name(values["actor_id"], 6),
+            )
+            heading = (
+                render_message(
+                    config, "titles", "page", title=image_title, page=page, pages=pages
+                )
+                if pagination
+                else image_title
+            )
             options.update(
                 header_avatar_path=avatars.get(values["actor_id"]),
                 header_user_id=values["actor_id"],
