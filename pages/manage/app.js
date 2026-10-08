@@ -1,5 +1,6 @@
 import { initConfigWorkspace, configPage, CONFIG_PAGES } from "./config-workspace.js";
 import { initBatchImages } from "./batch-images.js";
+import { confirmAction } from "./confirm-dialog.js";
 
 const bridge = window.AstrBotPluginPage;
 const $ = (selector) => document.querySelector(selector);
@@ -840,8 +841,8 @@ configTabs.addEventListener("keydown", (event) => {
   selectConfigGroup(tabs[next].dataset.configGroup);
   tabs[next].focus();
 });
-$("#refresh").addEventListener("click", () => {
-  if (isConfigDirty() && !window.confirm("当前配置草稿尚未保存。刷新并放弃草稿吗？")) return;
+$("#refresh").addEventListener("click", async () => {
+  if (isConfigDirty() && !await confirmAction("当前配置草稿尚未保存。刷新并放弃草稿吗？")) return;
   refreshAll();
 });
 $("#preview").addEventListener("click", previewDraft);
@@ -859,7 +860,7 @@ configFields.addEventListener("input", (event) => {
 configFields.addEventListener("change", updateDirtyState);
 scopeSelect.addEventListener("change", async () => {
   if (state.busy) { scopeSelect.value = state.scopeId; return; }
-  if (isConfigDirty() && !window.confirm("当前草稿尚未保存。切换范围并放弃草稿吗？")) {
+  if (isConfigDirty() && !await confirmAction("当前草稿尚未保存。切换范围并放弃草稿吗？")) {
     scopeSelect.value = state.scopeId;
     return;
   }
@@ -1232,7 +1233,7 @@ $("#save-character").addEventListener("click", () => withCatalogWrite(async () =
 async function removeCatalogItem(kind, id, endpoint) {
   const preview = await apiPost(`${endpoint}/delete-preview`, { id });
   const impact = preview.data.impact;
-  if (!window.confirm(`将软删除 ${id}。\n影响：${JSON.stringify(impact)}\n继续吗？`)) return;
+  if (!await confirmAction(`将软删除 ${id}。\n影响：${JSON.stringify(impact)}\n继续吗？`)) return;
   const result = await apiPost(`${endpoint}/delete`, {
     entity_kind: kind, entity_id: id, preflight_id: preview.data.preflight_id,
     reason: "AstrBot 管理页面删除", request_id: crypto.randomUUID(),
@@ -1385,7 +1386,7 @@ $("#correction-preview").addEventListener("click", async () => {
 $("#correction-commit").addEventListener("click", async () => {
   const plan = state.correctionPlan;
   if (!plan) return;
-  if (!window.confirm(`将执行 ${plan.action}。\n修改前：${JSON.stringify(plan.before)}\n修改后：${JSON.stringify(plan.after)}\n继续吗？`)) return;
+  if (!await confirmAction(`将执行 ${plan.action}。\n修改前：${JSON.stringify(plan.before)}\n修改后：${JSON.stringify(plan.after)}\n继续吗？`)) return;
   $("#correction-commit").disabled = true;
   try {
     const result = await apiPost("admin/commit", {
@@ -1540,7 +1541,7 @@ $("#import-commit").addEventListener("click", async () => {
     conflicts[select.dataset.characterId] = select.value;
   }
   const strategy = $("#import-image-strategy").value;
-  if (!window.confirm(`提交角色包 ${plan.pack_id} ${plan.pack_version}。同 ID 未选择的条目将跳过；图片策略：${strategy}。继续吗？`)) return;
+  if (!await confirmAction(`提交角色包 ${plan.pack_id} ${plan.pack_version}。同 ID 未选择的条目将跳过；图片策略：${strategy}。继续吗？`)) return;
   $("#import-commit").disabled = true;
   $("#import-report").prepend(Object.assign(document.createElement("p"), { textContent: "正在提交有效条目…", className: "muted" }));
   try {
@@ -1689,7 +1690,7 @@ $("#restore-commit").addEventListener("click", async () => {
     );
   }
   const counts = JSON.stringify(plan.database.tables, null, 2);
-  if (!window.confirm(`将用 ${plan.backup_created_at} 的备份覆盖插件数据库和素材。恢复前会自动备份当前数据。备份表数据量：\n${counts}\n确定继续？`)) return;
+  if (!await confirmAction(`将用 ${plan.backup_created_at} 的备份覆盖插件数据库和素材。恢复前会自动备份当前数据。备份表数据量：\n${counts}\n确定继续？`)) return;
   const button = $("#restore-commit");
   button.disabled = true;
   try {

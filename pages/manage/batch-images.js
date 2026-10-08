@@ -1,4 +1,5 @@
 // 原生 dialog 的批量上传、预览编辑、结果确认与未完成任务恢复。
+import { confirmAction } from './confirm-dialog.js';
 export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImported, onDefaultsSaved }) {
   const $ = (id) => document.querySelector(`#${id}`);
   const dialog = $("batch-images-dialog");
@@ -238,7 +239,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
       if (!job) throw new Error("请先选择并上传图片。");
       const rows = job.items.filter((row) => ready(row) && (!manualPhase || row.manual_approved));
       if (!rows.length) throw new Error(manualPhase ? "请修改待处理项，保存草稿并勾选审核确认。" : "没有可靠项，可进入待人工列表核对。");
-      if (!window.confirm(`将确认导入 ${rows.length} 张图片，已有角色追加图片和所选卡池，新角色按预览创建。继续吗？`)) return;
+      if (!await confirmAction(`将确认导入 ${rows.length} 张图片，已有角色追加图片和所选卡池，新角色按预览创建。继续吗？`)) return;
       const signature = JSON.stringify([job.job_id, rows.map((row) => row.row_id)]);
       if (commitRequest?.signature !== signature) commitRequest = { signature, id: crypto.randomUUID() };
       let result;

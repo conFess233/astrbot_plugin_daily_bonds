@@ -293,6 +293,14 @@
       <div id="batch-error" class="batch-error" role="alert" hidden></div>
       <section id="batch-import-result" class="card" hidden><h3>本次导入结果</h3><ul id="batch-success-list"></ul><ul id="batch-failure-list"></ul><button id="batch-result-confirm" class="button primary" type="button">确认结果，进入待人工处理</button></section>
     </dialog>
+    <dialog id="action-confirm-dialog" class="confirm-dialog" aria-labelledby="action-confirm-title">
+      <h2 id="action-confirm-title">确认操作</h2>
+      <p id="action-confirm-message" class="query-result"></p>
+      <form method="dialog" class="actions">
+        <button class="button secondary" value="cancel" autofocus>取消</button>
+        <button id="action-confirm-continue" class="button primary" value="confirm">确认并继续</button>
+      </form>
+    </dialog>
     <script type="module" src="./app.js"></script>
   </body>
 </html>
