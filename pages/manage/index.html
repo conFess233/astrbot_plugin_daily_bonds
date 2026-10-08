@@ -212,7 +212,15 @@
             <span id="dirty-indicator" class="status-pill">已保存</span>
           </div>
           <fieldset id="config-controls" class="control-group">
+          <label class="field"><span>搜索设置、配置键或文案</span><input id="config-search" type="search" placeholder="例如：抢夺、引用、字体" /></label>
           <div id="config-tabs" class="config-tabs" role="tablist" aria-label="配置主题"></div>
+          <details class="config-advanced-toggle"><summary>高级设置</summary><label class="check-field"><input id="config-advanced" type="checkbox" /> 显示资源、缓存和维护参数</label></details>
+          <div class="config-bulk actions" aria-label="分区批量操作">
+            <button id="config-select-all" type="button" class="button secondary">全选当前分区</button><button id="config-select-none" type="button" class="button secondary">清空选择</button>
+            <button id="config-enable" type="button" class="button secondary">开启选中开关</button><button id="config-disable" type="button" class="button secondary">关闭选中开关</button><button id="config-inherit" type="button" class="button secondary">选中项恢复继承</button>
+          </div>
+          <details class="config-mode-copy"><summary>将所选规则应用到其他玩法</summary><div class="actions"><label class="check-field"><input type="checkbox" data-copy-mode="wife" />老婆</label><label class="check-field"><input type="checkbox" data-copy-mode="husband" />老公</label><label class="check-field"><input type="checkbox" data-copy-mode="member" />群友</label><button id="config-copy-modes" type="button" class="button secondary">应用所选规则</button></div><p class="hint">选择一个来源玩法的规则；专属字段只应用到支持的玩法，卡池按玩法分别勾选。</p></details>
+          <p id="config-selected-count" class="hint" role="status"></p>
           <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
           <p id="editor-help" class="hint">每项可单独编辑；群配置可逐项选择继承全局或覆盖。草稿仅在保存后写入，并由服务端统一校验。</p>
           </fieldset>
@@ -250,10 +258,17 @@
           <label class="field"><span>默认男卡池</span><select id="batch-male-pool"></select></label>
         </div>
         <div class="actions"><button id="batch-defaults-save" class="button secondary" type="button">保存为全局默认</button><button id="batch-settings-apply" class="button secondary" type="button">应用检测并重新匹配</button></div>
-        <p class="hint">已有角色采用原档案。新角色未识别性别时暂按男标注；男女冲突、名称歧义或图片超限都须人工确认。</p>
+        <p class="hint">已有角色采用原档案。新角色未识别性别时暂按男标注；男女冲突、名称歧义或其他校验错误都须人工确认。</p>
         <div class="form-grid"><label class="field"><span>恢复未完成批次</span><select id="batch-resume-job"></select></label><div class="actions"><button id="batch-resume" class="button secondary" type="button">恢复选中批次</button><button id="batch-new" class="button secondary" type="button">开始新批次</button></div></div>
-        <label id="batch-drop-zone" class="batch-drop" tabindex="0"><span>点击选择图片，或拖入此区域</span><small>PNG / JPEG / WebP，每张最多 12 MiB；同角色总图上限 20 张。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
-        <div class="form-grid"><label class="field"><span>搜索已有角色（为关联 ID 提供候选）</span><input id="batch-character-search" type="search" /></label><label class="field"><span>显示条目</span><select id="batch-filter"><option value="pending">未完成</option><option value="ready">可靠项</option><option value="manual">待人工 / 失败</option><option value="all">全部</option></select></label></div>
+        <label id="batch-drop-zone" class="batch-drop" tabindex="0"><span>点击选择图片，或拖入此区域</span><small>PNG / JPEG / WebP，每张最多 12 MiB；相同图片按角色去重；图片数量不限。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
+        <label class="field"><span>添加文件夹（可多次添加）</span><input id="batch-images-folders" type="file" webkitdirectory multiple /></label>
+        <div class="batch-bulk editor-card"><h3>批量关联与卡池追加</h3><div class="form-grid">
+          <label class="field"><span>关联已有角色 ID</span><input id="batch-bulk-target" list="batch-character-options" /></label>
+          <label class="field"><span>或新建角色名称</span><input id="batch-bulk-name" maxlength="120" /></label>
+          <label class="field"><span>新角色性别</span><select id="batch-bulk-gender"><option value="female">女</option><option value="male">男</option><option value="unspecified">未指定</option></select></label>
+          <label class="field"><span>追加卡池</span><select id="batch-bulk-pool"><option value="">不追加</option></select></label>
+        </div><div class="actions"><button id="batch-select-all" type="button" class="button secondary">全选筛选结果</button><button id="batch-select-none" type="button" class="button secondary">清空选择</button><button id="batch-bulk-apply" type="button" class="button secondary">应用到选中图片</button><button id="batch-bulk-approve" type="button" class="button secondary">审核确认选中项</button><button id="batch-bulk-skip" type="button" class="button secondary">排除选中图片</button></div><p id="batch-selected-count" class="hint" role="status"></p></div>
+        <div class="form-grid"><label class="field"><span>搜索已有角色（为关联 ID 提供候选）</span><input id="batch-character-search" type="search" /></label><label class="field"><span>显示条目</span><select id="batch-filter"><option value="pending">未完成</option><option value="ready">可靠项</option><option value="manual">待人工 / 失败</option><option value="duplicate">重复图片</option><option value="all">全部</option></select></label></div>
         <datalist id="batch-character-options"></datalist>
         <div id="batch-image-rows" class="batch-rows"></div>
         <div class="list-pagination"><button id="batch-prev" class="button secondary" type="button">上一页</button><span id="batch-page" class="muted"></span><button id="batch-next" class="button secondary" type="button">下一页</button></div>

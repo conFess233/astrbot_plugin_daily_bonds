@@ -96,7 +96,9 @@ class CatalogAdminService:
             raise ValueError("角色性别或启用状态无效。")
         aliases = self._string_list(aliases, "别名", maximum=30, item_max=80)
         pool_ids = self._string_list(pool_ids, "角色池", maximum=100, item_max=64, unique=True)
-        image_hashes = self._string_list(image_hashes, "图片", maximum=20, item_max=64, unique=True)
+        image_hashes = self._string_list(
+            image_hashes, "图片", maximum=None, item_max=64, unique=True
+        )
         if any(not _HASH.fullmatch(value) for value in image_hashes):
             raise ValueError("图片 SHA-256 格式无效。")
         if not isinstance(provenance, dict) or len(json.dumps(provenance, ensure_ascii=False)) > 20_000:
@@ -333,8 +335,18 @@ class CatalogAdminService:
         return value.strip()
 
     @classmethod
-    def _string_list(cls, value: Any, label: str, *, maximum: int, item_max: int, unique: bool = False) -> list[str]:
-        if not isinstance(value, list) or len(value) > maximum:
+    def _string_list(
+        cls,
+        value: Any,
+        label: str,
+        *,
+        maximum: int | None,
+        item_max: int,
+        unique: bool = False,
+    ) -> list[str]:
+        if not isinstance(value, list) or (
+            maximum is not None and len(value) > maximum
+        ):
             raise ValueError(f"{label}列表无效或项目过多。")
         result = [cls._text(item, label, item_max) for item in value]
         if unique and len(result) != len(set(result)):

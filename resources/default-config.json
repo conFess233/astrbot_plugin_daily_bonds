@@ -163,8 +163,7 @@
     "base": 1.0,
     "per_intimacy_point": 0.01,
     "maximum": 5.0,
-    "activity_floor": 0.2,
-    "activity_full_messages": 50
+    "activity_floor": 0.2
   },
   "display": {
     "pagination_enabled": true,
@@ -180,9 +179,9 @@
   },
   "messages": {
     "results": {
-      "draw_wife": "娶到老婆：{name}{image}",
-      "draw_husband": "娶到老公：{name}{image}",
-      "draw_member": "娶到群友：{name}{image}",
+      "draw_wife": "{actor_name}娶到老婆：{name}{image}",
+      "draw_husband": "{actor_name}娶到老公：{name}{image}",
+      "draw_member": "{actor_name}娶到群友：{name}{image}",
       "capacity_full": "持有名额已满：{names}",
       "steal_slot_full": "你今天已经抢过{role}啦～",
       "relationship_locked": "抢夺或指定槽位关系不可主动解除或赠送。",
@@ -191,14 +190,14 @@
       "capacity_full_single_husband": "你今日已有老公啦，请明日再来。",
       "no_draw_quota": "今天的普通抽取额度已用完",
       "no_candidate": "当前没有可抽取对象",
-      "steal_failed": "抢夺失败；配偶保留原关系",
-      "stolen": "抢夺成功",
-      "divorced": "关系已解除，你获得一次补抽资格",
-      "gifted": "赠送完成",
-      "invite_created": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
-      "gift_accepted": "赠送已接受",
-      "invite_rejected": "已拒绝赠送",
-      "invite_cancelled": "已取消赠送",
+      "steal_failed": "{actor_name}抢夺失败，{subject_name}仍属于{owner_name}。",
+      "stolen": "{actor_name}从{owner_name}处抢到了{subject_name}。",
+      "divorced": "{actor_name}与{subject_name}的关系已解除，获得一次补抽资格。",
+      "gifted": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
+      "invite_created": "{sender_name}邀请{recipient_name}接受{subject_name}，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
+      "gift_accepted": "{recipient_name}接受了{sender_name}赠送的{subject_name}。",
+      "invite_rejected": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
+      "invite_cancelled": "{actor_name}已取消向{recipient_name}赠送{subject_name}的邀请。",
       "invite_expired": "赠送邀请已过期",
       "invite_invalidated": "赠送邀请已失效",
       "invite_not_owned": "你无权处理这条邀请",
@@ -216,8 +215,8 @@
       "invite_limit": "待处理赠送邀请已达上限 {limit}",
       "invite_invalid": "赠送邀请已无效",
       "unknown_result": "操作未完成：{code}",
-      "designated_wife": "指定老婆：{name}{image}",
-      "designated_husband": "指定老公：{name}{image}",
+      "designated_wife": "{actor_name}指定老婆：{name}{image}",
+      "designated_husband": "{actor_name}指定老公：{name}{image}",
       "designated_disabled": "指定抽取当前已关闭。",
       "designated_slot_full": "指定槽位已满，请等待下个周期。",
       "no_designated_quota": "本周期指定次数已用完。",
@@ -230,7 +229,7 @@
       "rank_intimacy": "{image}",
       "rank_activity": "{image}",
       "query_affection": "{image}",
-      "admin_set_wife": "设置今日老婆：{name}{image}",
+      "admin_set_wife": "{actor_name}设置今日老婆：{name}{image}",
       "already_held": "你今天已持有 {name}。"
     },
     "errors": {
@@ -267,8 +266,8 @@
       "restart_invalidated": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
       "invite_expired": "以下赠送邀请已超时：{invite_ids}",
       "member_reconcile": "成员资格变化，以下关系或邀请已结束：{details}",
-      "member_redraw": "{name}（持有人 {owner_id} 获得补抽资格）",
-      "owner_ineligible": "{name}（持有人 {owner_id} 已失去资格）",
+      "member_redraw": "{name}（持有人 {owner_name} 获得补抽资格）",
+      "owner_ineligible": "{name}（持有人 {owner_name} 已失去资格）",
       "participant_ineligible": "赠送邀请 {invite_id}（参与者已失去资格）"
     },
     "titles": {
@@ -304,17 +303,14 @@
     "import_max_bytes": 209715200,
     "import_max_entries": 5000,
     "import_max_expanded_bytes": 524288000,
-    "render_width": 1000,
-    "render_max_height": 8000,
-    "render_concurrency": 2,
     "text_chunk_chars": 1500,
-    "send_interval_seconds": 1.0,
     "pending_invites_per_user": 20,
     "avatar_cache_ttl_seconds": 86400,
     "avatar_cache_max_entries": 5000,
     "dedupe_retention_days": 30,
     "backup_keep_count": 5,
-    "download_concurrency": 4
+    "download_concurrency": 4,
+    "font_id": "bundled"
   },
   "reply_quote": {
     "results": {

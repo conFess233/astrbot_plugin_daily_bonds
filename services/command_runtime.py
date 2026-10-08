@@ -23,7 +23,13 @@ from .admin_permissions import may_set_wife
 from .avatar_cache import AvatarCache
 from .gameplay import Candidate, GameplayService
 from .member_lifecycle import reconcile_member_eligibility
-from .message_templates import IMAGE_TOKEN, MessageText, render_message
+from .message_templates import (
+    IMAGE_TOKEN,
+    MessageText,
+    render_message,
+    MESSAGE_CONTEXT,
+    set_message_values,
+)
 from .rendering import CardRenderer, CardRow
 from .statistics import StatisticsService
 from .storage import SQLiteStorage
@@ -64,6 +70,13 @@ class CommandRuntime:
         self._eligibility: dict[int, tuple[str, frozenset[str]]] = {}
 
     async def handle_group_message(self, event: Any) -> str | RuntimeReply | None:
+        token = MESSAGE_CONTEXT.set({})
+        try:
+            return await self._handle_group_message(event)
+        finally:
+            MESSAGE_CONTEXT.reset(token)
+
+    async def _handle_group_message(self, event: Any) -> str | RuntimeReply | None:
         if not str(getattr(event, "get_group_id", lambda: "")() or ""):
             return None
         try:
@@ -99,6 +112,7 @@ class CommandRuntime:
         scope_id = await asyncio.to_thread(
             self.storage.ensure_scope, scope, str(event.unified_msg_origin), now
         )
+        set_message_values(scope_id=scope_id)
         global_config, global_revision = await asyncio.to_thread(
             self.storage.get_settings
         )
@@ -117,6 +131,15 @@ class CommandRuntime:
             ttl_seconds=config["members"]["cache_ttl_seconds"],
             bot_ids=bot_ids,
             now=now,
+        )
+        names = {
+            member.user_id: member.card or member.nickname or "群友"
+            for member in members
+        }
+        set_message_values(
+            actor_name=names.get(raw_event.sender_id, "群友"),
+            member_names=names,
+            font_id=global_config["resources"]["font_id"],
         )
         eligible = {
             member.user_id
@@ -227,6 +250,8 @@ class CommandRuntime:
         mode = _action_mode(command.action)
         if mode is None:
             return None
+        names = MESSAGE_CONTEXT.get().get("member_names", {})
+        set_message_values(target_name=names.get(command.target_user_id, "群友"))
         mode_config = config["modes"][mode]
         lifecycle_actions = {
             "divorce_character",
@@ -378,9 +403,8 @@ class CommandRuntime:
                         capacity=mode_config["capacity"],
                         pool_ids=mode_config.get("pool_ids", ()),
                         weights=config["weights"],
-                        activity_full_messages=config["weights"][
-                            "activity_full_messages"
-                        ],
+                        activity_timezone=config["reset"]["timezone"],
+                        eligible_user_ids=eligible,
                         activity_window_days=config["statistics"][
                             "activity_window_days"
                         ],
@@ -440,7 +464,11 @@ class CommandRuntime:
                     (scope_id,),
                 ).fetchall()
                 return [
-                    Candidate(str(row["user_id"]), "member", str(row["card"] or row["nickname"] or row["user_id"]))
+                    Candidate(
+                        str(row["user_id"]),
+                        "member",
+                        str(row["card"] or row["nickname"] or "群友"),
+                    )
                     for row in rows
                     if str(row["user_id"]) in eligible
                 ]
@@ -494,6 +522,15 @@ class CommandRuntime:
         config = values["config"]
         actor_id = values["actor_id"]
         target_id = command.target_user_id
+        names = MESSAGE_CONTEXT.get().get("member_names", {})
+        set_message_values(
+            owner_name=names.get(
+                target_id if command.action.startswith("steal_") else actor_id, "群友"
+            ),
+            sender_name=names.get(actor_id, "群友"),
+            recipient_name=names.get(target_id, "群友"),
+            target_name=names.get(target_id, "群友"),
+        )
         if command.action.startswith("steal_"):
             if not mode_config["steal_enabled"]:
                 return render_message(config, "errors", "steal_disabled")
@@ -509,6 +546,12 @@ class CommandRuntime:
             )
             if command.argument and relation_id is None:
                 return render_message(config, "errors", "steal_relation_ambiguous")
+            if relation_id:
+                relation = await asyncio.to_thread(
+                    self._relationship_display, relation_id
+                )
+                if relation:
+                    set_message_values(subject_name=relation["name"])
             result = await asyncio.to_thread(
                 self.gameplay.steal,
                 scope_id=values["scope_id"],
@@ -550,6 +593,12 @@ class CommandRuntime:
             )
             if command.argument and relation_id is None:
                 return render_message(config, "errors", "gift_relation_ambiguous")
+            if relation_id:
+                relation = await asyncio.to_thread(
+                    self._relationship_display, relation_id
+                )
+                if relation:
+                    set_message_values(subject_name=relation["name"])
             result = await asyncio.to_thread(
                 self.gameplay.gift,
                 scope_id=values["scope_id"],
@@ -601,14 +650,22 @@ class CommandRuntime:
             if len(matches) > 1:
                 labels = {"wife": "老婆", "husband": "老公", "member": "群友"}
                 candidates = "\n".join(
-                    f"- {labels[item['mode']]}：{item['name']}（{item['subject_id']}）"
+                    f"- {labels[item['mode']]}：{item['name']}"
+                    + (
+                        "（请 @ 对应群友）"
+                        if item["mode"] == "member"
+                        else f"（{item['subject_id']}）"
+                    )
                     for item in matches
                 )
                 prefix = render_message(config, "errors", "divorce_ambiguous")
+                if not prefix.strip():
+                    return prefix
                 return MessageText(
                     f"{prefix}\n{candidates}",
                     quote_source=getattr(prefix, "quote_source", False),
                 )
+            set_message_values(subject_name=matches[0]["name"])
             if matches[0]["slot_kind"] != "normal":
                 return render_message(config, "results", "relationship_locked")
             mode = str(matches[0]["mode"])
@@ -652,6 +709,14 @@ class CommandRuntime:
             )
             if invite is None:
                 return render_message(config, "errors", "invite_invalid_id")
+            relation = await asyncio.to_thread(
+                self._relationship_display, str(invite["relationship_id"])
+            )
+            set_message_values(
+                sender_name=names.get(str(invite["sender_id"]), "群友"),
+                recipient_name=names.get(str(invite["recipient_id"]), "群友"),
+                subject_name=str(relation["name"]) if relation else "对象",
+            )
             mode = str(invite["mode"])
             mode_config = values["config"]["modes"][mode]
             eligible = values["eligible"]
@@ -875,21 +940,13 @@ class CommandRuntime:
             intimacy and config["display"]["intimacy_rank_mode"] == "group_directed"
         )
         if intimacy:
-            with self.storage._lock:
-                rows = (
-                    self.storage._connection()
-                    .execute(
-                        "SELECT source_id,target_id,score FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id",
-                        (values["scope_id"],),
-                    )
-                    .fetchall()
-                )
+            rows = self.statistics.intimacy_rows(
+                values["scope_id"], eligible_user_ids=values["eligible"]
+            )
             ranked = [
                 (str(row["source_id"]), str(row["target_id"]), int(row["score"]), 0)
                 for row in rows
-                if row["source_id"] in values["eligible"]
-                and row["target_id"] in values["eligible"]
-                and (global_directed or row["source_id"] == values["actor_id"])
+                if global_directed or row["source_id"] == values["actor_id"]
             ]
             title = render_message(
                 config,
@@ -1096,9 +1153,7 @@ class CommandRuntime:
                 .fetchall()
             )
             members = {
-                str(row["user_id"]): str(
-                    row["card"] or row["nickname"] or row["user_id"]
-                )
+                str(row["user_id"]): str(row["card"] or row["nickname"] or "群友")
                 for row in self.storage._connection()
                 .execute(
                     "SELECT user_id,nickname,card FROM members WHERE scope_id=?",
@@ -1106,6 +1161,10 @@ class CommandRuntime:
                 )
                 .fetchall()
             }
+        rows = [dict(row) for row in rows]
+        for row in rows:
+            if row["subject_kind"] == "member":
+                row["name"] = members.get(str(row["subject_id"]), "群友")
         return rows, members
 
     async def _list_relationships(
@@ -1135,7 +1194,7 @@ class CommandRuntime:
             for key in ("normal", "steal", "designated")
         }
         entries = [
-            f"[{mode_labels[str(row['mode'])]}·{slots[row['slot_kind']]}] {members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}"
+            f"[{mode_labels[str(row['mode'])]}·{slots[row['slot_kind']]}] {members.get(str(row['owner_id']), '群友')} → {row['name']}"
             for row in rows
         ]
         title = render_message(config, "titles", f"list_{mode}")
@@ -1192,7 +1251,7 @@ class CommandRuntime:
         )
         card_rows = [
             CardRow(
-                primary=f"{members.get(str(row['owner_id']), row['owner_id'])} → {row['name']}",
+                primary=f"{members.get(str(row['owner_id']), '群友')} → {row['name']}",
                 secondary=f"{mode_labels[str(row['mode'])]} · {slots[row['slot_kind']]}",
                 image_path=self._snapshot_image_path(row["image_paths"])
                 if mode != "member"
@@ -1204,12 +1263,12 @@ class CommandRuntime:
                 else None,
                 other_avatar_user_id=str(row["subject_id"]) if mode == "member" else "",
                 pair_names=(
-                    members.get(str(row["owner_id"]), str(row["owner_id"])),
+                    members.get(str(row["owner_id"]), "群友"),
                     members.get(str(row["subject_id"]), str(row["name"])),
                 )
                 if mode == "member"
                 else None,
-                show_user_ids=mode == "member",
+                show_user_ids=False,
             )
             for row in selected_rows
         ]
@@ -1226,6 +1285,8 @@ class CommandRuntime:
         chunk_chars: int = 1500,
         **options: Any,
     ) -> RuntimeReply:
+        if not text.strip():
+            return RuntimeReply(text)
         fallback = (
             fallback_text
             or text.replace(IMAGE_TOKEN, "")
@@ -1239,6 +1300,7 @@ class CommandRuntime:
                     title,
                     rows,
                     cache_key=str(uuid.uuid4()),
+                    font_id=MESSAGE_CONTEXT.get().get("font_id", "bundled"),
                     **options,
                 )
             except Exception:
@@ -1303,6 +1365,29 @@ class CommandRuntime:
         *,
         accept_keyword: str = "接受赠送",
     ) -> str | RuntimeReply:
+        relation_id = data.get("relationship_id")
+        if data.get("invite_id"):
+            scope_id = MESSAGE_CONTEXT.get().get("scope_id")
+            invite = (
+                await asyncio.to_thread(self._invite, scope_id, str(data["invite_id"]))
+                if scope_id is not None
+                else None
+            )
+            if invite:
+                relation_id = relation_id or invite["relationship_id"]
+                names = MESSAGE_CONTEXT.get().get("member_names", {})
+                set_message_values(
+                    sender_name=names.get(str(invite["sender_id"]), "群友"),
+                    recipient_name=names.get(str(invite["recipient_id"]), "群友"),
+                )
+        if relation_id:
+            relation = await asyncio.to_thread(
+                self._relationship_display, str(relation_id)
+            )
+            if relation:
+                set_message_values(subject_name=relation["name"])
+        if data.get("candidate"):
+            set_message_values(subject_name=data["candidate"]["name"])
         text = self._format_result(
             code, data, mode, config, accept_keyword=accept_keyword
         )
@@ -1384,14 +1469,25 @@ class CommandRuntime:
 
     def _relationship_display(self, relationship_id: str) -> dict[str, Any] | None:
         with self.storage._lock:
-            row = self.storage._connection().execute(
-                """SELECT r.subject_id,r.subject_kind,s.name,
+            row = (
+                self.storage._connection()
+                .execute(
+                    """SELECT r.scope_id,r.subject_id,r.subject_kind,s.name,
                           (SELECT GROUP_CONCAT(mb.relative_path,'|') FROM snapshot_images si
                            JOIN media_blobs mb ON mb.hash=si.media_hash WHERE si.snapshot_id=s.id) AS image_paths
                    FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id WHERE r.id=?""",
-                (relationship_id,),
-            ).fetchone()
-        return dict(row) if row else None
+                    (relationship_id,),
+                )
+                .fetchone()
+            )
+        if row is None:
+            return None
+        result = dict(row)
+        if result["subject_kind"] == "member":
+            result["name"] = self._member_names(result["scope_id"]).get(
+                str(result["subject_id"]), "群友"
+            )
+        return result
 
     async def _avatars(self, user_ids: list[str], config: Mapping[str, Any]) -> dict[str, Path | None]:
         if not user_ids:

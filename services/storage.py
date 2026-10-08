@@ -167,7 +167,19 @@ class SQLiteStorage:
                 validate_config(value)
                 saved = dict(value)
             else:
-                allowed = {"enabled", "access", "reset", "commands", "modes", "statistics", "weights", "display", "members", "messages"}
+                allowed = {
+                    "enabled",
+                    "access",
+                    "reset",
+                    "commands",
+                    "modes",
+                    "statistics",
+                    "weights",
+                    "display",
+                    "members",
+                    "messages",
+                    "reply_quote",
+                }
                 if set(value) - allowed:
                     raise StorageError("群覆盖包含仅允许全局设置的字段。")
                 if "access" in value and set(value["access"]) - {"users", "extra_bot_ids"}:

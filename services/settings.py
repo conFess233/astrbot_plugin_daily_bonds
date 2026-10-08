@@ -14,14 +14,52 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from ..models import ConfigurationError
 from .message_templates import validate_messages
 
-_DEFAULTS_PATH = Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
+_DEFAULTS_PATH = (
+    Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
+)
+LEGACY_MESSAGES = {
+    "draw_wife": "娶到老婆：{name}{image}",
+    "draw_husband": "娶到老公：{name}{image}",
+    "draw_member": "娶到群友：{name}{image}",
+    "designated_wife": "指定老婆：{name}{image}",
+    "designated_husband": "指定老公：{name}{image}",
+    "stolen": "抢夺成功",
+    "steal_failed": "抢夺失败；配偶保留原关系",
+    "divorced": "关系已解除，你获得一次补抽资格",
+    "gifted": "赠送完成",
+    "invite_created": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
+    "gift_accepted": "赠送已接受",
+    "invite_rejected": "已拒绝赠送",
+    "invite_cancelled": "已取消赠送",
+    "admin_set_wife": "设置今日老婆：{name}{image}",
+    "notifications.member_redraw": "{name}（持有人 {owner_id} 获得补抽资格）",
+    "notifications.owner_ineligible": "{name}（持有人 {owner_id} 已失去资格）",
+}
+
 _MODES = ("wife", "husband", "member")
 _ACTIONS = (
-    "draw_wife", "draw_husband", "draw_member", "steal_wife", "steal_husband",
-    "steal_member", "gift_wife", "gift_husband", "gift_member", "divorce_character",
-    "divorce_wife", "divorce_husband", "divorce_member", "list_characters", "list_husband",
-    "list_members", "rank_intimacy", "rank_activity", "gift_accept", "gift_reject",
-    "gift_cancel", "query_affection",
+    "draw_wife",
+    "draw_husband",
+    "draw_member",
+    "steal_wife",
+    "steal_husband",
+    "steal_member",
+    "gift_wife",
+    "gift_husband",
+    "gift_member",
+    "divorce_character",
+    "divorce_wife",
+    "divorce_husband",
+    "divorce_member",
+    "list_characters",
+    "list_husband",
+    "list_members",
+    "rank_intimacy",
+    "rank_activity",
+    "gift_accept",
+    "gift_reject",
+    "gift_cancel",
+    "query_affection",
 )
 
 
@@ -31,15 +69,37 @@ def default_config() -> dict[str, Any]:
     return json.loads(_DEFAULTS_PATH.read_text(encoding="utf-8"))
 
 
-def merge_sparse(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[str, Any]:
+def merge_sparse(
+    base: Mapping[str, Any], override: Mapping[str, Any], *, _path: str = ""
+) -> dict[str, Any]:
     """递归合并对象；数组整体替换，null 不代表继承。"""
 
     result = copy.deepcopy(dict(base))
     for key, value in override.items():
+        if _path == "resources" and key in {
+            "render_concurrency",
+            "render_max_height",
+            "send_interval_seconds",
+            "render_width",
+        }:
+            continue
+        if _path == "weights" and key == "activity_full_messages":
+            continue
+        legacy_key = (
+            key
+            if _path == "messages.results"
+            else "notifications." + key
+            if _path == "messages.notifications"
+            else ""
+        )
+        if legacy_key in LEGACY_MESSAGES and value == LEGACY_MESSAGES[legacy_key]:
+            value = default_config()["messages"][_path.split(".")[1]][key]
         if key not in result:
             raise ConfigurationError(f"未知配置字段：{key}")
         if isinstance(result[key], dict) and isinstance(value, Mapping):
-            result[key] = merge_sparse(result[key], value)
+            result[key] = merge_sparse(
+                result[key], value, _path=f"{_path}.{key}".strip(".")
+            )
         elif isinstance(value, Mapping) and not isinstance(result[key], dict):
             raise ConfigurationError(f"配置字段类型错误：{key}")
         else:
@@ -47,7 +107,9 @@ def merge_sparse(base: Mapping[str, Any], override: Mapping[str, Any]) -> dict[s
     return result
 
 
-def effective_config(global_value: Mapping[str, Any], override: Mapping[str, Any] | None = None) -> dict[str, Any]:
+def effective_config(
+    global_value: Mapping[str, Any], override: Mapping[str, Any] | None = None
+) -> dict[str, Any]:
     """合成并验证一个不可共享的生效配置快照。"""
 
     config = merge_sparse(global_value, override or {})
@@ -125,7 +187,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "display.rank_max_height": (300, 16000),
         "members.cache_ttl_seconds": (0, 86400),
         "history.retention_days": (1, 3650),
-        "weights.activity_full_messages": (1, 100000000),
     }
     for path, (minimum, maximum) in ranges.items():
         _integer(config, path, minimum, maximum)
@@ -184,9 +245,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "import_max_bytes": (1, 1073741824),
         "import_max_entries": (1, 50000),
         "import_max_expanded_bytes": (1, 2147483648),
-        "render_width": (320, 2000),
-        "render_max_height": (1000, 16000),
-        "render_concurrency": (1, 8),
         "text_chunk_chars": (100, 4000),
         "pending_invites_per_user": (1, 100),
         "avatar_cache_ttl_seconds": (0, 604800),
@@ -197,9 +255,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
     }
     for field, bounds in resource_ranges.items():
         _integer(config, f"resources.{field}", *bounds)
-    _finite_number(config, "resources.send_interval_seconds")
-    if not 0 <= config["resources"]["send_interval_seconds"] <= 10:
-        raise ConfigurationError("resources.send_interval_seconds 必须在 0～10 之间")
     if (
         config["resources"]["import_max_expanded_bytes"]
         < config["resources"]["import_max_bytes"]
@@ -228,6 +283,11 @@ def validate_config(config: Mapping[str, Any]) -> None:
             batch[key] and not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,127}", batch[key])
         ):
             raise ConfigurationError(f"batch_import.{key} 必须为空或有效卡池 ID")
+    font_id = config["resources"]["font_id"]
+    if not isinstance(font_id, str) or not (
+        font_id == "bundled" or re.fullmatch(r"[0-9a-f]{24}", font_id)
+    ):
+        raise ConfigurationError("图片字体标识无效，请从管理页选择字体。")
     validate_keywords(config["commands"]["keywords"])
     validate_messages(config["messages"], defaults["messages"])
 
@@ -247,16 +307,27 @@ def validate_keywords(keywords: Mapping[str, Any]) -> None:
             if not isinstance(keyword, str):
                 raise ConfigurationError(f"commands.keywords.{action} 别名必须是文本")
             normalized = keyword.strip()
-            if normalized != keyword or not 1 <= len(keyword) <= 32 or "\n" in keyword or "\r" in keyword:
-                raise ConfigurationError(f"commands.keywords.{action} 别名必须为 1～32 字符且无首尾空格/换行")
+            if (
+                normalized != keyword
+                or not 1 <= len(keyword) <= 32
+                or "\n" in keyword
+                or "\r" in keyword
+            ):
+                raise ConfigurationError(
+                    f"commands.keywords.{action} 别名必须为 1～32 字符且无首尾空格/换行"
+                )
             if keyword.startswith("#") or keyword.isdecimal():
-                raise ConfigurationError(f"命令别名不能与角色ID或邀请编号文法冲突：{keyword}")
+                raise ConfigurationError(
+                    f"命令别名不能与角色ID或邀请编号文法冲突：{keyword}"
+                )
             if keyword in cleaned:
                 continue
             cleaned.add(keyword)
             previous = seen.get(keyword)
             if previous and previous != action:
-                raise ConfigurationError(f"命令别名“{keyword}”同时指向 {previous} 和 {action}")
+                raise ConfigurationError(
+                    f"命令别名“{keyword}”同时指向 {previous} 和 {action}"
+                )
             seen[keyword] = action
 
 
@@ -296,17 +367,27 @@ def _boolean(config: Mapping[str, Any], path: str) -> None:
 
 def _integer(config: Mapping[str, Any], path: str, minimum: int, maximum: int) -> None:
     value = _value(config, path)
-    if not isinstance(value, int) or isinstance(value, bool) or not minimum <= value <= maximum:
+    if (
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or not minimum <= value <= maximum
+    ):
         raise ConfigurationError(f"{path} 必须是 {minimum}～{maximum} 的整数")
 
 
 def _finite_number(config: Mapping[str, Any], path: str) -> None:
     value = _value(config, path)
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or not math.isfinite(value)
+    ):
         raise ConfigurationError(f"{path} 必须是有限数值")
 
 
 def _enum(config: Mapping[str, Any], path: str, choices: set[str]) -> None:
     value = _value(config, path)
     if not isinstance(value, str) or value not in choices:
-        raise ConfigurationError(f"{path} 必须为以下值之一：{', '.join(sorted(choices))}")
+        raise ConfigurationError(
+            f"{path} 必须为以下值之一：{', '.join(sorted(choices))}"
+        )

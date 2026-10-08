@@ -358,7 +358,17 @@ class CatalogSyncService:
         else:
             aliases = item.get("aliases", [])
             images = item.get("images", [])
-            if item.get("gender") not in {"female", "male", "unspecified"} or not isinstance(item.get("enabled"), bool) or "images" not in item or not isinstance(aliases, list) or len(aliases) > 30 or any(not isinstance(value, str) or len(value) > 80 for value in aliases) or not isinstance(images, list) or len(images) > 20:
+            if (
+                item.get("gender") not in {"female", "male", "unspecified"}
+                or not isinstance(item.get("enabled"), bool)
+                or "images" not in item
+                or not isinstance(aliases, list)
+                or len(aliases) > 30
+                or any(
+                    not isinstance(value, str) or len(value) > 80 for value in aliases
+                )
+                or not isinstance(images, list)
+            ):
                 raise ValueError(f"仓库角色配置无效：{identifier}")
             if item["enabled"] and not images:
                 raise ValueError(f"启用角色缺少图片：{identifier}")

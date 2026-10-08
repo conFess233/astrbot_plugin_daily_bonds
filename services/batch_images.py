@@ -115,6 +115,12 @@ class BatchImagesService:
         job = json.loads(row["report_json"])
         if not job.get("batch_images"):
             raise StorageError("不是批量图片导入作业。")
+        for item in job["items"]:
+            item["errors"] = [
+                error
+                for error in item.get("errors", [])
+                if error != "角色图片总数超过 20 张，请选择保留的图片"
+            ]
         return job
 
     def get_image(
@@ -141,7 +147,14 @@ class BatchImagesService:
         return path
 
     def record_failure(
-        self, job_id: str, filename: str, error: str, *, actor: str, now: int
+        self,
+        job_id: str,
+        filename: str,
+        error: str,
+        *,
+        actor: str,
+        now: int,
+        relative_path: str = "",
     ) -> dict[str, Any]:
         with self._lock:
             job = self.get(job_id, actor=actor, now=now)
@@ -150,6 +163,7 @@ class BatchImagesService:
             item = {
                 "row_id": str(uuid.uuid4()),
                 "filename": self._filename(filename),
+                "relative_path": self._relative_path(relative_path),
                 "hash": "",
                 "byte_size": 0,
                 "status": "failed",
@@ -355,35 +369,86 @@ class BatchImagesService:
             }
         )
 
+    @staticmethod
+    def _relative_path(value: str) -> str:
+        if (
+            not isinstance(value, str)
+            or len(value) > 2000
+            or any(ord(c) < 32 for c in value)
+        ):
+            raise ValueError("文件夹路径无效。")
+        parts = value.replace("\\", "/").split("/")
+        if value and (
+            any(p in {"", ".", ".."} for p in parts)
+            or value.startswith("/")
+            or re.match(r"^[A-Za-z]:", value)
+        ):
+            raise ValueError("文件夹路径必须是相对路径。")
+        return "/".join(parts) if value else ""
+
     def _overflow(self, job: dict[str, Any], targets: set[str] | None = None) -> None:
-        groups: dict[str, list[dict[str, Any]]] = {}
+        """标记重复来源；仅同角色且无新增卡池时默认跳过，可改关联后重新参与。"""
+        characters = {}
+        seen = {}
+        with self.storage._lock:
+            db = self.storage._connection()
+            library = {}
+            stored_hashes = {
+                str(row[0]) for row in db.execute("SELECT hash FROM media_blobs")
+            }
+            for row in db.execute(
+                "SELECT ci.media_hash,c.id,c.name FROM character_images ci JOIN characters c ON c.id=ci.character_id WHERE c.deleted_at IS NULL"
+            ):
+                library.setdefault(row["media_hash"], []).append(
+                    {"id": row["id"], "name": row["name"]}
+                )
         for item in job["items"]:
-            if targets is not None and item.get("target_id") not in targets:
+            if item.get("upload_error"):
                 continue
-            if item["status"] != "imported" and not item.get("upload_error"):
-                item["errors"] = [
-                    e
-                    for e in item.get("errors", [])
-                    if e != "角色图片总数超过 20 张，请选择保留的图片"
-                ]
-                groups.setdefault(item["target_id"], []).append(item)
-        for target, rows in groups.items():
-            existing = (
-                self.catalog.get_character(target) if _ID.fullmatch(target) else None
+            item["errors"] = [
+                e
+                for e in item.get("errors", [])
+                if e != "角色图片总数超过 20 张，请选择保留的图片"
+            ]
+            if item.get("duplicate_skip"):
+                item.update(status="pending", excluded=False, duplicate_skip=False)
+            target = item.get("target_id", "")
+            item["duplicate_sources"] = [
+                c["name"] for c in library.get(item["hash"], [])
+            ]
+            if item["hash"] in stored_hashes and not item["duplicate_sources"]:
+                item["duplicate_sources"].append("图库已存素材（未关联当前角色）")
+            key = (target, item["hash"])
+            duplicate = (
+                any(c["id"] == target for c in library.get(item["hash"], []))
+                or key in seen
             )
-            hashes = (
-                {image["media_hash"] for image in existing["images"]}
-                if existing
-                else set()
-            )
-            hashes.update(r["hash"] for r in rows if not r.get("excluded"))
-            if len(hashes) > 20:
-                for item in rows:
-                    item["needs_manual"] = True
-                    item["errors"].append("角色图片总数超过 20 张，请选择保留的图片")
+            if key in seen:
+                item["duplicate_sources"].append("本批：" + seen[key])
+            if item["status"] in {"pending", "failed"} and not item.get("excluded"):
+                if target not in characters:
+                    characters[target] = (
+                        self.catalog.get_character(target)
+                        if _ID.fullmatch(target)
+                        else None
+                    )
+                current = characters[target]
+                pools = {p["id"] for p in current["pools"]} if current else set()
+                adds_pools = bool(set(item.get("pool_ids", [])) - pools)
+                if duplicate and not adds_pools:
+                    item.update(status="skipped", excluded=True, duplicate_skip=True)
+                else:
+                    seen[key] = item["filename"]
 
     def add_image(
-        self, job_id: str, filename: str, payload: bytes, *, actor: str, now: int
+        self,
+        job_id: str,
+        filename: str,
+        payload: bytes,
+        *,
+        actor: str,
+        now: int,
+        relative_path: str = "",
     ) -> dict[str, Any]:
         with self._lock:
             job = self.get(job_id, actor=actor, now=now)
@@ -401,6 +466,7 @@ class BatchImagesService:
             item = {
                 "row_id": str(uuid.uuid4()),
                 "filename": filename,
+                "relative_path": self._relative_path(relative_path),
                 "hash": digest,
                 "extension": ext,
                 "width": width,
@@ -454,6 +520,12 @@ class BatchImagesService:
                     if item["status"] == "imported":
                         raise ValueError("已经导入的图片不能修改。")
                     if item.get("upload_error"):
+                        if "relative_path" in patch:
+                            item["relative_path"] = self._relative_path(
+                                patch["relative_path"]
+                            )
+                        if set(patch) <= {"row_id", "relative_path"}:
+                            continue
                         if patch.get("status") != "skipped":
                             raise ValueError("上传失败的图片只能跳过，请重新上传。")
                         item["status"] = "skipped"
@@ -502,11 +574,9 @@ class BatchImagesService:
                     if item["existing"]:
                         if any(
                             key in patch and patch[key] != item[key]
-                            for key in ("name", "gender", "pool_ids", "enabled")
+                            for key in ("name", "gender", "enabled")
                         ):
-                            raise ValueError(
-                                "已有角色仅追加图片，不能修改名称、性别或卡池。"
-                            )
+                            raise ValueError("已有角色不能修改名称、性别或启用状态。")
                     else:
                         for key in ("name", "gender", "pool_ids", "enabled"):
                             if key in patch:
@@ -517,6 +587,18 @@ class BatchImagesService:
                             is True
                         ):
                             self._validate_new(item)
+                    if item["existing"] and "pool_ids" in patch:
+                        additions = CatalogAdminService._string_list(
+                            patch["pool_ids"],
+                            "追加卡池",
+                            maximum=100,
+                            item_max=64,
+                            unique=True,
+                        )
+                        item["pool_ids"] = list(
+                            dict.fromkeys([*item["pool_ids"], *additions])
+                        )
+                        self._validate_new(item)
                     for key in ("manual_approved", "excluded"):
                         if key in patch:
                             if not isinstance(patch[key], bool):
@@ -527,6 +609,11 @@ class BatchImagesService:
                             raise ValueError("只能设置待处理或跳过状态。")
                         item["status"] = patch["status"]
                         item["excluded"] = patch["status"] == "skipped"
+                        item["duplicate_skip"] = False
+                    if "relative_path" in patch:
+                        item["relative_path"] = self._relative_path(
+                            patch["relative_path"]
+                        )
                     item["edited"] = True
                     item["errors"] = []
             self._overflow(job)
@@ -578,7 +665,14 @@ class BatchImagesService:
                     raise ValueError("角色池不存在或与性别不匹配。")
 
     def commit(
-        self, job_id: str, row_ids: list[str], request_id: str, *, actor: str, now: int
+        self,
+        job_id: str,
+        row_ids: list[str],
+        request_id: str,
+        *,
+        actor: str,
+        now: int,
+        relative_path: str = "",
     ) -> dict[str, Any]:
         with self._lock:
             job = self.get(job_id, actor=actor, now=now)
@@ -653,7 +747,7 @@ class BatchImagesService:
                         and not r.get("excluded")
                     ]
                     if any(r.get("errors") for r in pending_group):
-                        raise ValueError("角色图片组超限，请先选择保留的图片。")
+                        raise ValueError("角色图片组含有错误，请先修正或排除失败项。")
                     result = self._commit_group(job, rows, actor, request_id, now)
                     imported.append(result)
                 except (ValueError, TypeError, StorageError, OSError) as exc:
@@ -669,6 +763,8 @@ class BatchImagesService:
                         }
                     )
                     self._save(job, actor)
+            self._overflow(job)
+            self._save(job, actor)
             response = {"job": job, "imported": imported, "failed": failed}
             with self.storage.transaction() as db:
                 db.execute(
@@ -693,12 +789,11 @@ class BatchImagesService:
     ) -> dict[str, Any]:
         first = rows[0]
         if any(
-            (r["existing"], r["name"], r["gender"], sorted(r["pool_ids"]), r["enabled"])
+            (r["existing"], r["name"], r["gender"], r["enabled"])
             != (
                 first["existing"],
                 first["name"],
                 first["gender"],
-                sorted(first["pool_ids"]),
                 first["enabled"],
             )
             for r in rows
@@ -741,9 +836,14 @@ class BatchImagesService:
                     "pool_ids": first["pool_ids"],
                     "provenance": {"batch_images": job["job_id"]},
                 }
+            data["pool_ids"] = list(
+                dict.fromkeys(
+                    [*data["pool_ids"], *(p for r in rows for p in r["pool_ids"])]
+                )
+            )
+            if data["pool_ids"] or not current:
+                self._validate_new({**first, "pool_ids": data["pool_ids"]})
             hashes = list(dict.fromkeys([*hashes, *(r["hash"] for r in rows)]))
-            if len(hashes) > 20:
-                raise ValueError("角色图片总数超过 20 张，请选择保留的图片")
             for item, payload in payloads:
                 relative = Path("sha256") / f"{item['hash']}.{item['extension']}"
                 _atomic_content_write(self.catalog.media_root / relative, payload)
@@ -776,4 +876,5 @@ class BatchImagesService:
             "name": data["name"],
             "row_ids": [r["row_id"] for r in rows],
             "images": len(hashes),
+            "pool_ids": data["pool_ids"],
         }

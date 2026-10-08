@@ -31,6 +31,13 @@ def reconcile_member_eligibility(
         removed = 0
         for row in rows:
             owner_id = str(row["owner_id"])
+            member = db.execute(
+                "SELECT card,nickname FROM members WHERE scope_id=? AND user_id=?",
+                (scope_id, owner_id),
+            ).fetchone()
+            owner_name = (
+                (member["card"] or member["nickname"] or "群友") if member else "群友"
+            )
             subject_id = str(row["subject_id"])
             owner_eligible = owner_id in eligible_user_ids
             subject_lost = (
@@ -99,6 +106,7 @@ def reconcile_member_eligibility(
                         "member_redraw",
                         name=row["name"],
                         owner_id=owner_id,
+                        owner_name=owner_name,
                     )
                 )
             else:
@@ -109,6 +117,7 @@ def reconcile_member_eligibility(
                         "owner_ineligible",
                         name=row["name"],
                         owner_id=owner_id,
+                        owner_name=owner_name,
                     )
                 )
         invites = db.execute(
@@ -133,11 +142,20 @@ def reconcile_member_eligibility(
                     invite_id=invite["id"],
                 )
             )
+        affected = [text for text in affected if text.strip()]
         if affected:
             scope = db.execute(
                 "SELECT umo FROM scopes WHERE id=?", (scope_id,)
             ).fetchone()
             if scope:
+                text = render_message(
+                    config,
+                    "notifications",
+                    "member_reconcile",
+                    details="；".join(affected),
+                )
+                if not text.strip():
+                    return removed
                 db.execute(
                     """INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at)
                        VALUES(?,?,?,?,?,'pending',?)""",
@@ -147,14 +165,7 @@ def reconcile_member_eligibility(
                         f"member-reconcile:{period_id}:{uuid.uuid4().hex}",
                         str(scope["umo"]),
                         json.dumps(
-                            {
-                                "text": render_message(
-                                    config,
-                                    "notifications",
-                                    "member_reconcile",
-                                    details="；".join(affected),
-                                )
-                            },
+                            {"text": text},
                             ensure_ascii=False,
                         ),
                         now,

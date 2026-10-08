@@ -129,6 +129,8 @@ class NotificationService:
 
     @staticmethod
     def _queue(db: Any, scope_id: int, umo: str, dedupe_key: str, text: str, now: int) -> None:
+        if not text.strip():
+            return
         db.execute(
             """INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at)
                VALUES(?,?,?,?,?,'pending',?)""",

@@ -664,11 +664,6 @@
             "type": "float",
             "description": "零活跃权重系数",
             "default": 0.2
-          },
-          "activity_full_messages": {
-            "type": "int",
-            "description": "满活跃消息数",
-            "default": 50
           }
         }
       },
@@ -741,19 +736,19 @@
               "draw_wife": {
                 "type": "text",
                 "description": "抽到老婆",
-                "default": "娶到老婆：{name}{image}",
+                "default": "{actor_name}娶到老婆：{name}{image}",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "draw_husband": {
                 "type": "text",
                 "description": "抽到老公",
-                "default": "娶到老公：{name}{image}",
+                "default": "{actor_name}娶到老公：{name}{image}",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "draw_member": {
                 "type": "text",
                 "description": "抽到群友",
-                "default": "娶到群友：{name}{image}",
+                "default": "{actor_name}娶到群友：{name}{image}",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "capacity_full": {
@@ -807,49 +802,49 @@
               "steal_failed": {
                 "type": "text",
                 "description": "抢夺失败",
-                "default": "抢夺失败；配偶保留原关系",
+                "default": "{actor_name}抢夺失败，{subject_name}仍属于{owner_name}。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "stolen": {
                 "type": "text",
                 "description": "抢夺成功",
-                "default": "抢夺成功",
+                "default": "{actor_name}从{owner_name}处抢到了{subject_name}。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "divorced": {
                 "type": "text",
                 "description": "解除关系成功",
-                "default": "关系已解除，你获得一次补抽资格",
+                "default": "{actor_name}与{subject_name}的关系已解除，获得一次补抽资格。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "gifted": {
                 "type": "text",
                 "description": "赠送成功",
-                "default": "赠送完成",
+                "default": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_created": {
                 "type": "text",
                 "description": "赠送邀请已创建",
-                "default": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
+                "default": "{sender_name}邀请{recipient_name}接受{subject_name}，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "gift_accepted": {
                 "type": "text",
                 "description": "赠送已接受",
-                "default": "赠送已接受",
+                "default": "{recipient_name}接受了{sender_name}赠送的{subject_name}。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_rejected": {
                 "type": "text",
                 "description": "赠送已拒绝",
-                "default": "已拒绝赠送",
+                "default": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_cancelled": {
                 "type": "text",
                 "description": "赠送已取消",
-                "default": "已取消赠送",
+                "default": "{actor_name}已取消向{recipient_name}赠送{subject_name}的邀请。",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "invite_expired": {
@@ -957,13 +952,13 @@
               "designated_wife": {
                 "type": "text",
                 "description": "指定老婆成功",
-                "default": "指定老婆：{name}{image}",
+                "default": "{actor_name}指定老婆：{name}{image}",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "designated_husband": {
                 "type": "text",
                 "description": "指定老公成功",
-                "default": "指定老公：{name}{image}",
+                "default": "{actor_name}指定老公：{name}{image}",
                 "hint": "支持声明的简单变量；图片使用 {image}，删去可关闭图片；仅 {image} 也可用，禁止空白，最长1000字符。"
               },
               "designated_disabled": {
@@ -1041,7 +1036,7 @@
               "admin_set_wife": {
                 "type": "text",
                 "description": "管理员设置老婆成功",
-                "default": "设置今日老婆：{name}{image}",
+                "default": "{actor_name}设置今日老婆：{name}{image}",
                 "hint": "支持 {name} 等声明变量，最长 1000 字符；成功回复支持 {image}。"
               },
               "already_held": {
@@ -1251,13 +1246,13 @@
               "member_redraw": {
                 "type": "text",
                 "description": "群友离开补抽说明",
-                "default": "{name}（持有人 {owner_id} 获得补抽资格）",
+                "default": "{name}（持有人 {owner_name} 获得补抽资格）",
                 "hint": "支持声明的简单变量，最长1000字符。"
               },
               "owner_ineligible": {
                 "type": "text",
                 "description": "持有人失去资格说明",
-                "default": "{name}（持有人 {owner_id} 已失去资格）",
+                "default": "{name}（持有人 {owner_name} 已失去资格）",
                 "hint": "支持声明的简单变量，最长1000字符。"
               },
               "participant_ineligible": {
@@ -1441,30 +1436,10 @@
             "description": "导入解压上限（字节）",
             "default": 524288000
           },
-          "render_width": {
-            "type": "int",
-            "description": "渲染宽度（像素）",
-            "default": 1000
-          },
-          "render_max_height": {
-            "type": "int",
-            "description": "单图最大高度（像素）",
-            "default": 8000
-          },
-          "render_concurrency": {
-            "type": "int",
-            "description": "并发渲染数",
-            "default": 2
-          },
           "text_chunk_chars": {
             "type": "int",
             "description": "文字分片字符数",
             "default": 1500
-          },
-          "send_interval_seconds": {
-            "type": "float",
-            "description": "分片发送间隔（秒）",
-            "default": 1.0
           },
           "pending_invites_per_user": {
             "type": "int",
@@ -1495,6 +1470,12 @@
             "type": "int",
             "description": "并发下载数",
             "default": 4
+          },
+          "font_id": {
+            "type": "string",
+            "description": "图片字体",
+            "default": "bundled",
+            "hint": "在管理页选择 AstrBot 所在机器的字体；不可用时回退内置字体。"
           }
         }
       },

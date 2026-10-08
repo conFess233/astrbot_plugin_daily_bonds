@@ -5,24 +5,61 @@ from __future__ import annotations
 import json
 import string
 from collections.abc import Mapping
+from contextvars import ContextVar
 from functools import lru_cache
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from ..models import ConfigurationError
 
 _FORMATTER = string.Formatter()
+NAME_FIELDS = {
+    "actor_name",
+    "owner_name",
+    "sender_name",
+    "recipient_name",
+    "target_name",
+    "subject_name",
+}
+MESSAGE_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
+    "daily_bonds_reply", default=MappingProxyType({})
+)
+
+
+def set_message_values(**values: Any) -> None:
+    """每个事件复制自己的上下文，避免并发消息串用用户名。"""
+    MESSAGE_CONTEXT.set({**MESSAGE_CONTEXT.get(), **values})
+
+
 IMAGE_TOKEN = "\ue000image\ue001"
 IMAGE_KEYS = {
     "admin_set_wife",
-    "draw_wife", "draw_husband", "draw_member", "designated_wife", "designated_husband",
-    "designated_drawn", "capacity_full", "capacity_full_single_wife", "capacity_full_single_husband",
-    "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_activity", "query_affection", "list_empty",
+    "draw_wife",
+    "draw_husband",
+    "draw_member",
+    "designated_wife",
+    "designated_husband",
+    "designated_drawn",
+    "capacity_full",
+    "capacity_full_single_wife",
+    "capacity_full_single_husband",
+    "list_wife",
+    "list_husband",
+    "list_member",
+    "rank_intimacy",
+    "rank_activity",
+    "query_affection",
+    "list_empty",
 }
 EXTRA_FIELDS = {
-    "capacity_full": {"name"}, "capacity_full_single_wife": {"name", "names"},
+    "member_redraw": {"owner_id"},
+    "owner_ineligible": {"owner_id"},
+    "capacity_full": {"name"},
+    "capacity_full_single_wife": {"name", "names"},
     "capacity_full_single_husband": {"name", "names"},
-    "rank_intimacy": {"title", "lines", "count"}, "rank_activity": {"title", "lines", "count"},
+    "rank_intimacy": {"title", "lines", "count"},
+    "rank_activity": {"title", "lines", "count"},
     "query_affection": {"name", "target_name", "forward_score", "reverse_score"},
 }
 _REQUIRED = {
@@ -56,18 +93,20 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
         for key, original in entries.items():
             path = f"messages.{section}.{key}"
             template = messages[section][key]
-            if (
-                not isinstance(template, str)
-                or not template.strip()
-                or len(template) > 1000
-            ):
-                raise ConfigurationError(f"{path} 必须是 1～1000 字符的非空文本")
+            if not isinstance(template, str) or len(template) > 1000:
+                raise ConfigurationError(
+                    f"{path} 必须是最多 1000 字符的文本，留空则不发送"
+                )
+            if not template.strip():
+                continue
             if IMAGE_TOKEN in template:
                 raise ConfigurationError(f"{path} 不允许内部图片标记")
             if any(ord(char) < 32 and char != "\n" for char in template):
                 raise ConfigurationError(f"{path} 不允许控制字符")
             fields = _fields(template, path)
-            allowed = _fields(original, path)
+            allowed = (
+                _fields(original, path) | NAME_FIELDS | EXTRA_FIELDS.get(key, set())
+            )
             if key in IMAGE_KEYS and section in {"results", "errors"}:
                 allowed |= {"image"} | EXTRA_FIELDS.get(key, set())
             invalid = fields - allowed
@@ -107,8 +146,11 @@ def template_fields() -> dict[str, dict[str, Any]]:
         for key, original in entries.items():
             path = f"messages.{section}.{key}"
             image = section in {"results", "errors"} and key in IMAGE_KEYS
-            allowed = _fields(original, path) | (
-                EXTRA_FIELDS.get(key, set()) | {"image"} if image else set()
+            allowed = (
+                _fields(original, path)
+                | NAME_FIELDS
+                | EXTRA_FIELDS.get(key, set())
+                | (EXTRA_FIELDS.get(key, set()) | {"image"} if image else set())
             )
             result[path] = {
                 "allowed": sorted(allowed),
@@ -121,8 +163,15 @@ def template_fields() -> dict[str, dict[str, Any]]:
 def render_message(
     config: Mapping[str, Any], section: str, key: str, **values: Any
 ) -> str:
-    values["image"] = IMAGE_TOKEN
     template = str(config["messages"][section][key])
+    if not template.strip():
+        return MessageText("")
+    values = {
+        **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},
+        **MESSAGE_CONTEXT.get(),
+        **values,
+        "image": IMAGE_TOKEN,
+    }
     text = template.format_map(values)
     original = _default_messages()[section][key]
     fallback = original.format_map(values).replace(IMAGE_TOKEN, "").strip()

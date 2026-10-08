@@ -664,8 +664,10 @@ class CatalogImportService:
         aliases = cls._string_list(raw.get("aliases", []), "角色别名", 30, 80)
         pool_ids = cls._string_list(raw.get("pool_ids", []), "角色ID", 100, 128)
         images = raw.get("images", [])
-        if not isinstance(images, list) or len(images) > 20 or any(not isinstance(item, dict) for item in images):
-            raise ValueError("角色 images 必须是最20 张图片的数组")
+        if not isinstance(images, list) or any(
+            not isinstance(item, dict) for item in images
+        ):
+            raise ValueError("角色 images 必须是图片对象数组")
         if enabled and not images:
             raise ValueError("启用角色必须含图片")
         for image in images:

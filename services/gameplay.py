@@ -12,6 +12,8 @@ from typing import Any, Sequence
 
 from ..models import Mode, StorageError
 from .storage import SQLiteStorage
+from .statistics import StatisticsService
+from .message_templates import render_message
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +56,11 @@ class GameplayService:
         capacity: int,
         pool_ids: Sequence[str] = (),
         weights: dict[str, float] | None = None,
-        activity_full_messages: int = 50,
+        activity_full_messages: int
+        | None = None,  # 兼容旧服务调用；此参数不再影响权重。
         activity_window_days: int = 7,
+        activity_timezone: str = "Asia/Shanghai",
+        eligible_user_ids: set[str] | None = None,
         operation_id: str | None = None,
         event_key: str | None = None,
         payload_hash: str = "",
@@ -118,6 +123,45 @@ class GameplayService:
             available = self._valid_candidates(
                 db, scope_id, period_id, mode, owner_id, candidates, pool_ids
             )
+            intimacy: dict[str, int] = {}
+            activity: dict[str, int] = {}
+            if mode == "member" and available:
+                # 在同一写事务内复查统计资格，避免仅在 Handler 预筛选。
+                present = {
+                    str(row["user_id"])
+                    for row in db.execute(
+                        "SELECT user_id FROM members WHERE scope_id=? AND is_present=1 AND is_known_bot=0",
+                        (scope_id,),
+                    )
+                }
+                if eligible_user_ids is not None:
+                    present &= eligible_user_ids
+                statistics = StatisticsService(self.storage)
+                edges = statistics.intimacy_rows(scope_id, eligible_user_ids=present)
+                rows = statistics.activity_rows(
+                    scope_id,
+                    now=now,
+                    window_days=activity_window_days,
+                    timezone=activity_timezone,
+                    eligible_user_ids=present,
+                )
+                participants = {str(row["user_id"]) for row in rows}
+                participants.update(
+                    str(row[key]) for row in edges for key in ("source_id", "target_id")
+                )
+                available = [
+                    candidate
+                    for candidate in available
+                    if candidate.subject_id in participants
+                ]
+                intimacy = {
+                    str(row["target_id"]): int(row["score"])
+                    for row in edges
+                    if row["source_id"] == owner_id
+                }
+                activity = {
+                    str(row["user_id"]): int(row["active_days"]) for row in rows
+                }
             if not available:
                 result = BusinessResult("NO_CANDIDATE", {})
                 self._record(
@@ -135,32 +179,6 @@ class GameplayService:
                     payload_hash,
                 )
                 return result
-            intimacy: dict[str, int] = {}
-            activity: dict[str, int] = {}
-            if mode == "member":
-                subject_ids = [candidate.subject_id for candidate in available]
-                marks = ",".join("?" for _ in subject_ids)
-                intimacy = {
-                    row["target_id"]: int(row["score"])
-                    for row in db.execute(
-                        f"SELECT target_id,score FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id IN ({marks})",
-                        (scope_id, owner_id, *subject_ids),
-                    ).fetchall()
-                }
-                activity = {
-                    row["user_id"]: int(row["messages"])
-                    for row in db.execute(
-                        f"""SELECT user_id,SUM(message_count) AS messages FROM activity_seconds
-                            WHERE scope_id=? AND user_id IN ({marks}) AND observed_second>? AND observed_second<=?
-                            GROUP BY user_id""",
-                        (
-                            scope_id,
-                            *subject_ids,
-                            now - activity_window_days * 86400,
-                            now,
-                        ),
-                    ).fetchall()
-                }
             picked = self._pick(
                 available,
                 mode,
@@ -168,7 +186,7 @@ class GameplayService:
                 intimacy,
                 activity,
                 weights or {},
-                activity_full_messages,
+                activity_window_days,
             )
             snapshot_id = self._snapshot(db, picked, now)
             relationship_id = self.storage.create_relationship(
@@ -498,7 +516,26 @@ class GameplayService:
                 (now, scope_id, period_id, mode, actor_id),
             )
             if not success:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "STEAL_FAILED", {"probability": probability}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "STEAL_FAILED",
+                    {
+                        "probability": probability,
+                        "relationship_id": target_relation["id"],
+                        "subject_id": target_relation["subject_id"],
+                        "old_owner_id": target_id,
+                    },
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             self._transfer(db, target_relation, actor_id, steal_slot_capacity or capacity, now, "stolen", destination)
             db.execute(
                 "UPDATE daily_counters SET stolen_successes=stolen_successes+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
@@ -792,7 +829,7 @@ class GameplayService:
                 candidate = Candidate(
                     candidate.subject_id,
                     "member",
-                    member["card"] or member["nickname"] or candidate.subject_id,
+                    member["card"] or member["nickname"] or "群友",
                     (),
                     "unspecified",
                     None,
@@ -860,7 +897,7 @@ class GameplayService:
         intimacy: dict[str, int],
         activity: dict[str, int],
         weights: dict[str, float],
-        activity_full_messages: int,
+        activity_window_days: int,
     ) -> Candidate:
         if mode != "member" or len(candidates) == 1:
             return self.chooser.choice(list(candidates))
@@ -872,7 +909,10 @@ class GameplayService:
         intimacy_points = [max(0, int(intimacy.get(user_id, 0))) for user_id in target]
         activity_counts = [max(0, int(activity.get(user_id, 0))) for user_id in target]
         baseline = [min(maximum, base + min(max(0.0, (maximum - base) / per_intimacy), points) * per_intimacy) if per_intimacy else base for points in intimacy_points]
-        activity_factor = [floor + (1.0 - floor) * min(count / max(1, activity_full_messages), 1.0) for count in activity_counts]
+        activity_factor = [
+            floor + (1.0 - floor) * min(count / max(1, activity_window_days), 1.0)
+            for count in activity_counts
+        ]
         return self.chooser.choices(list(candidates), weights=[a * b for a, b in zip(baseline, activity_factor)], k=1)[0]
 
     def _snapshot(self, db: sqlite3.Connection, candidate: Candidate, now: int) -> str:
@@ -980,6 +1020,63 @@ class GameplayService:
         )
 
     def _outbox(self, db: sqlite3.Connection, scope_id: int, dedupe_key: str, umo: str, payload: dict[str, Any], now: int) -> None:
+        if payload.get("kind") in {"gift_invite", "gift_invite_final"}:
+            invite = db.execute(
+                "SELECT * FROM gift_invites WHERE scope_id=? AND id=?",
+                (scope_id, payload["invite_id"]),
+            ).fetchone()
+            if invite:
+                config, _ = self.storage.get_settings(scope_id)
+                names = {
+                    str(row["user_id"]): row["card"] or row["nickname"] or "群友"
+                    for row in db.execute(
+                        "SELECT user_id,card,nickname FROM members WHERE scope_id=?",
+                        (scope_id,),
+                    )
+                }
+                relation = db.execute(
+                    "SELECT r.subject_id,r.subject_kind,s.name FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id WHERE r.scope_id=? AND r.id=?",
+                    (scope_id, invite["relationship_id"]),
+                ).fetchone()
+                subject = (
+                    names.get(str(relation["subject_id"]), "群友")
+                    if relation and relation["subject_kind"] == "member"
+                    else relation["name"]
+                    if relation
+                    else "对象"
+                )
+                state = payload.get("state", "pending")
+                key = (
+                    "invite_created"
+                    if state == "pending"
+                    else "gift_accepted"
+                    if state == "accepted"
+                    else "invite_" + state
+                )
+                text = render_message(
+                    config,
+                    "results",
+                    key,
+                    actor_name=names.get(
+                        str(
+                            invite["sender_id"]
+                            if state in {"pending", "cancelled"}
+                            else invite["recipient_id"]
+                        ),
+                        "群友",
+                    ),
+                    sender_name=names.get(str(invite["sender_id"]), "群友"),
+                    recipient_name=names.get(str(invite["recipient_id"]), "群友"),
+                    subject_name=subject,
+                    name=subject,
+                    invite_id=invite["id"],
+                    accept_keyword=config["commands"]["keywords"]["gift_accept"][0],
+                )
+                if not text.strip():
+                    return
+                payload["text"] = (
+                    text if state == "pending" else f"赠送邀请 {invite['id']}：{text}"
+                )
         db.execute(
             "INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at) VALUES(?,?,?,?,?,'pending',?)",
             (str(uuid.uuid4()), scope_id, dedupe_key, umo, json.dumps(payload, ensure_ascii=False), now),

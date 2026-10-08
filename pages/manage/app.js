@@ -1,3 +1,4 @@
+import { initConfigWorkspace } from "./config-workspace.js";
 import { initBatchImages } from "./batch-images.js";
 
 const bridge = window.AstrBotPluginPage;
@@ -29,7 +30,7 @@ const state = {
   savedOverride: {},
   templateFields: {},
   savedSignature: "",
-  configGroup: "enabled",
+  configGroup: "common",
   revision: 0,
   globalRevision: 0,
   busy: false,
@@ -77,6 +78,7 @@ const configFields = $("#config-fields");
 const configTabs = $("#config-tabs");
 const scopeSelect = $("#scope-select");
 const notice = $("#notice");
+const configWorkspace = initConfigWorkspace({ fields: configFields, state, changed: updateDirtyState, apiGet, label: configLabel, globalOnly: configIsGlobalOnly });
 const imagePreviewCache = new Map();
 let configLoadSequence = 0;
 let catalogLoadSequence = 0;
@@ -235,6 +237,7 @@ const TITLE_LABELS = {
   designated_slot: "指定槽位标签", wife: "老婆玩法名称", husband: "老公玩法名称", member: "群友玩法名称",
 };
 const CONFIG_LABELS = {
+  font_id: "图片字体",
   schema_version: "配置格式版本", enabled: "启用", mode: "名单模式", ids: "名单 ID",
   male_keywords: "男类检测关键词", female_keywords: "女类检测关键词",
   male_pool_id: "默认男卡池 ID", female_pool_id: "默认女卡池 ID",
@@ -254,7 +257,7 @@ const CONFIG_LABELS = {
   poke_active_points: "主动戳一戳加分", poke_passive_points: "被戳一戳加分",
   activity_window_days: "活跃度窗口（天）", base: "基础权重",
   per_intimacy_point: "每点亲密度增加权重", maximum: "最大权重",
-  activity_floor: "零活跃权重系数", activity_full_messages: "满活跃消息数",
+  activity_floor: "零活跃天数权重系数",
   pagination_enabled: "启用分页", page_size: "每页条数",
   intimacy_rank_mode: "亲密度排行范围", intimacy_rank_enabled: "显示亲密度排行",
   activity_rank_enabled: "显示活跃度排行", cache_ttl_seconds: "缓存时间（秒）",
@@ -343,10 +346,11 @@ function configLeaves(config, prefix = "") {
 }
 
 function configGroup(path) {
-  if (path === "schema_version") return "enabled";
-  const parts = path.split(".");
-  if (["messages", "reply_quote"].includes(parts[0])) return parts.slice(0, 2).join(".");
-  return parts[0] === "modes" ? parts.slice(0, 2).join(".") : parts[0];
+  if (path.startsWith("messages.") || path.startsWith("reply_quote.")) return "messages";
+  if (path.startsWith("statistics.") || path.startsWith("weights.") || path.startsWith("display.")) return "stats";
+  if (path.startsWith("access.")) return "access";
+  if (path.startsWith("resources.") || path.startsWith("history.") || path.startsWith("members.") || path.startsWith("batch_import.")) return "maintenance";
+  return "rules";
 }
 
 function configIsGlobalOnly(path) {
@@ -428,18 +432,22 @@ function refreshPoolPickers() {
 
 function templateHint(path) {
   const fields = state.templateFields[path];
-  if (!fields) return "最多 1000 字符；模板变量由服务端校验。使用 {{ 和 }} 表示大括号。";
+  const empty = path.startsWith("messages.titles.") ? "留空仅隐藏对应标题或标签。" : "留空或仅填空白则不发送此消息、附图或引用。";
+  if (!fields) return `最多 1000 字符；${empty}模板变量由服务端校验。使用 {{ 和 }} 表示大括号。`;
   const allowed = fields.allowed.map((name) => `{${name}}`).join("、") || "无";
-  const required = fields.required.length ? `必填：${fields.required.map((name) => `{${name}}`).join("、")}。` : "";
+  const required = fields.required.length ? `非空时必填：${fields.required.map((name) => `{${name}}`).join("、")}。` : "";
   const image = fields.image ? "使用 {image} 选择图片位置，不填写则只发送文字。" : "";
   const replacement = fields.image && fields.required.length ? "含 {image} 时可省略上述必填变量。" : "";
-  return `最多 1000 字符；可用变量：${allowed}。${required}${replacement}${image}使用 {{ 和 }} 表示大括号。`;
+  return `最多 1000 字符；${empty}可用变量：${allowed}。${required}${replacement}${image}使用 {{ 和 }} 表示大括号。`;
 }
 
 function renderConfigFields() {
   configFields.replaceChildren();
   configTabs.replaceChildren();
   if (!state.savedConfig) return;
+  const commonTab = document.createElement("button");
+  commonTab.type = "button"; commonTab.className = "config-tab"; commonTab.dataset.configGroup = "common";
+  commonTab.setAttribute("role", "tab"); commonTab.textContent = "常用设置"; configTabs.append(commonTab);
   const groups = new Map();
   for (const [path, value] of configLeaves(state.savedConfig)) {
     const group = configGroup(path);
@@ -449,7 +457,7 @@ function renderConfigFields() {
       section.id = `config-group-${group.replaceAll(".", "-")}`;
       section.setAttribute("role", "tabpanel");
       const heading = document.createElement("h4");
-      heading.textContent = CONFIG_GROUPS[group] || group;
+      heading.textContent = ({rules: "玩法与触发规则", messages: "回复文案与引用", stats: "统计与排行", access: "权限与名单", maintenance: "资源与维护"})[group] || group;
       const fields = document.createElement("div");
       fields.className = "config-grid";
       section.append(heading, fields);
@@ -461,7 +469,7 @@ function renderConfigFields() {
       tab.dataset.configGroup = group;
       tab.id = `config-tab-${group.replaceAll(".", "-")}`;
       tab.setAttribute("aria-controls", section.id);
-      tab.textContent = CONFIG_GROUPS[group] || group;
+      tab.textContent = heading.textContent;
       section.setAttribute("aria-labelledby", tab.id);
       configTabs.append(tab);
       groups.set(group, { section, fields, tab });
@@ -489,6 +497,7 @@ function renderConfigFields() {
       input.rows = 3;
       input.maxLength = 1000;
       input.value = value;
+      input.placeholder = path.startsWith("messages.titles.") ? "留空隐藏对应文字" : "留空则不回复";
     } else if (typeof value === "boolean") {
       input = document.createElement("input");
       input.type = "checkbox";
@@ -572,7 +581,8 @@ function renderConfigFields() {
     card.append(error);
     groups.get(group).fields.append(card);
   }
-  if (!groups.has(state.configGroup)) state.configGroup = groups.has("enabled") ? "enabled" : groups.keys().next().value;
+  if (state.configGroup !== "common" && !groups.has(state.configGroup)) state.configGroup = "common";
+  configWorkspace.enhance();
   selectConfigGroup(state.configGroup);
 }
 
@@ -583,9 +593,7 @@ function selectConfigGroup(group) {
     tab.setAttribute("aria-selected", String(selected));
     tab.tabIndex = selected ? 0 : -1;
   }
-  for (const section of configFields.querySelectorAll(".config-group")) {
-    section.hidden = section.id !== `config-group-${group.replaceAll(".", "-")}`;
-  }
+  configWorkspace.select(group);
 }
 
 function readConfigInput(input) {
@@ -724,6 +732,7 @@ async function refreshAll() {
     await loadOverview();
     state.pools = (await apiGet("pools")).data;
     renderPools();
+    await configWorkspace.loadFonts();
     await loadConfig();
     showNotice("数据已刷新。", "success");
   } catch (error) {
@@ -1181,10 +1190,6 @@ $("#character-image").addEventListener("change", (event) => withCatalogWrite(asy
   const failed = [];
   try {
     for (const file of files) {
-      if (state.characterImages.length >= 20) {
-        failed.push(`${file.name}：角色最多关联 20 张图片`);
-        continue;
-      }
       try {
         const result = await apiUpload("media/upload", file);
         const item = result.data || result;

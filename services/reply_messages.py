@@ -12,6 +12,8 @@ from .message_templates import IMAGE_TOKEN
 
 def reply_chain(response: str | RuntimeReply, event: Any) -> list[Any]:
     reply = response if isinstance(response, RuntimeReply) else RuntimeReply(response)
+    if not reply.text.strip():
+        return []
     images = list(reply.image_paths) if IMAGE_TOKEN in reply.text else []
     groups: list[list[Any]] = []
     if images:

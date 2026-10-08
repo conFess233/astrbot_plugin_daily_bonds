@@ -11,6 +11,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
+from .fonts import resolve_font
+
 
 @dataclass(frozen=True, slots=True)
 class CardRow:
@@ -53,6 +55,7 @@ class CardRenderer:
         rows: Sequence[CardRow],
         *,
         cache_key: str,
+        font_id: str = "bundled",
         header_avatar_path: Path | None = None,
         header_user_id: str = "",
         header_name: str = "",
@@ -62,7 +65,11 @@ class CardRenderer:
     ) -> tuple[Path, ...]:
         """Return ordered card files, or an empty tuple if a CJK font is unavailable."""
 
-        font_path = _find_cjk_font()
+        font_path = (
+            _find_cjk_font()
+            if font_id == "bundled"
+            else resolve_font(font_id) or _find_cjk_font()
+        )
         if font_path is None:
             return ()
         has_header_avatar = bool(header_avatar_path or header_user_id or header_name)

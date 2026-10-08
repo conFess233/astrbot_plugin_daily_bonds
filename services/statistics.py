@@ -203,7 +203,37 @@ class StatisticsService:
             key=lambda item: (-item["messages"], item["user_id"]),
         )
 
-    def member_scores(self, scope_id: int, actor_id: str, candidate_ids: Sequence[str], now: int, window_days: int) -> tuple[dict[str, int], dict[str, int]]:
+    def intimacy_rows(
+        self, scope_id: int, *, eligible_user_ids: set[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """排行榜与抽取共用本群有效成员之间的亲密度记录，不限个人榜范围。"""
+        with self.storage._lock:
+            rows = (
+                self.storage._connection()
+                .execute(
+                    "SELECT source_id,target_id,score FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id",
+                    (scope_id,),
+                )
+                .fetchall()
+            )
+        return [
+            dict(row)
+            for row in rows
+            if eligible_user_ids is None
+            or (
+                row["source_id"] in eligible_user_ids
+                and row["target_id"] in eligible_user_ids
+            )
+        ]
+
+    def member_scores(
+        self,
+        scope_id: int,
+        actor_id: str,
+        candidate_ids: Sequence[str],
+        now: int,
+        window_days: int,
+    ) -> tuple[dict[str, int], dict[str, int]]:
         """读取一个一致性短事务内的有向亲密度与滚动活跃度。"""
 
         ids = tuple(dict.fromkeys(candidate_ids))
@@ -285,7 +315,14 @@ class StatisticsService:
             raise StorageError(f"群聊统计事务失败：{exc}") from exc
 
 
-def _add_score(db: sqlite3.Connection, scope_id: int, source_id: str, target_id: str, delta: int, now: int) -> None:
+def _add_score(
+    db: sqlite3.Connection,
+    scope_id: int,
+    source_id: str,
+    target_id: str,
+    delta: int,
+    now: int,
+) -> None:
     if delta <= 0:
         return
     db.execute(
@@ -296,12 +333,23 @@ def _add_score(db: sqlite3.Connection, scope_id: int, source_id: str, target_id:
 
 
 def _event_identity(raw: Mapping[str, Any], prefix: str, now: int) -> tuple[str, str]:
-    payload = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    payload = json.dumps(
+        raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
     digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
     event_id = raw.get("message_id") or raw.get("notice_id") or raw.get("id")
     if event_id is None:
         source = json.dumps(
-            [prefix, raw.get("post_type"), raw.get("notice_type"), raw.get("sub_type"), raw.get("user_id"), raw.get("target_id"), now, digest],
+            [
+                prefix,
+                raw.get("post_type"),
+                raw.get("notice_type"),
+                raw.get("sub_type"),
+                raw.get("user_id"),
+                raw.get("target_id"),
+                now,
+                digest,
+            ],
             ensure_ascii=False,
             separators=(",", ":"),
         )

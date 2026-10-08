@@ -30,6 +30,7 @@ from .maintenance import MaintenanceService
 from .message_templates import template_fields
 from .settings import effective_config, validate_config
 from .storage import SQLiteStorage
+from .fonts import available_fonts, font_preview
 
 PLUGIN_NAME = "astrbot_plugin_daily_bonds"
 
@@ -57,6 +58,8 @@ class WebManager:
 
     def register(self) -> None:
         routes = (
+            ("fonts", self.fonts, ["GET"], "List server fonts"),
+            ("fonts/preview", self.preview_font, ["GET"], "Preview image font"),
             ("overview", self.overview, ["GET"], "Today Bonds overview"),
             ("scopes", self.scopes, ["GET"], "Today Bonds scopes"),
             ("config", self.get_config, ["GET"], "Read Today Bonds configuration"),
@@ -308,6 +311,29 @@ class WebManager:
     async def batch_images_commit(self):
         return await self._batch_change("commit")
 
+    async def fonts(self):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        fonts = await asyncio.to_thread(available_fonts)
+        return json_response(
+            {"ok": True, "data": [{"id": f["id"], "name": f["name"]} for f in fonts]}
+        )
+
+    async def preview_font(self):
+        actor, denied = self._authorize()
+        if denied:
+            return denied
+        try:
+            data = await asyncio.to_thread(
+                font_preview, request.args.get("font_id", "bundled")
+            )
+            return json_response({"ok": True, "data": data})
+        except (ValueError, OSError):
+            return self._error(
+                "FONT_UNAVAILABLE", "字体预览失败，请选择其他字体。", 400
+            )
+
     async def batch_images_failure(self):
         return await self._batch_change("record_failure")
 
@@ -343,6 +369,7 @@ class WebManager:
                 args = {
                     "job_id": payload.get("job_id"),
                     "filename": payload.get("filename"),
+                    "relative_path": payload.get("relative_path", ""),
                     "error": payload.get("error"),
                 }
             data = await asyncio.to_thread(
@@ -368,6 +395,7 @@ class WebManager:
             return denied
         temporary = None
         filename = "未命名图片"
+        relative_path = request.args.get("relative_path", "")
         try:
             await asyncio.to_thread(
                 self.batch_images.get, job_id, actor=actor, now=int(time.time())
@@ -388,6 +416,7 @@ class WebManager:
                 job_id,
                 filename,
                 payload,
+                relative_path=relative_path,
                 actor=actor,
                 now=int(time.time()),
             )
@@ -410,6 +439,7 @@ class WebManager:
                     job_id,
                     filename,
                     str(exc),
+                    relative_path=relative_path,
                     actor=actor,
                     now=int(time.time()),
                 )

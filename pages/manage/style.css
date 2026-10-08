@@ -267,3 +267,43 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 
 .image-gallery > .muted { grid-column: 1 / -1; }
 .notification-stack { max-height: min(40vh, 360px); overflow-y: auto; }
+
+/* 配置按任务组织；所有字段仍参与统一草稿保存。 */
+.config-bulk { padding: 12px; background: var(--surface-soft); border-radius: 8px; margin: 12px 0; }
+.config-selection { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+.config-selection input { min-height: auto; width: 16px; }
+.config-inline-quote { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 8px; }
+.config-inline-quote .field { flex-direction: row; align-items: center; justify-content: space-between; }
+.config-advanced-toggle, .config-mode-copy { margin: 12px 0; }
+.config-advanced-toggle summary, .config-mode-copy summary { cursor: pointer; color: var(--primary); padding: 8px 0; }
+.template-variables { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.variable-chip { border: 1px solid var(--border); border-radius: 6px; background: var(--surface-soft); color: var(--primary); cursor: pointer; padding: 4px 7px; font-size: 12px; }
+.font-preview { width: 100%; max-width: 720px; height: auto; border-radius: 8px; margin-top: 12px; }
+.config-field:has([data-config-path^="messages."]) { min-width: 0; }
+.config-field textarea { resize: vertical; }
+.template-editor > summary { display: flex; flex-direction: column; gap: 4px; cursor: pointer; }
+.template-editor > summary .muted { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.template-editor[open] > summary { margin-bottom: 12px; }
+.batch-folder { min-width: 0; border: 1px solid var(--border); border-radius: 8px; margin: 12px 0; padding: 10px; }
+.batch-folder > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.batch-thumbnail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
+.batch-thumbnail-grid > .batch-folder { grid-column: 1 / -1; }
+.batch-thumbnail-grid > .batch-row { display: flex; flex-direction: column; gap: 8px; padding: 12px; min-width: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+.batch-thumbnail-grid .batch-row > img { width: 100%; height: 150px; object-fit: contain; background: var(--surface-soft); }
+.batch-thumbnail-grid .batch-row > strong, .batch-thumbnail-grid .batch-row > span { overflow-wrap: anywhere; }
+.batch-row-details { font-size: 12px; }
+.batch-row-details summary { cursor: pointer; color: var(--primary); }
+.batch-row-details .form-grid { display: flex; flex-direction: column; }
+.batch-row-details .field { min-width: 0; }
+.batch-row-details input, .batch-row-details select { width: 100%; min-width: 0; }
+.batch-row-details .check-field input { width: auto; }
+.batch-row-details .check-list { display: flex; flex-direction: column; }
+#batch-import-result ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; padding-left: 20px; }
+#batch-import-result li { border: 1px solid var(--border); border-radius: 8px; padding: 12px; overflow-wrap: anywhere; }
+@media (max-width: 560px) {
+  .batch-thumbnail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .batch-thumbnail-grid > .batch-row { padding: 8px; }
+  .batch-thumbnail-grid .batch-row > img { height: 110px; }
+  .batch-row-details[open] { grid-column: 1 / -1; }
+  .config-bulk .button { flex: 1 1 130px; }
+}
