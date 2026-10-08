@@ -997,7 +997,7 @@ class CommandRuntime:
             return result
         ranked, title, names, global_directed = result
 
-        def display_name(user_id: str, maximum: int = 12) -> str:
+        def display_name(user_id: str, maximum: int = 5) -> str:
             name = " ".join(names.get(user_id, "群友").split())
             return name if len(name) <= maximum else name[: maximum - 1] + "…"
 
