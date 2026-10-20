@@ -423,6 +423,9 @@ class CommandRuntime:
                     scope_id=scope_id,
                     period_id=str(period["id"]),
                     actor_id=raw_event.sender_id,
+                    group_name=await self.adapter.group_name(scope)
+                    if command.action in {"rank_intimacy", "rank_activity"}
+                    else "",
                     config=config,
                     revision=revision,
                     event_key=event_key,
@@ -953,6 +956,7 @@ class CommandRuntime:
                 "titles",
                 "rank_group_intimacy" if global_directed else "rank_intimacy",
                 name=names.get(values["actor_id"], "群友"),
+                group_name=values.get("group_name", "本群"),
             )
         else:
             rows = self.statistics.activity_rows(
@@ -971,6 +975,7 @@ class CommandRuntime:
                 "titles",
                 "rank_activity",
                 days=config["statistics"]["activity_window_days"],
+                group_name=values.get("group_name", "本群"),
             )
         return ranked, title, names, global_directed
 
@@ -997,7 +1002,7 @@ class CommandRuntime:
             return result
         ranked, title, names, global_directed = result
 
-        def display_name(user_id: str, maximum: int = 5) -> str:
+        def display_name(user_id: str, maximum: int = 12) -> str:
             name = " ".join(names.get(user_id, "群友").split())
             return name if len(name) <= maximum else name[: maximum - 1] + "…"
 
@@ -1046,7 +1051,7 @@ class CommandRuntime:
             lines.append(f"{index}. {subject} · {detail}")
             cards.append(
                 CardRow(
-                    f"{index}. {display_name(target if personal else source)}",
+                    display_name(target if personal else source),
                     detail,
                     avatar_path=avatars.get(target if personal else source),
                     avatar_user_id=target if personal else source,
@@ -1055,15 +1060,31 @@ class CommandRuntime:
                     pair_names=(display_name(source), display_name(target))
                     if global_directed
                     else None,
-                    pair_rank=index if global_directed else 0,
+                    pair_rank=index,
+                    score=score,
+                    badge=f"活跃 {days} 天" if key == "rank_activity" else "",
+                    highlight=(target if personal else source) == values["actor_id"],
                 )
             )
         lines_text = "\n".join(lines) or render_message(config, "titles", "empty")
         fallback = f"{summary}\n{lines_text}"
         text = render_message(
-            config, "results", key, title=heading, count=len(ranked), lines=lines_text
+            config,
+            "results",
+            key,
+            title=heading,
+            count=len(ranked),
+            lines=lines_text,
+            group_name=values.get("group_name", "本群"),
+            days=config["statistics"]["activity_window_days"],
         )
         options = {
+            "ranking": True,
+            "subtitle": f"共 {len(ranked)} 条记录"
+            + (f" · 第 {page}/{pages} 页" if pagination else ""),
+            "range_label": f"统计范围：{config['statistics']['activity_window_days']} 天"
+            if key == "rank_activity"
+            else "统计范围：累计",
             "max_height": config["display"]["rank_max_height"],
             "max_rows": config["display"]["rank_merge_rows"],
             "empty_text": render_message(config, "titles", "empty"),
@@ -1073,14 +1094,8 @@ class CommandRuntime:
                 config,
                 "titles",
                 "rank_intimacy",
-                name=display_name(values["actor_id"], 6),
-            )
-            heading = (
-                render_message(
-                    config, "titles", "page", title=image_title, page=page, pages=pages
-                )
-                if pagination
-                else image_title
+                name=display_name(values["actor_id"]),
+                group_name=values.get("group_name", "本群"),
             )
             options.update(
                 header_avatar_path=avatars.get(values["actor_id"]),
@@ -1088,7 +1103,7 @@ class CommandRuntime:
             )
         return await self._reply_with_card(
             text,
-            heading,
+            image_title if personal else title,
             cards,
             fallback_text=fallback,
             merge_long=True,
@@ -1358,17 +1373,12 @@ class CommandRuntime:
                 fallback=fallback,
             )
         )
-        row_top = (
-            150
-            if options.get("header_user_id") or options.get("header_avatar_path")
-            else 118
-        )
-        limit = min(
-            int(options.get("max_rows", 20)),
-            max(
-                1,
-                (int(options.get("max_height", 2000)) - row_top - 40)
-                // CardRenderer.ROW_HEIGHT,
+        limit = CardRenderer.page_capacity(
+            max_height=int(options.get("max_height", 2000)),
+            max_rows=int(options.get("max_rows", 20)),
+            ranking=bool(options.get("ranking")),
+            has_header_avatar=bool(
+                options.get("header_user_id") or options.get("header_avatar_path")
             ),
         )
         merged = merge_long and (len(rows) > limit or len(images) > 1)

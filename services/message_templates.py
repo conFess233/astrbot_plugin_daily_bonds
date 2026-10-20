@@ -23,6 +23,8 @@ NAME_FIELDS = {
     "subject_name",
 }
 FIELD_DESCRIPTIONS = {
+    "group_name": "当前群名称，读取失败时使用本群",
+    "群名": "当前群名称（与 group_name 相同）",
     "actor_name": "触发指令或执行操作的用户名称",
     "owner_name": "关系原持有者名称（抢夺时为被抢者）",
     "sender_name": "赠送发起者名称",
@@ -92,8 +94,9 @@ EXTRA_FIELDS = {
     "capacity_full": {"name"},
     "capacity_full_single_wife": {"name", "names"},
     "capacity_full_single_husband": {"name", "names"},
-    "rank_intimacy": {"title", "lines", "count"},
-    "rank_activity": {"title", "lines", "count"},
+    "rank_intimacy": {"title", "lines", "count", "group_name", "群名"},
+    "rank_activity": {"title", "lines", "count", "days", "group_name", "群名"},
+    "rank_group_intimacy": {"group_name", "群名"},
     "query_affection": {"name", "target_name", "forward_score", "reverse_score"},
 }
 _REQUIRED = {
@@ -222,11 +225,13 @@ def render_message(
     if not template.strip():
         return MessageText("")
     values = {
+        "group_name": "本群",
         **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},
         **MESSAGE_CONTEXT.get(),
         **values,
         "image": IMAGE_TOKEN,
     }
+    values["群名"] = values["group_name"]
     text = template.format_map(values)
     original = _default_messages()[section][key]
     fallback = original.format_map(values).replace(IMAGE_TOKEN, "").strip()

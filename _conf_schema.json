@@ -1306,8 +1306,8 @@
               "rank_activity": {
                 "type": "text",
                 "description": "活跃度排行标题",
-                "default": "近 {days} 天活跃度排行",
-                "hint": "支持声明的简单变量，最长1000字符。"
+                "default": "{群名}的活跃度排行",
+                "hint": "自由配置，支持 {群名}、{group_name} 和 {days}；统计天数另在标题栏右侧显示，最长1000字符。"
               },
               "query_affection": {
                 "type": "text",

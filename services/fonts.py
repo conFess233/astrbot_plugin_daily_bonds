@@ -65,6 +65,8 @@ def available_fonts() -> list[dict[str, str]]:
         "wqy",
         "wenquanyi",
         "pingfang",
+        "heiti",
+        "songti",
         "ukai",
         "uming",
         "microsoft yahei",

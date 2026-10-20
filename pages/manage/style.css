@@ -302,9 +302,6 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .metric-value { font-size: 25px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .metric small { color: var(--muted); font-size: 12px; }
 .overview-toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
-.inline-feedback { margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--danger); border-radius: 6px; background: var(--danger-soft); color: var(--danger-text); overflow-wrap: anywhere; }
-.inline-feedback.success { border-color: var(--success); background: var(--success-soft); color: var(--success-text); }
-.inline-feedback table { margin-top: 12px; }
 .quick-start { margin: 20px 0; }
 .quick-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 12px; }
 .quick-grid button { display: grid; gap: 7px; padding: 14px; border: 1px solid var(--border); border-radius: 6px; text-align: left; background: var(--surface); color: var(--text); cursor: pointer; transition: border-color 120ms, background-color 120ms; }
@@ -406,7 +403,6 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .data-table th, .data-table td { min-width: 100px; max-width: 300px; padding: 10px; border: 1px solid var(--border); text-align: left; overflow-wrap: anywhere; vertical-align: top; }
 .data-table th { background: var(--surface-soft); }
 .data-table td { white-space: pre-wrap; }
-.inline-feedback { max-width: 100%; overflow-x: auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 @container (max-width: 1015px) { .modes-workspace { grid-template-columns: minmax(0, 1fr); } .mode-help { position: static; } .mode-help > div { display: inline-block; vertical-align: top; width: calc(50% - 6px); margin-right: 6px; } }
 @container (max-width: 991px) { .reply-edit-area { display: block; } .reply-pane-tabs { display: flex; gap: 8px; margin-bottom: 12px; } #reply-preview-panel { display: none; } .reply-edit-area[data-pane="preview"] #reply-editor-panel { display: none; } .reply-edit-area[data-pane="preview"] #reply-preview-panel { display: block; } }
@@ -416,7 +412,6 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 @media (max-width: 560px) { .panel { margin-inline: 12px; } .page-heading { margin: 18px 12px; } .topbar { padding: 12px; } .toolbar-controls { width: 100%; } .toolbar-search { width: 100%; } .scope-toolbar { flex-wrap: wrap; } .scope-toolbar select { width: 100%; } .save-bar { padding: 10px 12px; gap: 8px; } .save-bar .action-end { gap: 6px; } .save-bar .button { flex: 1 1 auto; min-height: 36px; padding: 6px; font-size: 12px; } .shell { padding-bottom: 190px; padding-top: 0; } .quick-grid { grid-template-columns: 1fr; } .metric-grid { grid-template-columns: 1fr; } .mode-help { padding: 12px; } .toolbar-controls .button { width: auto; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }
 
-.shell > .inline-feedback { margin-inline: 28px; }
 
 .mode-switcher, .reply-directory-toggle, .reply-directory-back { display: none; }
 @container (max-width: 675px) {
@@ -476,3 +471,14 @@ html { scroll-padding-top: 88px; scroll-padding-bottom: 124px; }
 .reply-bulk .button { font-size: 12px; min-height: 32px; padding: 6px 8px; }
 .mode-copy .field { max-width: 280px; margin: 12px 0; }
 .variable-button { max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+
+.notification-stack[popover] { inset: 20px 20px auto auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); }
+.notification-stack:not(:popover-open) { display: none; }
+.notification > span { min-width: 0; flex: 1; }
+.notification details { margin-top: 8px; max-height: 240px; overflow: auto; }
+.notification summary { cursor: pointer; }
+.save-bar[hidden] { display: none; }
+#save-bar-toggle { margin-left: auto; min-height: 32px; padding: 4px 10px; }
+body:not(.has-save-bar) .shell { padding-bottom: 32px; }
+body.has-save-bar.save-bar-collapsed .shell { padding-bottom: 86px; }
+.save-bar.collapsed { padding-block: 8px; }

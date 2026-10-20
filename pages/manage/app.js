@@ -126,11 +126,30 @@ function showNotice(message, kind = "success") {
   close.className = "notification-close";
   close.setAttribute("aria-label", "关闭通知");
   close.textContent = "×";
-  close.addEventListener("click", () => item.remove());
+  const dismiss = () => {
+    clearTimeout(timer); item.remove();
+    if (!notice.children.length) notice.hidePopover?.();
+  };
+  close.addEventListener("click", dismiss);
   item.append(body, close);
   notice.prepend(item);
-  if (kind !== "error") window.setTimeout(() => item.remove(), 4000);
+  placeNotice();
+  const timer = window.setTimeout(dismiss, 10000);
+  return item;
 }
+
+function placeNotice() {
+  notice.hidePopover?.();
+  // A modal makes nodes outside it inert, even when a toast uses the top layer.
+  const modal = [...document.querySelectorAll("dialog[open]")].at(-1);
+  (modal || document.body).append(notice);
+  notice.style.top = `${Math.max(20, $(".topbar").getBoundingClientRect().bottom + 12)}px`;
+  if (notice.children.length) notice.showPopover?.();
+}
+
+document.addEventListener("close", (event) => {
+  if (event.target.contains(notice)) placeNotice();
+}, true);
 
 function setBusy(value) {
   state.busy = value;
@@ -155,6 +174,9 @@ function beforeUnload(event) {
 function updateDirtyState() {
   const paths = dirtyPaths();
   const dirty = paths.length > 0;
+  const visible = dirty || !!state.pendingSubmission || state.saveNeedsReload;
+  $("#save-bar").hidden = !visible;
+  document.body.classList.toggle("has-save-bar", visible);
   $("#dirty-indicator").textContent = state.pendingSubmission ? "提交结果待确认，请重试" : state.saveNeedsReload ? "已保存，等待重新读取" : !state.savedConfig ? "尚未读取配置" : dirty ? `${paths.length} 项未保存` : "已保存";
   $("#dirty-indicator").classList.toggle("dirty", dirty || !!state.pendingSubmission);
   $("#save").textContent = state.pendingSubmission ? "重试本次提交" : state.saveNeedsReload ? "重新读取配置" : "保存配置";
@@ -199,11 +221,17 @@ function setScopeLabel() {
 }
 
 function configFeedback(message, kind = "error") {
-  const host = $("#config-feedback");
-  host.hidden = !message;
-  host.className = `inline-feedback ${kind}`;
-  host.textContent = message;
+  if (message) return showNotice(message, kind);
 }
+
+$("#save-bar-toggle").addEventListener("click", () => {
+  const collapsed = $("#save-bar").classList.toggle("collapsed");
+  $("#save-bar-toggle").setAttribute("aria-expanded", String(!collapsed));
+  $("#save-bar-toggle").textContent = collapsed ? "展开" : "收起";
+  $("#save-bar-actions").hidden = collapsed;
+  $("#save-bar-note").hidden = collapsed;
+  document.body.classList.toggle("save-bar-collapsed", collapsed);
+});
 
 function updateConfigSummary() {
   const host = $("#config-summary");
@@ -1002,9 +1030,9 @@ function renderTemplatePreview() {
     for (const part of parts) {
       if (part.variable === "image") {
         const image = document.createElement("div"); image.className = "preview-image"; image.textContent = "图片占位 · 演示素材"; host.append(image);
-      } else host.append(document.createTextNode(part.text ?? ({ name: "示例角色", names: "示例角色", target_name: "示例群友", accept_keyword: "接受赠送", invite_id: "示例邀请" }[part.variable] || `示例${part.variable}`)));
+      } else host.append(document.createTextNode(part.text ?? ({ name: "示例角色", names: "示例角色", target_name: "示例群友", group_name: "示例群", 群名: "示例群", days: "7", accept_keyword: "接受赠送", invite_id: "示例邀请" }[part.variable] || `示例${part.variable}`)));
     }
-  } catch (error) { host.textContent = `无法预览：${error.message}`; }
+  } catch { host.textContent = "请校验并修改模板后查看预览。"; }
 }
 
 function renderAdvancedWorkspace() {
@@ -1080,8 +1108,7 @@ function showConfigError(message) {
   if (!path) return;
   const card = fieldCards.get(path);
   const error = card.querySelector(".config-error");
-  error.textContent = message;
-  error.hidden = false;
+  error.hidden = true;
   revealField(path);
   card.querySelector("[data-config-path]").setAttribute("aria-invalid", "true");
 }
@@ -1089,10 +1116,12 @@ function showConfigError(message) {
 async function describeConfigConflict() {
   const latest = await apiGet("config", state.scopeId === "global" ? {} : { scope_id: state.scopeId });
   const current = state.scopeId === "global" ? latest.data.global : latest.data.effective;
-  configFeedback("配置版本冲突。草稿已保留，请核对差异；放弃配置更改可重新读取服务端值。");
+  const toast = configFeedback("配置版本冲突。草稿已保留，请核对差异；放弃配置更改可重新读取服务端值。");
   const differences = configLeaves(current).filter(([path, value]) => JSON.stringify(value) !== JSON.stringify(configAt(state.savedConfig, path)))
     .map(([path, value]) => ({ 字段: path, 服务端最新值: value, 当前草稿: state.draftValues[path] }));
-  if (differences.length) $("#config-feedback").append(dataTable(differences));
+  if (differences.length) {
+    const details = document.createElement("details"); const summary = document.createElement("summary"); summary.textContent = "查看配置差异"; details.append(summary, dataTable(differences)); toast.querySelector("span").append(details);
+  }
   return "配置版本冲突，当前草稿已保留。";
 }
 
@@ -1102,7 +1131,6 @@ async function loadOverview() {
   const grid = $("#overview-cards");
   if (grid.dataset.scope !== scopeId) { grid.replaceChildren(); $("#overview-tasks").replaceChildren(); $("#period-summary").textContent = ""; $("#overview-updated").textContent = ""; }
   grid.dataset.scope = scopeId;
-  $("#overview-error").hidden = true;
   $("#overview-refresh").disabled = true;
   $("#overview-updated").textContent = "正在读取统计…";
   try {
@@ -1149,9 +1177,8 @@ async function loadOverview() {
     $("#overview-updated").textContent = `本页读取时间 ${refreshed}`;
   } catch (error) {
     if (sequence !== overviewLoadSequence) return;
-    const host = $("#overview-error"); host.hidden = false;
-    host.textContent = `统计读取失败：${error.message || "请重试"}。${grid.children.length ? `下方为本范围上次成功数据（${grid.dataset.refreshed || "时间未知"}），可能已过期。` : "当前没有可显示的数据。"}`;
-    $("#overview-updated").textContent = "读取失败，可重试";
+    showNotice(`统计读取失败：${error.message || "请重试"}。${grid.children.length ? "保留上次成功数据。" : "当前没有可显示的数据。"}`, "error");
+    $("#overview-updated").textContent = grid.children.length ? `上次数据 ${grid.dataset.refreshed || "时间未知"} · 待刷新` : "尚无统计数据";
   } finally { if (sequence === overviewLoadSequence) $("#overview-refresh").disabled = false; }
 }
 
@@ -1337,7 +1364,7 @@ document.addEventListener("click", (event) => {
 function searchConfig() {
   const search = $("#config-search").value.trim(); if (!search) return;
   const path = [...fieldCards.keys()].find((key) => search === `${configLabel(key)} · ${key}` || search === key) || [...fieldCards.keys()].find((key) => `${configLabel(key)} ${key}`.includes(search));
-  if (path) revealField(path); else showNotice("没有找到匹配配置项。");
+  if (path) revealField(path); else showNotice("没有找到匹配配置项。", "error");
 }
 $("#config-search").addEventListener("change", searchConfig);
 $("#config-search").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); searchConfig(); } });
@@ -1408,7 +1435,7 @@ async function checkCatalogSync(force) {
     $("#catalog-sync-items").replaceChildren();
     $("#catalog-sync-controls").hidden = true;
     $("#catalog-sync-commit").disabled = true;
-    $("#catalog-sync-banner").textContent = error.message || "检查失败。";
+    $("#catalog-sync-banner").textContent = "尚无仓库对比数据";
     throw error;
   } finally {
     $("#catalog-sync-check").disabled = false;
@@ -1618,7 +1645,7 @@ function renderCharacterImages() {
       });
     }).catch(() => {
       imagePreviewCache.delete(hash);
-      if (card.isConnected) preview.textContent = "图片读取失败";
+      if (card.isConnected) preview.textContent = "暂无图片预览";
     });
   }
 }
@@ -1814,8 +1841,9 @@ async function runQuery(query, offset = 0) {
     $("#query-next").disabled = !Array.isArray(data.items) || offset + rows.length >= total;
   } catch (error) {
     if (sequence !== queryLoadSequence) return;
-    $("#query-table").textContent = error.message || "查询失败，请重试。";
-    $("#query-result").textContent = error.message || "查询失败。";
+    $("#query-table").textContent = "暂无查询结果。";
+    $("#query-result").textContent = "";
+    $("#query-page").textContent = "";
     showNotice(error.message || "查询失败。", "error");
   }
 }
@@ -1838,7 +1866,7 @@ document.querySelectorAll("button[data-query]").forEach((button) => button.addEv
     else if (kind === "invites") params.state = "pending";
     if (["invites", "history"].includes(kind) && userId) throw new Error("此查询接口不支持用户过滤，请清空用户 ID 后按群查询。");
     await runQuery({ endpoint, params, kind, name: button.textContent });
-  } catch (error) { $("#query-table").textContent = error.message; showNotice(error.message, "error"); }
+  } catch (error) { showNotice(error.message, "error"); }
 }));
 $("#query-prev").addEventListener("click", () => { if (currentQuery) runQuery(currentQuery, Math.max(0, queryOffset - 50)); });
 $("#query-next").addEventListener("click", () => { if (currentQuery) runQuery(currentQuery, queryOffset + 50); });
@@ -1883,7 +1911,6 @@ $("#correction-preview").addEventListener("click", async () => {
     showNotice("纠错预览已生成。", "success");
   } catch (error) {
     state.correctionPlan = null;
-    $("#correction-result").textContent = error.message || "纠错预检失败。";
     $("#correction-commit").disabled = true;
     showNotice(error.message || "纠错预检失败。", "error");
   }
@@ -1901,7 +1928,6 @@ $("#correction-commit").addEventListener("click", async () => {
     state.correctionPlan = null;
     showNotice("纠错已提交。", "success");
   } catch (error) {
-    $("#correction-result").textContent = error.message || "纠错提交失败，请重新预检。";
     state.correctionPlan = null;
     showNotice(error.message || "纠错提交失败，请重新预检。", "error");
   }
@@ -2031,7 +2057,7 @@ $("#import-preview").addEventListener("click", async () => {
     $("#import-commit").disabled = data.characters_valid === 0 && data.pools_invalid === data.pools_total;
     showNotice("导入预检已完成。逐项选择冲突策略后可以提交。", "success");
   } catch (error) {
-    $("#import-report").textContent = error.message || "导入预检失败。";
+    $("#import-report").textContent = "尚无导入预检数据。";
     showNotice(error.message || "导入预检失败。", "error");
   } finally {
     button.disabled = false;
@@ -2048,7 +2074,6 @@ $("#import-commit").addEventListener("click", async () => {
   const strategy = $("#import-image-strategy").value;
   if (!await confirmAction(`提交角色包 ${plan.pack_id} ${plan.pack_version}。同 ID 未选择的条目将跳过；图片策略：${strategy}。继续吗？`)) return;
   $("#import-commit").disabled = true;
-  $("#import-report").prepend(Object.assign(document.createElement("p"), { textContent: "正在提交有效条目…", className: "muted" }));
   try {
     const result = await apiPost("imports/commit", {
       job_id: plan.job_id, conflicts, image_strategy: strategy, request_id: crypto.randomUUID(),
@@ -2059,7 +2084,6 @@ $("#import-commit").addEventListener("click", async () => {
     await loadCatalog();
     showNotice(`导入完成：新建 ${data.created}，更新 ${data.updated}，跳过 ${data.skipped}，冲突 ${data.conflicts}`, "success");
   } catch (error) {
-    $("#import-report").textContent = error.message || "导入提交失败；可通过作业状态检查结果。";
     showNotice(error.message || "导入提交失败。", "error");
   } finally {
     $("#import-commit").disabled = !state.importPlan;
@@ -2129,7 +2153,6 @@ $("#export-create").addEventListener("click", async () => {
     renderMaintenanceJob(response.data || response, "角色包已生成");
     showNotice("角色包已经过哈希校验并准备下载。", "success");
   } catch (error) {
-    $("#maintenance-report").textContent = error.message || "角色包导出失败。";
     showNotice(error.message || "角色包导出失败。", "error");
   } finally {
     button.disabled = false;
@@ -2144,7 +2167,6 @@ $("#backup-create").addEventListener("click", async () => {
     renderMaintenanceJob(response.data || response, "完整备份已生成");
     showNotice("数据库快照和素材已打包，可下载保存。", "success");
   } catch (error) {
-    $("#maintenance-report").textContent = error.message || "完整备份失败。";
     showNotice(error.message || "完整备份失败。", "error");
   } finally {
     button.disabled = false;
@@ -2172,7 +2194,7 @@ $("#restore-preview").addEventListener("click", async () => {
     host.append(title, details);
     $("#restore-commit").disabled = false;
   } catch (error) {
-    $("#maintenance-report").textContent = error.message || "备份预检失败。";
+    $("#maintenance-report").textContent = "尚无恢复预检数据。";
     showNotice(error.message || "备份预检失败。", "error");
   } finally {
     button.disabled = false;
@@ -2211,7 +2233,6 @@ $("#restore-commit").addEventListener("click", async () => {
     await refreshAll();
     showNotice("备份恢复完成。", "success");
   } catch (error) {
-    $("#maintenance-report").textContent = error.message || "恢复失败；旧数据仍应保留，可查看自动备份。";
     showNotice(error.message || "恢复失败。", "error");
   } finally {
     button.disabled = !state.restorePlan;
@@ -2224,7 +2245,7 @@ initBatchImages({ apiGet, apiPost, apiUpload, showNotice,
   onImported: () => loadCatalog(),
   onDefaultsSaved: async () => {
     if (!state.busy && !state.pendingSubmission && !state.saveNeedsReload && !isConfigDirty()) await loadConfig();
-    else { configFeedback("全局默认值已独立保存，配置版本已变化。当前配置草稿或提交状态保留，请先核对保存状态与版本冲突。"); showNotice("默认设置已保存，现有配置草稿保留。"); }
+    else { showNotice("全局默认值已独立保存，配置版本已变化；当前草稿或提交状态保留，请核对保存状态与版本。", "success"); }
   },
 });
 
@@ -2234,6 +2255,6 @@ bridge.onContext(() => {
 });
 await refreshAll();
 checkCatalogSync(false).catch((error) => {
-  $("#catalog-sync-banner").textContent = error.message || "仓库更新检查失败，可稍后手动重查。";
+  $("#catalog-sync-banner").textContent = "尚无仓库对比数据";
   showNotice(error.message || "仓库更新检查失败，可稍后手动重查。", "error");
 });

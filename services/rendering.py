@@ -30,6 +30,9 @@ class CardRow:
     source_label_parts: tuple[str, str, str] | None = None
     source_avatar_path: Path | None = None
     source_user_id: str = ""
+    score: int | None = None
+    badge: str = ""
+    highlight: bool = False
 
 
 class CardRenderer:
@@ -64,6 +67,9 @@ class CardRenderer:
         max_height: int = 2000,
         max_rows: int = ROWS_PER_CARD,
         empty_text: str = "暂无记录。",
+        ranking: bool = False,
+        subtitle: str = "",
+        range_label: str = "",
     ) -> tuple[Path, ...]:
         """Return ordered card files, or an empty tuple if no local font is available."""
 
@@ -71,10 +77,12 @@ class CardRenderer:
         if font_path is None:
             return ()
         has_header_avatar = bool(header_avatar_path or header_user_id or header_name)
-        row_top = 150 if has_header_avatar else 118
-        if max_rows < 1 or max_height < row_top + self.ROW_HEIGHT + 40:
-            raise ValueError("卡片高度必须能够容纳标题和至少一行内容，行数必须为正数。")
-        rows_per_card = min(max_rows, (max_height - row_top - 40) // self.ROW_HEIGHT)
+        rows_per_card = self.page_capacity(
+            max_height=max_height,
+            max_rows=max_rows,
+            ranking=ranking,
+            has_header_avatar=has_header_avatar,
+        )
         self.output_dir.mkdir(parents=True, exist_ok=True)
         chunks = [
             rows[i : i + rows_per_card] for i in range(0, len(rows), rows_per_card)
@@ -87,6 +95,21 @@ class CardRenderer:
                 page_label = f"{page_index}/{len(chunks)}" if len(chunks) > 1 else ""
                 card_title = f"{title}  {page_label}".strip()
                 output = self.output_dir / f"{digest}-{page_index}.png"
+                if ranking:
+                    self._render_ranking(
+                        output,
+                        title,
+                        chunk,
+                        font_path,
+                        subtitle + (f" · 分图 {page_label}" if page_label else ""),
+                        range_label,
+                        header_avatar_path,
+                        header_user_id,
+                        empty_text,
+                        max_height,
+                    )
+                    paths.append(output)
+                    continue
                 self._render_one(
                     output,
                     card_title,
@@ -104,6 +127,190 @@ class CardRenderer:
                     path.unlink(missing_ok=True)
             raise
         return tuple(paths)
+
+    @classmethod
+    def page_capacity(
+        cls,
+        *,
+        max_height: int,
+        max_rows: int,
+        ranking: bool = False,
+        has_header_avatar: bool = False,
+    ) -> int:
+        overhead = 190 if ranking else (150 if has_header_avatar else 118) + 40
+        row_height = 46 if ranking else cls.ROW_HEIGHT
+        count = (max_height - overhead) // row_height
+        if max_rows < 1 or count < 1:
+            raise ValueError("卡片高度必须能够容纳标题和至少一行内容，行数必须为正数。")
+        return min(max_rows, min(10, count) * 3 if ranking else count)
+
+    def _render_ranking(
+        self,
+        output: Path,
+        title: str,
+        rows: Sequence[CardRow],
+        font_path: str,
+        subtitle: str,
+        range_label: str,
+        header_avatar_path: Path | None,
+        header_user_id: str,
+        empty_text: str,
+        max_height: int,
+    ) -> None:
+        row_count = min(10, max(1, len(rows)), (max_height - 190) // 46)
+        columns = max(1, (len(rows) + row_count - 1) // row_count)
+        width, height = columns * 310 + 80, row_count * 46 + 190
+        image = Image.new("RGB", (width, height), "#eaf5fc")
+        draw = ImageDraw.Draw(image)
+        draw.rounded_rectangle(
+            (28, 36, width - 28, height - 20), radius=24, fill="#dfeef6"
+        )
+        draw.rounded_rectangle(
+            (28, 28, width - 28, height - 28), radius=24, fill="white"
+        )
+        small = width < 700
+        title_font = ImageFont.truetype(font_path, 20 if small else 30)
+        name_font = ImageFont.truetype(font_path, 14)
+        meta_font = ImageFont.truetype(font_path, 12)
+        score_font = ImageFont.truetype(font_path, 13)
+        size = 42 if small else 62
+        if header_avatar_path or header_user_id:
+            _draw_avatar(
+                image,
+                header_avatar_path,
+                (58, 52, 58 + size, 52 + size),
+                header_user_id or "?",
+                meta_font,
+            )
+        else:
+            draw.rounded_rectangle(
+                (58, 52, 58 + size, 52 + size), radius=18, fill="#4aa5ca"
+            )
+            draw.text(
+                (58 + size / 2, 52 + size / 2),
+                "♥",
+                font=ImageFont.truetype(font_path, 28 if small else 40),
+                anchor="mm",
+                fill="white",
+            )
+        left = 58 + size + (10 if small else 18)
+        draw.text(
+            (left, 50),
+            _fit_text(draw, title, title_font, width - left - 58),
+            font=title_font,
+            fill="#235f7b",
+        )
+        draw.text(
+            (left, 83 if small else 94),
+            _fit_text(draw, subtitle, meta_font, width - left - 58),
+            font=meta_font,
+            fill="#8b9dac",
+        )
+        draw.text(
+            (width - 58, 117),
+            _fit_text(draw, range_label, meta_font, width - 116),
+            font=meta_font,
+            anchor="ra",
+            fill="#738898",
+        )
+        if not rows:
+            draw.text(
+                (58, 156),
+                _fit_text(draw, empty_text, name_font, width - 116),
+                font=name_font,
+                fill="#738898",
+            )
+        for index, row in enumerate(rows):
+            column, offset = divmod(index, row_count)
+            left, top = 48 + column * 310, 142 + offset * 46
+            if column and offset == 0:
+                draw.line((left - 8, 142, left - 8, height - 46), fill="#edf3f6")
+            if row.highlight:
+                draw.rounded_rectangle(
+                    (left, top, left + 294, top + 42),
+                    radius=9,
+                    fill="#eaf6fd",
+                    outline="#9bd1eb",
+                )
+            draw.text(
+                (left + 6, top + 21),
+                str(row.pair_rank),
+                font=score_font,
+                anchor="lm",
+                fill="#92a4b3",
+            )
+            _draw_avatar(
+                image,
+                row.avatar_path,
+                (left + 36, top + 6, left + 66, top + 36),
+                row.avatar_user_id,
+                meta_font,
+            )
+            name_left = left + 73
+            score_right = left + 288
+            score = str(row.score) if row.score is not None else row.secondary
+            score_width = max(48, int(draw.textlength(score, font=score_font)))
+            draw.text(
+                (score_right, top + 21),
+                score,
+                font=score_font,
+                anchor="rm",
+                fill="#738898",
+            )
+            name_right = score_right - score_width - 7
+            if row.badge:
+                badge = _fit_text(draw, row.badge, meta_font, 76)
+                badge_width = int(draw.textlength(badge, font=meta_font)) + 14
+                draw.rounded_rectangle(
+                    (name_right - badge_width, top + 8, name_right, top + 34),
+                    radius=10,
+                    fill="#eaf5fc",
+                )
+                draw.text(
+                    (name_right - badge_width + 7, top + 21),
+                    badge,
+                    font=meta_font,
+                    anchor="lm",
+                    fill="#388fbe",
+                )
+                name_right -= badge_width + 7
+            if row.pair_names is not None:
+                _draw_avatar(
+                    image,
+                    row.other_avatar_path,
+                    (name_left, top + 6, name_left + 30, top + 36),
+                    row.other_avatar_user_id,
+                    meta_font,
+                )
+                name_left += 37
+                draw.text(
+                    (name_left, top + 5),
+                    _fit_text(
+                        draw, row.pair_names[0], name_font, name_right - name_left
+                    ),
+                    font=name_font,
+                    fill="#273c4c",
+                )
+                draw.text(
+                    (name_left, top + 23),
+                    _fit_text(
+                        draw,
+                        "→ " + row.pair_names[1],
+                        meta_font,
+                        name_right - name_left,
+                    ),
+                    font=meta_font,
+                    fill="#738898",
+                )
+            else:
+                draw.text(
+                    (name_left, top + 21),
+                    _fit_text(draw, row.primary, name_font, name_right - name_left),
+                    font=name_font,
+                    anchor="lm",
+                    fill="#273c4c",
+                )
+        image.save(output, format="PNG", optimize=True)
 
     def _render_one(
         self,

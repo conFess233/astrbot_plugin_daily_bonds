@@ -16,7 +16,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
   const pending = (row) => row.status === "pending";
   const ready = (row) => pending(row) && !row.upload_error && !row.excluded && (!row.needs_manual || row.manual_approved) && !row.errors?.length;
   const manual = (row) => pending(row) && (row.needs_manual && !row.manual_approved || row.errors?.length);
-  const error = (message) => { $("batch-error").textContent = message; $("batch-error").hidden = !message; };
+  const error = (message) => { if (message) showNotice(message, "error"); };
   async function task(work) {
     if (busy) return;
     busy = true; $("batch-images-controls").disabled = true; $("batch-images-close").disabled = true;
@@ -350,8 +350,9 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
       status.textContent = value.total > value.items.length ? `显示前 ${value.items.length} 个，共 ${value.total} 个；请输入搜索词缩小范围。` : `找到 ${value.items.length} 个角色。`;
     } catch (failure) {
       if (sequence !== searchSequence) return;
-      select.replaceChildren(new Option("角色加载失败，请重新搜索", ""));
-      status.textContent = failure.message || "角色搜索失败。";
+      select.replaceChildren(new Option("请选择已有角色", ""));
+      status.textContent = "";
+      showNotice(failure.message || "角色搜索失败。", "error");
     } finally { if (sequence === searchSequence) select.disabled = false; }
   }
   $("batch-character-search").addEventListener("input", (event) => {

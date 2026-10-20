@@ -32,9 +32,7 @@
         </div>
       </header>
       <div class="page-heading"><h1 id="page-title">今日姻缘 · 插件概览</h1><p id="page-description" class="muted">查看实际数据状态与常用操作。</p></div>
-      <div id="notice" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
-
-      <div id="config-feedback" class="inline-feedback" role="alert" hidden></div>
+      <div id="notice" class="notification-stack" popover="manual" aria-live="polite" aria-atomic="false"></div>
 
       <section id="overview-panel" class="panel" role="tabpanel" aria-labelledby="tab-overview">
         <div class="section-heading">
@@ -44,7 +42,6 @@
           </div>
         </div>
         <div class="overview-toolbar"><label class="scope-toolbar"><span>统计范围</span><select id="overview-scope"><option value="">全部作用域</option></select></label><button id="overview-refresh" class="button secondary" type="button">刷新统计</button><span id="overview-updated" class="muted" role="status"></span></div>
-        <div id="overview-error" class="inline-feedback" role="alert" hidden></div>
         <div id="overview-cards" class="metric-grid" aria-live="polite"></div>
         <p id="period-summary" class="muted period-summary"></p>
         <section class="card quick-start"><h3>常用操作</h3><div class="quick-grid">
@@ -225,10 +222,11 @@
           <p id="editor-help" class="hint">修改先进入共享草稿，保存后生效；群字段编辑即创建覆盖，恢复继承仅删除该字段覆盖。</p>
         </fieldset>
       </section>
-      <div id="save-bar" class="save-bar">
+      <div id="save-bar" class="save-bar" hidden>
         <div><span id="dirty-indicator" class="status-pill" role="status">正在读取配置</span><small id="save-scope" class="muted">当前范围：全局配置</small></div>
-        <div class="action-end"><button id="discard" class="button secondary" type="button" disabled>放弃配置更改</button><button id="preview" class="button secondary" type="button">校验草稿</button><button id="save" class="button primary" type="button">保存配置</button></div>
-        <small class="save-note">仅保存配置；角色、角色池和图片使用各自提交。</small>
+        <button id="save-bar-toggle" class="button secondary" type="button" aria-expanded="true" aria-controls="save-bar-actions save-bar-note">收起</button>
+        <div id="save-bar-actions" class="action-end"><button id="discard" class="button secondary" type="button" disabled>放弃配置更改</button><button id="preview" class="button secondary" type="button">校验草稿</button><button id="save" class="button primary" type="button">保存配置</button></div>
+        <small id="save-bar-note" class="save-note">仅保存配置；角色、角色池和图片使用各自提交。</small>
       </div>
     </main>
     <dialog id="draft-dialog" class="confirm-dialog" aria-labelledby="draft-dialog-title"><h3 id="draft-dialog-title">当前配置尚未保存</h3><p>先处理当前草稿，再切换范围或刷新配置。</p><div class="actions"><button id="draft-cancel" class="button secondary" type="button">取消</button><button id="draft-discard" class="button secondary" type="button">放弃并继续</button><button id="draft-save" class="button primary" type="button">保存并继续</button></div></dialog>
@@ -280,7 +278,6 @@
       </fieldset>
       <progress id="batch-upload-progress" max="1" value="0" aria-label="批量图片上传进度" hidden></progress>
       <p id="batch-status" class="hint" role="status" aria-live="polite"></p>
-      <div id="batch-error" class="batch-error" role="alert" hidden></div>
       <section id="batch-import-result" class="card" hidden><h3>本次导入结果</h3><ul id="batch-success-list"></ul><ul id="batch-failure-list"></ul><button id="batch-result-confirm" class="button primary" type="button">确认结果，进入待人工处理</button></section>
     </dialog>
     <dialog id="action-confirm-dialog" class="confirm-dialog" aria-labelledby="action-confirm-title">

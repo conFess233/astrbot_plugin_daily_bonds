@@ -277,7 +277,7 @@
       "existing": "已有关系",
       "rank_intimacy": "{name}与群友的亲密度排行",
       "rank_group_intimacy": "全群有向亲密度排行",
-      "rank_activity": "近 {days} 天活跃度排行",
+      "rank_activity": "{群名}的活跃度排行",
       "query_affection": "{name}与{target_name}的好感度",
       "page": "{title} 第 {page}/{pages} 页",
       "empty": "暂无记录。",

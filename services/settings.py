@@ -18,6 +18,7 @@ _DEFAULTS_PATH = (
     Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
 )
 LEGACY_MESSAGES = {
+    "titles.rank_activity": "近 {days} 天活跃度排行",
     "titles.normal_slot": "普通",
     "titles.steal_slot": "抢夺",
     "draw_wife": "娶到老婆：{name}{image}",

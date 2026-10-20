@@ -8,6 +8,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from astrbot.api import logger
+
 from ..models import Scope, StorageError
 from ..services.storage import SQLiteStorage
 
@@ -75,6 +77,15 @@ class OneBotAdapter:
         except (TypeError, ValueError):
             observed_at = int(now if now is not None else time.time())
         return RawGroupEvent(raw, post_type, message_type, sender_id, group_id, message_id, segments, observed_at)
+
+    async def group_name(self, scope: Scope) -> str:
+        try:
+            platform = self.context.get_platform_inst(scope.platform_id)
+            info = await platform.get_client().get_group_info(group_id=scope.group_id)
+            return str(info.get("group_name") or "本群").strip() or "本群"
+        except Exception:
+            logger.warning("今日姻缘：读取群名失败，排行榜使用“本群”。", exc_info=True)
+            return "本群"
 
     async def group_members(
         self,
