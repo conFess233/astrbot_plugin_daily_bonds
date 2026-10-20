@@ -9,36 +9,56 @@
   </head>
   <body>
     <div id="loading-progress" class="loading-progress" role="progressbar" aria-label="正在加载管理数据" hidden><span></span></div>
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span><div><strong>今日姻缘</strong><small>ASTRBOT PLUGIN</small></div></div>
+      <p class="nav-label">插件管理</p>
+      <nav class="tabs" role="tablist" aria-orientation="vertical" aria-label="管理页面">
+        <button class="tab active" type="button" data-tab="overview" id="tab-overview" role="tab" aria-controls="overview-panel" aria-selected="true" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"/></svg><span>概览</span></button>
+        <button class="tab" type="button" data-tab="settings" id="tab-settings" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"/></svg><span>玩法设置</span></button>
+        <button class="tab" type="button" data-tab="catalog" id="tab-catalog" role="tab" aria-controls="catalog-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-3a7 7 0 0 1 14 0v3 M17 4a4 4 0 0 1 0 8 M19 15a5 5 0 0 1 3 5"/></svg><span>角色与角色池</span></button>
+        <button class="tab" type="button" data-tab="replies" id="tab-replies" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v13H9l-6 4z M7 8h10 M7 12h7"/></svg><span>消息与回复词</span></button>
+        <button class="tab" type="button" data-tab="data" id="tab-data" role="tab" aria-controls="data-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V9h4v11 M10 20V4h4v16 M16 20V12h4v8"/></svg><span>数据查询</span></button>
+        <button class="tab" type="button" data-tab="advanced" id="tab-advanced" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3 M12 18v3 M3 12h3 M18 12h3 M6 6l2 2 M16 16l2 2 M6 18l2-2 M16 8l2-2 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0"/></svg><span>高级设置</span></button>
+      </nav>
+      <p class="sidebar-foot">今日姻缘 · 插件管理</p>
+    </aside>
     <main class="shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">ASTRBOT PLUGIN</p>
-          <h1 id="page-title">今日姻缘 · 管理</h1>
-          <p class="muted">配置、查看运行概况与管理作用域</p>
+        <p class="breadcrumb">插件管理 <span>/</span> 今日姻缘 <span>/</span> <strong id="breadcrumb-page">概览</strong></p>
+        <div class="toolbar-controls">
+          <label class="toolbar-search"><span class="sr-only">搜索配置项</span><input id="config-search" type="search" placeholder="搜索配置项" list="config-search-options" /><datalist id="config-search-options"></datalist></label>
+          <label class="scope-toolbar"><span>配置范围</span><select id="scope-select"><option value="global">全局配置</option></select></label>
+          <button id="refresh" class="button secondary" type="button">刷新数据</button>
         </div>
-        <button id="refresh" class="button secondary" type="button">刷新数据</button>
       </header>
-
-      <nav class="tabs" role="tablist" aria-label="管理页面">
-        <button class="tab active" type="button" data-tab="overview" id="tab-overview" role="tab" aria-controls="overview-panel" aria-selected="true" tabindex="0">运行概况</button>
-        <button class="tab" type="button" data-tab="settings" id="tab-settings" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1">配置管理</button>
-        <button class="tab" type="button" data-tab="catalog" id="tab-catalog" role="tab" aria-controls="catalog-panel" aria-selected="false" tabindex="-1">角色目录</button>
-        <button class="tab" type="button" data-tab="data" id="tab-data" role="tab" aria-controls="data-panel" aria-selected="false" tabindex="-1">数据查询</button>
-      </nav>
+      <div class="page-heading"><h1 id="page-title">今日姻缘 · 插件概览</h1><p id="page-description" class="muted">查看实际数据状态与常用操作。</p></div>
       <div id="notice" class="notification-stack" aria-live="polite" aria-atomic="false"></div>
+
+      <div id="config-feedback" class="inline-feedback" role="alert" hidden></div>
 
       <section id="overview-panel" class="panel" role="tabpanel" aria-labelledby="tab-overview">
         <div class="section-heading">
           <div>
-            <h2>运行概况</h2>
-            <p class="muted">汇总当前插件实例的数据，不包含其他插件。</p>
+            <h2>数据状态</h2>
+            <p class="muted">按统计范围查看；角色资产与维护任务始终为全局口径。</p>
           </div>
         </div>
+        <div class="overview-toolbar"><label class="scope-toolbar"><span>统计范围</span><select id="overview-scope"><option value="">全部作用域</option></select></label><button id="overview-refresh" class="button secondary" type="button">刷新统计</button><span id="overview-updated" class="muted" role="status"></span></div>
+        <div id="overview-error" class="inline-feedback" role="alert" hidden></div>
         <div id="overview-cards" class="metric-grid" aria-live="polite"></div>
         <p id="period-summary" class="muted period-summary"></p>
+        <section class="card quick-start"><h3>常用操作</h3><div class="quick-grid">
+          <button type="button" data-open="settings"><strong>玩法设置 →</strong><span>调整三种玩法的开关与数值</span></button>
+          <button type="button" data-open="catalog"><strong>角色与角色池 →</strong><span>编辑角色、图片和角色池</span></button>
+          <button type="button" data-open="replies"><strong>消息与回复词 →</strong><span>编辑文案、变量和引用</span></button>
+          <button type="button" data-open="data"><strong>数据查询 →</strong><span>关系、配额、邀请与统计</span></button>
+          <button type="button" data-open="settings" data-scope-focus="true"><strong>群级覆盖 →</strong><span>选择群后编辑独立规则</span></button>
+          <button type="button" data-open="catalog" data-import-focus="true"><strong>导入与备份 →</strong><span>保留预检和恢复保护流程</span></button>
+        </div></section>
+        <div class="overview-bottom"><section class="card"><h3>当前配置摘要</h3><p class="muted">对应顶部配置范围；未保存内容标为草稿。</p><div id="config-summary"></div></section><section class="card"><h3>待处理事项</h3><div id="overview-tasks"></div></section></div>
         <section class="card scope-card">
           <h3>已记录的机器人与群</h3>
-          <div id="scope-list" class="scope-list" aria-live="polite"></div>
+          <label class="field"><span>搜索已记录群或机器人</span><input id="scope-search" type="search" /></label><div id="scope-list" class="scope-list" aria-live="polite"></div>
         </section>
       </section>
 
@@ -110,7 +130,7 @@
             <label class="field"><span>名称</span><input id="pool-name" maxlength="120" /></label>
             <label class="field"><span>抽取类型</span><select id="pool-mode"><option value="wife">女角色</option><option value="husband">男角色</option></select></label>
           </div>
-          <p id="pool-revision" class="hint">新建的角色池默认不启用；需在配置管理中选择。</p>
+          <p id="pool-revision" class="hint">新建角色池后，需在玩法设置的“角色池与候选”中选择。</p>
           <div class="actions"><button id="delete-pool" class="button danger" type="button" disabled>软删除角色池</button><button id="save-pool" class="button primary" type="button">保存角色池</button></div>
         </div>
         <div class="editor-card import-card">
@@ -153,7 +173,7 @@
           <div class="form-grid">
             <label class="field"><span>作用域</span><select id="data-scope"></select></label>
             <label class="field"><span>用户 ID（可选）</span><input id="data-user" inputmode="numeric" /></label>
-            <label class="field"><span>玩法</span><select id="data-mode"><option value="wife">女角色</option><option value="husband">男角色</option><option value="member">群友</option></select></label>
+            <label class="field"><span>玩法</span><select id="data-mode"><option value="wife">今日老婆</option><option value="husband">今日老公</option><option value="member">娶群友</option></select></label>
             <label class="field"><span>活跃度窗口（天）</span><input id="data-window" type="number" min="1" max="365" value="7" /></label>
           </div>
           <div class="query-actions">
@@ -164,7 +184,9 @@
             <button class="button secondary" data-query="invites" type="button">赠送邀请</button>
             <button class="button secondary" data-query="history" type="button">操作历史</button>
           </div>
-          <pre id="query-result" class="query-result" aria-live="polite">选择作用域后点击查询。</pre>
+          <div id="query-table" class="query-table" aria-live="polite">选择作用域后点击查询。</div>
+          <div class="list-pagination"><button id="query-prev" class="button secondary" type="button" disabled>上一页</button><span id="query-page" class="muted"></span><button id="query-next" class="button secondary" type="button" disabled>下一页</button></div>
+          <details><summary>查看原始 JSON</summary><pre id="query-result" class="query-result"></pre></details>
         </div>
         <div class="editor-card correction-card">
           <h3>管理员纠错（预检后提交）</h3>
@@ -179,7 +201,7 @@
           <label class="field"><span>目标参数（JSON）</span><textarea id="correction-spec" spellcheck="false"></textarea></label>
           <div class="actions correction-actions">
             <button id="correction-preview" class="button secondary" type="button">预览差异</button>
-            <button id="correction-commit" class="button primary" type="button" disabled>确认提交</button>
+            <button id="correction-commit" class="button danger" type="button" disabled>确认提交</button>
           </div>
           <pre id="correction-result" class="query-result" aria-live="polite">修改前会检查目标、理由及配置版本。</pre>
         </div>
@@ -196,62 +218,20 @@
       </section>
 
       <section id="settings-panel" class="panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
-        <div class="section-heading">
-          <div>
-            <h2>配置管理</h2>
-            <p class="muted">先选择全局配置或具体群。群配置按全局值生成稀疏覆盖。</p>
-          </div>
-        </div>
-        <label class="field scope-field" for="scope-select">
-          <span>编辑范围</span>
-          <select id="scope-select">
-            <option value="global">全局</option>
-          </select>
-        </label>
-        <div class="editor-card">
-          <div class="editor-meta">
-            <div>
-              <h3 id="editor-title">全局配置</h3>
-              <p id="revision" class="muted">正在读取版本…</p>
-            </div>
-            <span id="dirty-indicator" class="status-pill">已保存</span>
-          </div>
-          <fieldset id="config-controls" class="control-group">
-          <label class="field"><span>搜索设置、配置键或文案</span><input id="config-search" type="search" placeholder="例如：抢夺、引用、字体" /></label>
-          <div id="config-tabs" class="config-tabs" role="tablist" aria-label="配置主题"></div>
-          <div id="config-search-results" class="config-search-results" aria-label="设置搜索结果" hidden></div>
-          <div id="config-section-tabs" class="config-tabs config-section-tabs" role="tablist" aria-label="功能分区"></div>
-          <div id="config-reply-bulk" hidden>
-            <div class="config-bulk actions" aria-label="回复词批量操作">
-              <button id="config-select-all" type="button" class="button secondary">全选当前分区</button>
-              <button id="config-select-every-reply" type="button" class="button secondary">全选所有回复</button>
-              <button id="config-select-none" type="button" class="button secondary">清空选择</button>
-              <button id="config-enable" type="button" class="button secondary">开启回复</button>
-              <button id="config-disable" type="button" class="button secondary">关闭回复</button>
-              <button id="config-quote-enable" type="button" class="button secondary">开启引用</button>
-              <button id="config-quote-disable" type="button" class="button secondary">关闭引用</button>
-              <button id="config-inherit" type="button" class="button secondary">选中回复恢复继承</button>
-            </div>
-            <p id="config-selected-count" class="hint" role="status"></p>
-          </div>
-          <details id="config-mode-copy" class="config-mode-copy" hidden><summary>同步当前玩法本次修改的参数</summary>
-            <p id="config-copy-source" class="hint"></p>
-            <div class="actions"><label class="check-field"><input type="checkbox" data-copy-mode="wife" />老婆</label><label class="check-field"><input type="checkbox" data-copy-mode="husband" />老公</label><label class="check-field"><input type="checkbox" data-copy-mode="member" />群友</label><button id="config-copy-modes" type="button" class="button secondary">同步参数改动</button></div>
-            <p class="hint">未修改的参数保持原值，专属字段仅同步到支持的玩法。</p>
-          </details>
+        <div class="editor-meta"><div><h2 id="editor-title">全局配置</h2><p id="revision" class="muted">正在读取版本…</p></div><span id="mode-summary" class="muted"></span></div>
+        <fieldset id="config-controls" class="control-group">
+          <div id="config-tabs" class="config-tabs" role="tablist" aria-label="高级配置主题"></div>
           <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
-          <p id="editor-help" class="hint">四页共用一份草稿，切换保留修改；群配置直接编辑会建立本群覆盖，每项可恢复继承。保存前由服务端统一校验。</p>
-          </fieldset>
-          <div class="actions">
-            <button id="discard" class="button secondary" type="button" disabled>放弃草稿</button>
-            <div class="action-end">
-              <button id="preview" class="button secondary" type="button">校验草稿</button>
-              <button id="save" class="button primary" type="button">保存配置</button>
-            </div>
-          </div>
-        </div>
+          <p id="editor-help" class="hint">修改先进入共享草稿，保存后生效；群字段编辑即创建覆盖，恢复继承仅删除该字段覆盖。</p>
+        </fieldset>
       </section>
+      <div id="save-bar" class="save-bar">
+        <div><span id="dirty-indicator" class="status-pill" role="status">正在读取配置</span><small id="save-scope" class="muted">当前范围：全局配置</small></div>
+        <div class="action-end"><button id="discard" class="button secondary" type="button" disabled>放弃配置更改</button><button id="preview" class="button secondary" type="button">校验草稿</button><button id="save" class="button primary" type="button">保存配置</button></div>
+        <small class="save-note">仅保存配置；角色、角色池和图片使用各自提交。</small>
+      </div>
     </main>
+    <dialog id="draft-dialog" class="confirm-dialog" aria-labelledby="draft-dialog-title"><h3 id="draft-dialog-title">当前配置尚未保存</h3><p>先处理当前草稿，再切换范围或刷新配置。</p><div class="actions"><button id="draft-cancel" class="button secondary" type="button">取消</button><button id="draft-discard" class="button secondary" type="button">放弃并继续</button><button id="draft-save" class="button primary" type="button">保存并继续</button></div></dialog>
     <dialog id="image-preview" class="image-preview" aria-label="角色图预览">
       <button id="image-preview-close" class="button secondary" type="button">关闭预览</button>
       <img id="image-preview-content" alt="" />
