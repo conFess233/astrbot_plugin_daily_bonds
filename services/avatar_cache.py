@@ -47,11 +47,20 @@ class AvatarCache:
         *,
         ttl_seconds: int | None = None,
         max_entries: int = 5000,
+        group_ids: list[str] | tuple[str, ...] = (),
     ) -> dict[str, Path | None]:
+        """群头像以 group-群号 为键，与个人头像共用缓存限额及下载期限。"""
         ttl = self.ttl_seconds if ttl_seconds is None else max(0, int(ttl_seconds))
         capacity = max(1, int(max_entries))
         valid_ids = tuple(
-            dict.fromkeys(user_id for user_id in user_ids if _valid_qq_id(user_id))
+            dict.fromkeys(
+                [user_id for user_id in user_ids if _valid_qq_id(user_id)]
+                + [
+                    f"group-{group_id}"
+                    for group_id in group_ids
+                    if _valid_qq_id(group_id)
+                ]
+            )
         )
         if not valid_ids:
             return {}
@@ -153,7 +162,11 @@ class AvatarCache:
                 return cached
 
     async def _download(self, session: Any, user_id: str) -> bytes:
-        url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
+        if user_id.startswith("group-"):
+            group_id = user_id.removeprefix("group-")
+            url = f"https://p.qlogo.cn/gh/{group_id}/{group_id}/100"
+        else:
+            url = f"https://q1.qlogo.cn/g?b=qq&nk={user_id}&s=100"
         for _ in range(4):
             parsed = urlsplit(url)
             if parsed.scheme != "https" or not _allowed_host(parsed.hostname or ""):
@@ -237,7 +250,11 @@ def _prune_files(
         return 0
     entries: dict[str, list[Path]] = {}
     for path in cache_dir.iterdir():
-        if path.is_file() and path.suffix.lower() in _FORMAT_EXTENSIONS.values() and _valid_qq_id(path.stem):
+        if (
+            path.is_file()
+            and path.suffix.lower() in _FORMAT_EXTENSIONS.values()
+            and _valid_qq_id(path.stem.removeprefix("group-"))
+        ):
             entries.setdefault(path.stem, []).append(path)
     if len(entries) <= max_entries:
         return 0

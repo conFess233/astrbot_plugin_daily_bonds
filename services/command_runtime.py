@@ -423,6 +423,7 @@ class CommandRuntime:
                     scope_id=scope_id,
                     period_id=str(period["id"]),
                     actor_id=raw_event.sender_id,
+                    group_id=scope.group_id,
                     group_name=await self.adapter.group_name(scope)
                     if command.action in {"rank_intimacy", "rank_activity"}
                     else "",
@@ -1031,7 +1032,10 @@ class CommandRuntime:
         personal = key == "rank_intimacy" and not global_directed
         if personal:
             ids.add(values["actor_id"])
-        avatars = await self._avatars(list(ids), config)
+        group_id = values.get("group_id", "") if key == "rank_activity" else ""
+        avatars = await self._avatars(
+            list(ids), config, group_ids=[group_id] if group_id else ()
+        )
         lines, cards = [], []
         for index, (source, target, score, days) in enumerate(
             selected, (page - 1) * page_size + 1 if pagination else 1
@@ -1101,6 +1105,8 @@ class CommandRuntime:
                 header_avatar_path=avatars.get(values["actor_id"]),
                 header_user_id=values["actor_id"],
             )
+        elif group_id:
+            options["header_avatar_path"] = avatars.get(f"group-{group_id}")
         return await self._reply_with_card(
             text,
             image_title if personal else title,
@@ -1540,17 +1546,25 @@ class CommandRuntime:
             )
         return result
 
-    async def _avatars(self, user_ids: list[str], config: Mapping[str, Any]) -> dict[str, Path | None]:
-        if not user_ids:
+    async def _avatars(
+        self,
+        user_ids: list[str],
+        config: Mapping[str, Any],
+        *,
+        group_ids: list[str] | tuple[str, ...] = (),
+    ) -> dict[str, Path | None]:
+        if not user_ids and not group_ids:
             return {}
         resources = config["resources"]
         try:
             return await self.avatar_cache.get_many(
-                user_ids, ttl_seconds=resources["avatar_cache_ttl_seconds"],
+                user_ids,
+                ttl_seconds=resources["avatar_cache_ttl_seconds"],
                 max_entries=resources["avatar_cache_max_entries"],
+                group_ids=group_ids,
             )
         except Exception:
-            logger.exception("Failed to load member avatar; returning text")
+            logger.exception("今日姻缘：头像读取失败，使用占位图。")
             return {}
 
     def _snapshot_image_path(self, image_paths: str | None) -> Path | None:

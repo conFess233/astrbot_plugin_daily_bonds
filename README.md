@@ -3,7 +3,7 @@
 <p align="center">不止有老公/老婆，还有香香软软的群友😋</p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.12-blue" alt="版本 0.1.12"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.13-blue" alt="版本 0.1.13"></a>
   <a href="./metadata.yml"><img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上"></a>
   <a href="#limits"><img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证"></a>
@@ -107,7 +107,7 @@ python -m pip install -r requirements.txt
 
 列表和排行默认每页 10 条。亲密度、活跃度和好感度默认只发图片，渲染失败降级文字；长排行按条数或图高分段，使用合并转发。统计卡片显示群名片（缺失时用昵称）和头像，不附 QQ 号；群友关系列表同样只显示名称，名称不可用时用“群友”占位。头像失败时使用占位图。
 
-亲密度与活跃度排行使用浅蓝背景、白色圆角卡片和紧凑多列布局，最多每列 10 条、每张 3 列，命令发送者的已有记录高亮；图片仍按配置的行数和最大高度分段。卡片左上标题在「消息与回复词 → 标题标签」自由编辑：活跃度使用 `messages.titles.rank_activity`，默认 `{群名}的活跃度排行`，支持 `{群名}` / `{group_name}` 以及 `{days}`。群名取 OneBot 群信息，获取失败时使用“本群”；原默认标题自动更新，用户自定义标题保留。标题栏右侧小字显示活跃度的 `统计范围：xx 天`，亲密度显示 `统计范围：累计`。视觉参考 [favour_card 当前会话排行](https://github.com/conFess233/astrbot_plugin_favour_card)。
+亲密度与活跃度排行使用浅蓝背景、白色圆角卡片和紧凑多列布局，最多每列 10 条、每张 3 列，命令发送者的已有记录高亮；图片仍按配置的行数和最大高度分段。活跃度排行左上角显示目标群头像，获取失败时使用有效缓存或默认图标。卡片左上标题在「消息与回复词 → 标题标签」自由编辑：活跃度使用 `messages.titles.rank_activity`，默认 `{群名}的活跃度排行`，支持 `{群名}` / `{group_name}` 以及 `{days}`。群名取 OneBot 群信息，获取失败时使用“本群”；原默认标题自动更新，用户自定义标题保留。标题栏右侧小字显示活跃度的 `统计范围：xx 天`，亲密度显示 `统计范围：累计`。视觉参考 [favour_card 当前会话排行](https://github.com/conFess233/astrbot_plugin_favour_card)。
 
 老婆、老公和群友列表使用获取来源标签：`[抽取]`、`[来自某人的赠送]`、`[抢夺自某人]`。赠送和抢夺标签在来源昵称前显示 22px 小头像，文字回复保留昵称；名称优先群名片，不显示 QQ 号。普通、指定和管理员设置归为抽取；再次赠送时显示最近一次赠送者。更新时补齐可确认的历史来源，名称或头像不可用时使用“群友”和占位头像。标签可在回复词页面调整，赠送和抢夺的 `{owner_name}` 表示来源用户。
 
