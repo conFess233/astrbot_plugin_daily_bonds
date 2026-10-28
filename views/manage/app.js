@@ -1,9 +1,9 @@
-import { configPage } from "./config-workspace.js";
 import { initBatchImages } from "./batch-images.js";
 import { confirmAction } from "./confirm-dialog.js";
 import { initUploadCompression, prepareUploadImage } from "./upload-images.js";
 import { initStatusAndMigration } from "./status-migration.js";
-import { applyIcons } from "./icons.js";
+import { applyIcons, icon } from "./icons.js";
+import { toast, busyButton, countUp, flash, nudge, staggerRows, islandPill, openSheet, closeSheet, openLightbox } from "./motion.js";
 
 import { configAt, configLeaves, displayValue, draftValues, changedPaths, serializeDraft, templateParts, toUiConfig, fromUiConfig } from "./config-model.js";
 
@@ -18,7 +18,7 @@ let progressTimer;
 async function withProgress(request) {
   activeRequests += 1;
   if (activeRequests === 1) {
-    progressTimer = window.setTimeout(() => { $("#loading-progress").hidden = false; }, 150);
+    progressTimer = window.setTimeout(() => { $("#loading-progress").classList.add("on"); }, 150);
   }
   try {
     return await request();
@@ -26,7 +26,7 @@ async function withProgress(request) {
     activeRequests -= 1;
     if (activeRequests === 0) {
       window.clearTimeout(progressTimer);
-      $("#loading-progress").hidden = true;
+      $("#loading-progress").classList.remove("on");
     }
   }
 }
@@ -47,7 +47,9 @@ const state = {
   selectedReplies: new Set(),
   pendingSubmission: null,
   saveNeedsReload: false,
-  configGroup: "enabled",
+  configGroup: "basic",
+  renderCustom: null,
+  unifiedModes: null,
   revision: 0,
   globalRevision: 0,
   busy: false,
@@ -105,7 +107,6 @@ async function apiUpload(endpoint, file) {
 const configFields = $("#config-fields");
 const configTabs = $("#config-tabs");
 const scopeSelect = $("#scope-select");
-const notice = $("#notice");
 const imagePreviewCache = new Map();
 let configLoadSequence = 0;
 let catalogLoadSequence = 0;
@@ -118,42 +119,10 @@ let currentQuery = null;
 const fieldCards = new Map();
 let beforeUnloadActive = false;
 
-function showNotice(message, kind = "success") {
-  const item = document.createElement("div");
-  item.className = `notification ${kind}`;
-  item.setAttribute("role", kind === "error" ? "alert" : "status");
-  const body = document.createElement("span");
-  body.textContent = message;
-  const close = document.createElement("button");
-  close.type = "button";
-  close.className = "notification-close";
-  close.setAttribute("aria-label", "关闭通知");
-  close.textContent = "×";
-  const dismiss = () => {
-    clearTimeout(timer); item.remove();
-    if (!notice.children.length) notice.hidePopover?.();
-  };
-  close.addEventListener("click", dismiss);
-  item.append(body, close);
-  notice.prepend(item);
-  placeNotice();
-  const timer = window.setTimeout(dismiss, 10000);
-  return item;
+// 通知统一走悬浮按钮上方的深色通知条；error 类型保留更久并可手动关闭。
+function showNotice(message, kind = "success", options = {}) {
+  return toast(message, kind === "error" ? "bad" : "ok", options);
 }
-
-function placeNotice() {
-  notice.hidePopover?.();
-  // A modal makes nodes outside it inert, even when a toast uses the top layer.
-  const modal = [...document.querySelectorAll("dialog[open]")].at(-1);
-  (modal || document.body).append(notice);
-  // 页头不再固定在顶部，通知固定显示在视口右上角。
-  notice.style.top = "20px";
-  if (notice.children.length) notice.showPopover?.();
-}
-
-document.addEventListener("close", (event) => {
-  if (event.target.contains(notice)) placeNotice();
-}, true);
 
 function setBusy(value) {
   state.busy = value;
@@ -181,9 +150,7 @@ function updateDirtyState() {
   const dirty = paths.length > 0;
   const visible = dirty || !!state.pendingSubmission || state.saveNeedsReload;
   // 有草稿时悬浮按钮变形为“放弃 / N 项未保存 / 保存”胶囊，是唯一保存入口。
-  $("#save-bar").hidden = !visible;
-  $("#fab").hidden = visible;
-  if (visible) closeFabMenu(false);
+  setDraftPill(visible);
   if (!visible) $("#save-error").hidden = true;
   $("#dirty-indicator").textContent = state.pendingSubmission ? "提交结果待确认" : state.saveNeedsReload ? "已保存，待重新读取" : `${paths.length} 项未保存`;
   $("#save").lastChild.textContent = state.pendingSubmission ? "重试提交" : state.saveNeedsReload ? "重新读取" : "保存";
@@ -211,15 +178,55 @@ function updateDirtyState() {
   }
 }
 
-function updateConditionalFields() {
-  const cards = Object.keys(MODE_NAMES).map((mode) => fieldCards.get(`modes.${mode}.gift_timeout_seconds`)).filter(Boolean);
-  for (const card of cards) {
-    const path = card.querySelector("[data-config-path]").dataset.configPath;
-    card.hidden = state.draftValues[path.replace("gift_timeout_seconds", "gift_mode")] !== "confirm";
-    const note = card.parentElement?.querySelector(".conditional-note"); if (note) note.hidden = !card.hidden;
+// 次级设置的前置条件：[控制项, 判断, 收起时的说明]。全部满足才显示，数值始终保留。
+function fieldConditions(path) {
+  const parts = path.split(".");
+  const value = (target) => state.draftValues[target];
+  if (parts[0] === "modes") {
+    const at = (key) => `modes.${parts[1]}.${key}`;
+    const key = parts[2];
+    const list = [];
+    if ((key.startsWith("steal_") && key !== "steal_enabled") || key === "stolen_limit") list.push([at("steal_enabled"), () => value(at("steal_enabled")) !== false, "抢夺已关闭"]);
+    if (key === "steal_probability_max") list.push([at("steal_intimacy_bonus"), () => Number(value(at("steal_intimacy_bonus"))) > 0, "未开启亲密度加成"]);
+    if (key.startsWith("gift_") && key !== "gift_enabled") list.push([at("gift_enabled"), () => value(at("gift_enabled")) !== false, "赠送已关闭"]);
+    if (key === "gift_timeout_seconds") list.push([at("gift_mode"), () => value(at("gift_mode")) === "confirm", "直接赠送，无需确认超时"]);
+    if (key === "divorce_limit") list.push([at("divorce_enabled"), () => value(at("divorce_enabled")) !== false, "离婚已关闭"]);
+    if (key === "designated_unique") list.push([at("designated_limit"), () => Number(value(at("designated_limit"))) > 0, "指定次数为 0，已关闭指定"]);
+    return list;
   }
-  const row = cards[0]?.closest("tr");
-  if (row) row.hidden = cards.every((card) => card.hidden);
+  const simple = {
+    "access.groups.ids": ["access.groups.mode", (mode) => mode !== "unrestricted"],
+    "access.users.ids": ["access.users.mode", (mode) => mode !== "unrestricted"],
+    "display.page_size": ["display.pagination_enabled", (on) => on !== false],
+    "display.intimacy_rank_mode": ["display.intimacy_rank_enabled", (on) => on !== false],
+    "statistics.activity_window_days": ["statistics.activity_enabled", (on) => on !== false],
+  }[path];
+  return simple ? [[simple[0], () => simple[1](value(simple[0])), ""]] : [];
+}
+
+function failedCondition(path) {
+  return fieldConditions(path).find(([, test]) => !test());
+}
+
+function updateConditionalFields() {
+  for (const [path, card] of fieldCards) {
+    const failed = failedCondition(path);
+    card.classList.toggle("cond-hidden", !!failed);
+    const note = card.parentElement?.querySelector(":scope > .conditional-note");
+    if (note) { note.hidden = !failed; note.textContent = failed?.[2] || ""; }
+  }
+  // 整行在所有玩法都收起时隐藏；整组都收起时显示一句说明。
+  for (const row of configFields.querySelectorAll(".setting-matrix tbody tr")) {
+    const cards = [...row.querySelectorAll(".config-field")];
+    row.hidden = cards.length > 0 && cards.every((card) => card.classList.contains("cond-hidden"));
+  }
+  for (const details of configFields.querySelectorAll(".mode-details")) {
+    const rows = [...details.querySelectorAll(".setting-matrix tbody tr")];
+    const closed = rows.length > 0 && rows.every((row) => row.hidden);
+    details.querySelector(".matrix-scroll").hidden = closed;
+    const empty = details.querySelector(".group-closed");
+    if (empty) { empty.hidden = !closed; empty.textContent = `${details.dataset.modeGroup.replace(/（.*）/, "")}的前置开关在所有玩法都已关闭，开启后显示这里的设置。`; }
+  }
 }
 
 function setScopeLabel() {
@@ -267,29 +274,51 @@ function savedValue(path) {
 // 右侧卡片列出全部改动：中文字段名、原值（删除线）、新值；点击跳到对应配置项。
 function renderDraftDiff(paths) {
   const list = $("#draft-diff");
+  const previous = new Set([...list.children].map((item) => item.dataset.key));
   list.replaceChildren();
   $("#draft-title").textContent = state.pendingSubmission ? "提交结果待确认" : paths.length ? `${paths.length} 项改动待保存` : "没有未保存的改动";
   $("#draft-empty").hidden = paths.length > 0;
+  const entries = [];
   for (const path of paths) {
+    const mode = path.startsWith("modes.") ? MODE_NAMES[path.split(".")[1]] : "";
+    const inherited = state.scopeId !== "global" && !configIsGlobalOnly(path) && !state.overridePaths.has(path);
+    entries.push({ path, mode, label: configLabel(path), from: diffText(path, savedValue(path)), to: inherited ? "继承全局" : diffText(path, state.draftValues[path]) });
+  }
+  // 统一数值时，三种玩法相同的改动合并成一条“三种玩法 · 字段”。
+  const merged = [];
+  for (const entry of entries) {
+    const key = entry.path.startsWith("modes.") ? entry.path.split(".")[2] : "";
+    const twin = state.unifiedModes && key && !PER_MODE_KEYS.has(key) && merged.find((item) => item.key === key && item.from === entry.from && item.to === entry.to);
+    if (twin) { twin.count += 1; continue; }
+    merged.push({ ...entry, key, count: 1 });
+  }
+  for (const entry of merged) {
+    const path = entry.path;
     const item = document.createElement("li");
+    item.dataset.key = `${entry.count > 1 ? "all" : path}|${entry.to}`;
+    if (previous.has(item.dataset.key)) item.classList.add("settled");
     const button = document.createElement("button");
     button.type = "button";
-    const mode = path.startsWith("modes.") ? MODE_NAMES[path.split(".")[1]] : "";
-    const name = document.createElement("span"); name.className = "name"; name.textContent = mode ? `${mode} · ${configLabel(path)}` : configLabel(path);
-    const from = document.createElement("span"); from.className = "from"; from.textContent = diffText(path, savedValue(path));
-    const inherited = state.scopeId !== "global" && !configIsGlobalOnly(path) && !state.overridePaths.has(path);
-    const to = document.createElement("span"); to.className = "to"; to.textContent = inherited ? "继承全局" : diffText(path, state.draftValues[path]);
+    const name = document.createElement("span"); name.className = "name";
+    name.textContent = entry.count > 1 ? `三种玩法 · ${entry.label}` : entry.mode ? `${entry.mode} · ${entry.label}` : entry.label;
+    const from = document.createElement("span"); from.className = "from"; from.textContent = entry.from;
+    const to = document.createElement("span"); to.className = "to"; to.textContent = entry.to;
     button.append(name, from, to);
     button.addEventListener("click", () => revealField(path));
     item.append(button);
     list.append(item);
   }
   const badge = $("#nav-config-badge");
+  const badgeWasHidden = badge.hidden;
   badge.textContent = String(paths.length);
   badge.hidden = !paths.length;
+  if (badgeWasHidden !== badge.hidden) {
+    if (!badge.hidden) { badge.classList.remove("pop"); void badge.offsetWidth; badge.classList.add("pop"); }
+    placeIslandPill();
+  }
   const views = new Set(paths.map(viewOfPath));
   for (const button of document.querySelectorAll(".segmented [data-config-view]")) button.querySelector(".mod").hidden = !views.has(button.dataset.configView);
-  const groups = new Set(paths.filter((path) => viewOfPath(path) === "advanced").map(configGroup));
+  const groups = new Set(paths.filter((path) => viewOfPath(path) === "advanced").map(advancedGroup));
   for (const tab of configTabs.querySelectorAll("[data-config-group]")) tab.classList.toggle("modified", groups.has(tab.dataset.configGroup));
 }
 
@@ -488,7 +517,7 @@ const CONFIG_OPTIONS = {
   "display.intimacy_rank_mode": [["personal", "个人"], ["group_directed", "全群有向"]],
   "render.mode": [["card", "卡片（t2i 渲染）"], ["text", "纯文本"]],
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
-    [`render.types.${kind}`, [["inherit", "沿用总开关"], ["card", "卡片"], ["text", "纯文本"]]])),
+    [`render.types.${kind}`, [["inherit", "跟随默认形式"], ["card", "卡片"], ["text", "纯文本"]]])),
 };
 const FLOAT_CONFIG_PATHS = new Set([
   "weights.base", "weights.per_intimacy_point", "weights.maximum",
@@ -513,10 +542,10 @@ const CONFIG_HINTS = {
   "modes.husband.divorce_limit": "0 表示不限次数。",
   "modes.member.divorce_limit": "0 表示不限次数。",
   "reset.time": "使用 HH:mm 格式；旧周期结束后生效。",
-  "display.rank_merge_rows": "1～100；列表每张卡片最多显示的行数，排行每张最多 30 行；超出时分成多张。",
+  "display.rank_merge_rows": "1～100；列表每张卡片最多显示的行数，排行每张最多 50 行（5 列）；超出时分成多张。",
   "render.mode": "卡片由 AstrBot 的 t2i 服务渲染，会把群名片、头像和角色图发送到该服务；选择纯文本则不发送。渲染失败时自动改发文字。",
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
-    [`render.types.${kind}`, "沿用总开关，或为这一类回复单独选择卡片或纯文本。"])),
+    [`render.types.${kind}`, "跟随默认形式，或为这一类回复单独选择卡片或纯文本。"])),
   ...Object.fromEntries(["wife", "husband"].flatMap((mode) => [
     [`modes.${mode}.designated_limit`, "0～100；0 关闭指定。每周期重置，失败不扣次数；指定得到的关系占用持有上限，当天受保护。"],
     [`modes.${mode}.designated_unique`, "开启时，已有有效关系的角色不能再次指定；关闭允许同一人或多人重复指定。只影响后续指定，已有关系保留。"],
@@ -547,6 +576,8 @@ function configLabel(path) {
   if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
   if (parts[0] === "commands" && parts[1] === "keywords") return `${name}关键词`;
+  if (path === "render.mode") return "默认回复形式";
+  if (parts[0] === "render" && parts[1] === "types") return `${name}回复形式`;
   if (path === "access.groups.mode") return "群准入模式";
   if (path === "access.users.mode") return "用户准入模式";
   if (path === "access.groups.ids") return "群身份名单";
@@ -766,6 +797,8 @@ function renderConfigFields() {
   $("#side-context").replaceChildren();
   if (!state.savedConfig) return;
   for (const [path, value] of configLeaves(state.savedConfig)) createConfigField(path, value);
+  syncUiFlags(state.uiScope !== state.scopeId);
+  state.uiScope = state.scopeId;
   renderModesWorkspace();
   renderRepliesWorkspace();
   renderAdvancedWorkspace();
@@ -781,6 +814,9 @@ function renderConfigFields() {
   openView(state.view);
   updateDirtyState();
 }
+
+const placeIslandPill = islandPill($(".island"));
+window.addEventListener("load", () => placeIslandPill(true));
 
 // 悬浮岛模块；配置模块内再分玩法、消息与关键词、高级三类。
 const MODULE_PANELS = { overview: "overview-panel", config: "settings-panel", catalog: "catalog-panel", data: "data-panel", maintenance: "maintenance-panel" };
@@ -800,6 +836,7 @@ function openView(view) {
     if (button.dataset.tab === module) button.setAttribute("aria-current", "page");
     else button.removeAttribute("aria-current");
   }
+  placeIslandPill();
   for (const [name, id] of Object.entries(MODULE_PANELS)) $(`#${id}`).hidden = name !== module;
   for (const button of document.querySelectorAll(".segmented [data-config-view]")) button.setAttribute("aria-pressed", String(button.dataset.configView === view));
   configTabs.hidden = view !== "advanced";
@@ -827,7 +864,9 @@ function configView(view, className = "") {
 }
 
 const MODE_NAMES = { wife: "今日老婆", husband: "今日老公", member: "娶群友" };
-const COMMON_MODE_KEYS = ["enabled", "capacity", "steal_enabled", "steal_probability", "steal_attempt_limit"];
+const COMMON_MODE_KEYS = ["capacity", "steal_enabled", "steal_probability", "steal_attempt_limit"];
+// 统一数值时不跟随的字段：玩法开关与角色池各玩法独立。
+const PER_MODE_KEYS = new Set(["enabled", "pool_ids"]);
 const MODE_ROWS = {
   enabled: ["玩法启用", "控制该玩法是否可用"],
   capacity: ["持有上限", "所有来源共用，也是每周期普通抽取次数", "个"],
@@ -836,18 +875,21 @@ const MODE_ROWS = {
   steal_attempt_limit: ["抢夺次数", "每周期尝试上限，0 为不限", "次"],
 };
 
-function modeMatrix(keys) {
+function modeMatrix(keys, unifiable = true) {
   const wrap = document.createElement("div");
   wrap.className = "matrix-scroll";
   wrap.tabIndex = 0;
   wrap.setAttribute("role", "region");
   wrap.setAttribute("aria-label", "三玩法参数对照，可横向滚动");
   const table = document.createElement("table");
-  table.className = "setting-matrix";
+  table.className = `setting-matrix${unifiable ? " unifiable" : ""}`;
   const head = document.createElement("thead");
   const headers = document.createElement("tr");
-  for (const title of ["配置项", ...Object.values(MODE_NAMES)]) {
-    const th = document.createElement("th"); th.scope = "col"; th.textContent = title; headers.append(th);
+  for (const [index, title] of ["配置项", ...Object.values(MODE_NAMES)].entries()) {
+    const th = document.createElement("th"); th.scope = "col"; th.textContent = title;
+    // 统一数值时只显示第一列，表头改为“三种玩法”。
+    if (index === 1 && unifiable) { const all = document.createElement("span"); all.className = "unified-title"; all.textContent = "三种玩法（统一）"; th.append(all); }
+    headers.append(th);
   }
   head.append(headers); table.append(head);
   const body = document.createElement("tbody");
@@ -868,8 +910,8 @@ function modeMatrix(keys) {
           card.querySelector(".input-control").append(unit);
         }
         cell.append(card);
-        if (key === "gift_timeout_seconds") { const note = document.createElement("small"); note.className = "conditional-note muted"; note.textContent = "直接赠送，无需确认超时"; cell.append(note); }
-      } else { cell.className = "muted"; cell.textContent = "— 此玩法不适用"; }
+        const note = document.createElement("small"); note.className = "conditional-note"; note.hidden = true; cell.append(note);
+      } else { cell.className = "muted not-applicable"; cell.textContent = "— 此玩法不适用"; }
       row.append(cell);
     }
     body.append(row);
@@ -887,11 +929,39 @@ function renderModesWorkspace() {
     const button = document.createElement("button"); button.type = "button"; button.textContent = name; button.dataset.modeChoice = key; button.setAttribute("aria-pressed", String(key === "wife"));
     button.addEventListener("click", () => { view.dataset.mode = key; for (const other of switcher.children) other.setAttribute("aria-pressed", String(other === button)); }); switcher.append(button);
   }
+  view.dataset.unified = String(!!state.unifiedModes);
+  // 玩法开关：三种玩法各自独立。
+  const toggles = document.createElement("section"); toggles.className = "card card-pad mode-toggles";
+  toggles.innerHTML = '<div class="card-title"><div><h3>启用的玩法</h3><p>关闭玩法不会清空已配置的数值。</p></div></div>';
+  const toggleRow = document.createElement("div"); toggleRow.className = "mode-toggle-row";
+  for (const [mode, name] of Object.entries(MODE_NAMES)) {
+    const card = fieldCards.get(`modes.${mode}.enabled`); if (!card) continue;
+    card.querySelector(".lbl label").textContent = name; toggleRow.append(card);
+  }
+  toggles.append(toggleRow);
   const common = document.createElement("section"); common.className = "card card-pad common-modes";
   const head = document.createElement("div"); head.className = "card-title";
-  head.innerHTML = "<div><h3>常用参数</h3><p>三种玩法并排对照，修改先进入草稿。</p></div>";
-  common.append(head, modeMatrix(COMMON_MODE_KEYS)); main.prepend(common); main.prepend(switcher);
-  const allKeys = [...new Set(Object.values(state.savedConfig.modes).flatMap((mode) => Object.keys(mode)))].filter((key) => !COMMON_MODE_KEYS.includes(key));
+  head.innerHTML = "<div><h3>常用参数</h3><p></p></div>";
+  head.querySelector("p").textContent = state.unifiedModes ? "三种玩法使用同一组数值，修改会同时写入老婆、老公和群友。" : "三种玩法并排对照，修改先进入草稿。";
+  const unify = document.createElement("label"); unify.className = "toggle-control unify-toggle";
+  const unifyInput = document.createElement("input"); unifyInput.type = "checkbox"; unifyInput.setAttribute("role", "switch"); unifyInput.checked = !!state.unifiedModes;
+  unifyInput.setAttribute("aria-label", "三种玩法使用相同数值");
+  const unifyText = document.createElement("span"); unifyText.className = "toggle-state"; unifyText.textContent = "三种玩法使用相同数值";
+  unify.append(unifyInput, unifyText); head.append(unify);
+  unifyInput.addEventListener("change", async (event) => {
+    event.stopPropagation();
+    if (unifyInput.checked) {
+      const differing = unifiablePaths().filter((path) => !sameAcrossModes(path));
+      if (differing.length && !await confirmAction(`将以“今日老婆”的数值统一另外两种玩法：共 ${differing.length} 项不同，改动只进入草稿，保存前可放弃。`)) { unifyInput.checked = false; return; }
+      state.unifiedModes = true;
+      for (const path of differing) propagateMode(path);
+    } else state.unifiedModes = false;
+    view.dataset.unified = String(state.unifiedModes);
+    head.querySelector("p").textContent = state.unifiedModes ? "三种玩法使用同一组数值，修改会同时写入老婆、老公和群友。" : "三种玩法并排对照，修改先进入草稿。";
+    updateDirtyState();
+  });
+  common.append(head, modeMatrix(COMMON_MODE_KEYS)); main.prepend(toggles, common); main.prepend(switcher);
+  const allKeys = [...new Set(Object.values(state.savedConfig.modes).flatMap((mode) => Object.keys(mode)))].filter((key) => !COMMON_MODE_KEYS.includes(key) && key !== "enabled");
   const groups = [
     ["抢夺进阶", (key) => key.startsWith("steal_") || key === "stolen_limit"],
     ["赠送设置", (key) => key.startsWith("gift_")],
@@ -905,40 +975,51 @@ function renderModesWorkspace() {
     keys.forEach((key) => assigned.add(key));
     const details = document.createElement("details"); details.className = "card mode-details"; details.dataset.modeGroup = name;
     const summary = document.createElement("summary"); summary.textContent = name;
-    details.append(summary, modeMatrix(keys));
+    const empty = document.createElement("p"); empty.className = "group-closed muted"; empty.hidden = true;
+    details.append(summary, modeMatrix(keys, !keys.some((key) => PER_MODE_KEYS.has(key))), empty);
     if (name === "角色池与候选") {
       const link = document.createElement("button"); link.type = "button"; link.className = "btn btn-ghost btn-sm"; link.textContent = "查看候选资格与统计权重";
-      link.addEventListener("click", () => { openView("advanced"); selectConfigGroup("weights"); }); details.append(link);
+      link.addEventListener("click", () => { openView("advanced"); selectConfigGroup("stats"); }); details.append(link);
     }
     main.append(details);
   }
   const help = sideSection("settings");
-  help.innerHTML = '<h4>规则说明</h4><ul class="rule-help"><li>抽取、指定、抢夺和赠送得到的关系共用一个持有上限；抢来的和指定的关系当天受保护。</li><li>抢夺、被抢和离婚次数为 0 表示不限；指定次数为 0 表示关闭指定。</li><li>关闭玩法不会清空已配置的数值。</li></ul><div class="divider"></div>';
-  const copy = document.createElement("details"); copy.className = "card mode-copy";
-  copy.innerHTML = '<summary>同步本次修改的玩法参数</summary><p class="hint">只同步来源玩法本次修改的参数，专属字段仅同步到支持的玩法。</p><label class="field"><span>来源玩法</span><select id="copy-source"></select></label><div id="copy-targets" class="actions"></div><button id="copy-parameters" type="button" class="btn btn-ghost">同步参数改动</button>';
-  for (const [mode, name] of Object.entries(MODE_NAMES)) {
-    copy.querySelector("select").add(new Option(name, mode));
-    const label = document.createElement("label"); label.className = "check-field";
-    const check = document.createElement("input"); check.type = "checkbox"; check.dataset.copyMode = mode; label.append(check, document.createTextNode(name)); copy.querySelector("#copy-targets").append(label);
-  }
-  const updateTargets = () => { for (const check of copy.querySelectorAll("[data-copy-mode]")) { check.disabled = check.dataset.copyMode === copy.querySelector("select").value; if (check.disabled) check.checked = false; } };
-  copy.querySelector("select").addEventListener("change", updateTargets); updateTargets();
-  copy.querySelector("button").addEventListener("click", () => {
-    const source = copy.querySelector("select").value;
-    const paths = dirtyPaths().filter((path) => path.startsWith(`modes.${source}.`) && configPage(path, configAt(state.savedConfig, path)) === "parameters");
-    const targets = [...copy.querySelectorAll("[data-copy-mode]:checked")].map((check) => check.dataset.copyMode);
-    try {
-      serializeConfig();
-      let count = 0;
-      for (const mode of targets) for (const path of paths) if (assignDraftField(path.replace(`modes.${source}.`, `modes.${mode}.`), state.draftValues[path])) count++;
-      showNotice(count ? `已同步 ${count} 项参数到草稿。` : "请先修改来源玩法的参数，并勾选目标玩法。", count ? "success" : "error");
-    } catch (error) { showConfigError(error.message); showNotice(error.message, "error"); }
-  });
+  help.innerHTML = '<h4>规则说明</h4><ul class="rule-help"><li>抽取、指定、抢夺和赠送得到的关系共用一个持有上限；抢来的和指定的关系当天受保护。</li><li>抢夺、被抢和离婚次数为 0 表示不限；指定次数为 0 表示关闭指定。</li><li>关闭某项功能后，它的次级设置会收起，数值保留。</li></ul><div class="divider"></div>';
   const preview = document.createElement("section"); preview.className = "rule-preview"; preview.id = "rule-preview";
   preview.setAttribute("aria-live", "polite");
   help.append(preview);
-  main.append(copy); view.append(main);
+  view.append(main);
   renderRulePreview();
+}
+
+// 统一数值涉及的“今日老婆”字段：至少两种玩法都有，且不是各玩法独立的开关或角色池。
+function unifiablePaths() {
+  return [...fieldCards.keys()].filter((path) => {
+    const [root, mode, key] = path.split(".");
+    return root === "modes" && mode === "wife" && !PER_MODE_KEYS.has(key) && ["husband", "member"].some((other) => fieldCards.has(`modes.${other}.${key}`));
+  });
+}
+
+function sameAcrossModes(path) {
+  const key = path.split(".")[2];
+  const value = JSON.stringify(state.draftValues[path]);
+  return ["husband", "member"].every((mode) => !fieldCards.has(`modes.${mode}.${key}`) || JSON.stringify(state.draftValues[`modes.${mode}.${key}`]) === value);
+}
+
+function propagateMode(path) {
+  const key = path.split(".")[2];
+  for (const mode of ["husband", "member"]) {
+    const target = `modes.${mode}.${key}`;
+    if (fieldCards.has(target) && JSON.stringify(state.draftValues[target]) !== JSON.stringify(state.draftValues[path])) assignDraftField(target, state.draftValues[path]);
+  }
+}
+
+// 仅在首次读取或切换范围时根据数据推断界面模式，之后保留使用者的选择。
+function syncUiFlags(scopeChanged) {
+  if (scopeChanged || state.unifiedModes === null) state.unifiedModes = fieldCards.size ? unifiablePaths().every(sameAcrossModes) : null;
+  const mode = state.draftValues["render.mode"];
+  const mixed = RENDER_KINDS.some((kind) => { const value = state.draftValues[`render.types.${kind}`]; return value !== undefined && value !== "inherit" && value !== mode; });
+  if (scopeChanged || state.renderCustom === null || mixed) state.renderCustom = mixed;
 }
 
 // 用当前草稿说明一位用户一天内的额度，帮助核对数值组合是否符合预期。
@@ -1129,29 +1210,136 @@ function renderTemplatePreview() {
   } catch { host.textContent = "请校验并修改模板后查看预览。"; }
 }
 
+// 高级配置合并为 5 个分组；“运行与存储”的子项默认折叠，一般无需修改。
+const ADVANCED_GROUPS = [
+  ["basic", "基础与准入", ["enabled", "access", "reset"]],
+  ["commands", "指令", ["commands"]],
+  ["stats", "统计与权重", ["statistics", "weights"]],
+  ["display", "展示与回复形式", ["render", "display"]],
+  ["system", "运行与存储", ["members", "history", "resources", "batch_import"]],
+];
+const COLLAPSED_GROUPS = new Set(["system"]);
+const TRIGGER_PATHS = ["commands.allow_bare", "commands.allow_leading_bot_mention", "commands.allow_host_prefix", "commands.extra_prefixes"];
+const RENDER_KINDS = ["draw", "status", "help", "list", "rank", "affection", "collection"];
+
+function advancedGroup(path) {
+  const key = configGroup(path);
+  return ADVANCED_GROUPS.find(([, , keys]) => keys.includes(key))?.[0] || "basic";
+}
+
 function renderAdvancedWorkspace() {
   const view = configView("advanced");
-  const groups = new Map();
+  const subsections = new Map();
+  for (const [id, title, keys] of ADVANCED_GROUPS) {
+    const section = document.createElement("section"); section.className = "config-group card card-pad"; section.dataset.group = id;
+    section.id = `config-group-${id}`;
+    const head = document.createElement("div"); head.className = "card-title";
+    const titleBox = document.createElement("div");
+    const heading = document.createElement("h3"); heading.textContent = title; titleBox.append(heading);
+    if (COLLAPSED_GROUPS.has(id)) { const note = document.createElement("p"); note.textContent = "资源上限、缓存与保留期限，一般保持默认即可；展开对应分类修改。"; titleBox.append(note); }
+    head.append(titleBox); section.append(head); view.append(section);
+    const button = document.createElement("button"); button.type = "button"; button.dataset.configGroup = id;
+    button.id = `config-tab-${id}`; button.setAttribute("role", "tab"); button.setAttribute("aria-controls", section.id); button.textContent = title;
+    section.setAttribute("role", "tabpanel"); section.setAttribute("aria-labelledby", button.id); configTabs.append(button);
+    for (const key of keys) {
+      let container;
+      if (COLLAPSED_GROUPS.has(id)) {
+        container = document.createElement("details"); container.className = "config-sub";
+        const summary = document.createElement("summary"); summary.textContent = CONFIG_GROUPS[key] || key; container.append(summary);
+      } else {
+        container = document.createElement("div"); container.className = "config-sub";
+        // 回复形式只有一项合并设置，名称已在行内，不再加小标题。
+        if (keys.length > 1 && key !== "render") { const label = document.createElement("h4"); label.textContent = CONFIG_GROUPS[key] || key; container.append(label); }
+      }
+      const rows = document.createElement("div"); rows.className = "config-rows"; container.append(rows);
+      section.append(container); subsections.set(key, rows);
+    }
+  }
   for (const [path, card] of fieldCards) {
     if (path === "schema_version" || path.startsWith("modes.") || /^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.")) continue;
-    const group = configGroup(path);
-    if (!groups.has(group)) {
-      const section = document.createElement("section"); section.className = "config-group card card-pad"; section.dataset.group = group;
-      section.id = `config-group-${group.replaceAll(".", "-")}`;
-      const head = document.createElement("div"); head.className = "card-title";
-      const heading = document.createElement("h3"); heading.textContent = CONFIG_GROUPS[group] || group;
-      head.append(heading);
-      const grid = document.createElement("div"); grid.className = "config-rows";
-      section.append(head, grid); view.append(section); groups.set(group, grid);
-      const button = document.createElement("button"); button.type = "button"; button.dataset.configGroup = group;
-      button.id = `config-tab-${group.replaceAll(".", "-")}`; button.setAttribute("role", "tab"); button.setAttribute("aria-controls", section.id); button.textContent = CONFIG_GROUPS[group] || group;
-      section.setAttribute("role", "tabpanel"); section.setAttribute("aria-labelledby", button.id); configTabs.append(button);
-    }
-    groups.get(group).append(card);
+    if (TRIGGER_PATHS.includes(path) || path.startsWith("render.")) continue;
+    subsections.get(configGroup(path))?.append(card);
   }
-  if (!groups.has(state.configGroup)) state.configGroup = groups.keys().next().value;
+  // 触发方式：四个相关开关与前缀合成一项。
+  const trigger = compoundField("触发方式", "群消息以哪些形式触发指令；全部关闭时只能通过额外前缀触发。", TRIGGER_PATHS);
+  subsections.get("commands").prepend(trigger);
+  subsections.get("render").append(renderFormField());
+  for (const [, rows] of subsections) if (!rows.children.length) rows.parentElement.remove();
+  if (!ADVANCED_GROUPS.some(([id]) => id === state.configGroup)) state.configGroup = ADVANCED_GROUPS[0][0];
   selectConfigGroup(state.configGroup);
 }
+
+const COMPOUND_LABELS = {
+  "commands.allow_bare": "直接发送关键词（如“今日老婆”）",
+  "commands.allow_leading_bot_mention": "消息开头 @机器人",
+  "commands.allow_host_prefix": "AstrBot 唤醒前缀（如“/”）",
+  "commands.extra_prefixes": "额外前缀，每行一个",
+};
+
+// 把几项相关配置放进同一行：左侧一个总名称，右侧逐项列出；每项仍保留自己的覆盖与修改标记。
+function compoundField(title, hint, paths) {
+  const row = document.createElement("div"); row.className = "config-field config-compound";
+  const lbl = document.createElement("div"); lbl.className = "lbl";
+  const name = document.createElement("label"); name.textContent = title; lbl.append(name);
+  const ctl = document.createElement("div"); ctl.className = "ctl";
+  for (const path of paths) {
+    const card = fieldCards.get(path); if (!card) continue;
+    card.classList.add("compound-item");
+    card.querySelector(".lbl label").textContent = COMPOUND_LABELS[path] || configLabel(path);
+    ctl.append(card);
+  }
+  const note = document.createElement("small"); note.className = "config-note"; note.textContent = hint; ctl.append(note);
+  row.append(lbl, ctl);
+  return row;
+}
+
+function renderChoice() {
+  if (state.renderCustom) return "custom";
+  return state.draftValues["render.mode"] === "text" ? "text" : "card";
+}
+
+// 回复形式：全部卡片 / 全部文字 / 按类型；只有“按类型”才展开默认形式与 7 类单独设置。
+function renderFormField() {
+  const row = document.createElement("div"); row.className = "config-field config-compound render-form";
+  const lbl = document.createElement("div"); lbl.className = "lbl";
+  const name = document.createElement("label"); name.textContent = "回复形式"; lbl.append(name);
+  const ctl = document.createElement("div"); ctl.className = "ctl";
+  const choices = document.createElement("div"); choices.className = "segmented"; choices.setAttribute("role", "group"); choices.setAttribute("aria-label", "回复形式");
+  const detail = document.createElement("div"); detail.className = "render-detail";
+  const sync = () => {
+    const choice = renderChoice();
+    for (const button of choices.children) button.setAttribute("aria-pressed", String(button.dataset.render === choice));
+    detail.hidden = choice !== "custom";
+  };
+  for (const [value, text] of [["card", "全部卡片"], ["text", "全部文字"], ["custom", "按类型"]]) {
+    const button = document.createElement("button"); button.type = "button"; button.dataset.render = value; button.textContent = text;
+    button.addEventListener("click", () => {
+      if (value === "custom") state.renderCustom = true;
+      else {
+        state.renderCustom = false;
+        assignDraftField("render.mode", value);
+        for (const kind of RENDER_KINDS) if (state.draftValues[`render.types.${kind}`] !== "inherit") assignDraftField(`render.types.${kind}`, "inherit");
+      }
+      sync(); flash(row);
+    });
+    choices.append(button);
+  }
+  const modeCard = fieldCards.get("render.mode");
+  if (modeCard) { modeCard.classList.add("compound-item"); modeCard.querySelector(".lbl label").textContent = "默认形式"; detail.append(modeCard); }
+  for (const kind of RENDER_KINDS) {
+    const card = fieldCards.get(`render.types.${kind}`); if (!card) continue;
+    card.classList.add("compound-item"); detail.append(card);
+  }
+  const note = document.createElement("small"); note.className = "config-note";
+  note.textContent = CONFIG_HINTS["render.mode"];
+  ctl.append(choices, detail, note);
+  row.append(lbl, ctl);
+  row.addEventListener("change", sync);
+  renderFormSync = sync;
+  sync();
+  return row;
+}
+let renderFormSync = () => {};
 
 function renderConfigSearch() {
   const options = $("#config-search-options"); options.replaceChildren();
@@ -1162,12 +1350,16 @@ function renderConfigSearch() {
 }
 
 function revealField(path) {
-  if (path.endsWith(".gift_timeout_seconds") && state.draftValues[path.replace("gift_timeout_seconds", "gift_mode")] !== "confirm") {
-    showNotice("赠送超时仅在确认模式中生效，请先选择等待确认。");
-    return revealField(path.replace("gift_timeout_seconds", "gift_mode"));
+  // 被前置开关收起的项：先定位到控制它的开关，并说明原因。
+  const failed = failedCondition(path);
+  if (failed) {
+    showNotice(`“${configLabel(path)}”已收起：${failed[2] || `需先调整“${configLabel(failed[0])}”`}。`);
+    return revealField(failed[0]);
   }
   if (path.startsWith("modes.")) {
     const mode = path.split(".")[1];
+    // 统一数值时只显示第一列；定位到其他玩法的字段需先切回分列对照。
+    if (state.unifiedModes && mode !== "wife" && !PER_MODE_KEYS.has(path.split(".")[2])) { state.unifiedModes = false; $(".modes-workspace").dataset.unified = "false"; const unify = $(".unify-toggle input"); if (unify) unify.checked = false; }
     $(".modes-workspace").dataset.mode = mode;
     for (const button of document.querySelectorAll("[data-mode-choice]")) button.setAttribute("aria-pressed", String(button.dataset.modeChoice === mode));
   }
@@ -1176,7 +1368,10 @@ function revealField(path) {
   if (view === "replies") {
     if (path.startsWith("commands.keywords.")) showReplySection("keywords");
     else { showReplySection("templates"); selectTemplate(path.replace(/^reply_(?:quote|enabled)\./, "messages.")); }
-  } else if (view === "advanced") selectConfigGroup(configGroup(path));
+  } else if (view === "advanced") {
+    selectConfigGroup(advancedGroup(path));
+    if (path.startsWith("render.types.") || path === "render.mode") { state.renderCustom = true; renderFormSync(); }
+  }
   const card = fieldCards.get(path);
   const details = card.closest("details"); if (details) details.open = true;
   card.scrollIntoView({ block: "center", behavior: "instant" });
@@ -1212,17 +1407,21 @@ function showConfigError(message) {
   const error = card.querySelector(".config-error");
   error.hidden = true;
   revealField(path);
-  card.querySelector("[data-config-path]").setAttribute("aria-invalid", "true");
+  const input = card.querySelector("[data-config-path]");
+  input.setAttribute("aria-invalid", "true");
+  error.textContent = message;
+  error.hidden = false;
+  nudge(input);
 }
 
 async function describeConfigConflict() {
   const latest = await apiGet("config", state.scopeId === "global" ? {} : { scope_id: state.scopeId });
   const current = toUiConfig(state.scopeId === "global" ? latest.data.global : latest.data.effective);
-  const toast = configFeedback("配置版本冲突。草稿已保留，请核对差异；放弃配置更改可重新读取服务端值。");
+  const feedback = configFeedback("配置版本冲突。草稿已保留，请核对差异；放弃配置更改可重新读取服务端值。");
   const differences = configLeaves(current).filter(([path, value]) => JSON.stringify(value) !== JSON.stringify(configAt(state.savedConfig, path)))
     .map(([path, value]) => ({ 字段: path, 服务端最新值: value, 当前草稿: state.draftValues[path] }));
   if (differences.length) {
-    const details = document.createElement("details"); const summary = document.createElement("summary"); summary.textContent = "查看配置差异"; details.append(summary, dataTable(differences)); toast.querySelector("span").append(details);
+    const details = document.createElement("details"); const summary = document.createElement("summary"); summary.textContent = "查看配置差异"; details.append(summary, dataTable(differences)); feedback.querySelector(".msg").append(details);
   }
   return "配置版本冲突，当前草稿已保留。";
 }
@@ -1233,6 +1432,13 @@ async function loadOverview() {
   const grid = $("#overview-cards");
   if (grid.dataset.scope !== scopeId) { grid.replaceChildren(); $("#overview-tasks").replaceChildren(); $("#period-summary").textContent = ""; $("#overview-updated").textContent = ""; }
   grid.dataset.scope = scopeId;
+  // 首次读取用骨架占位，数据返回后替换。
+  if (!grid.children.length) {
+    for (let index = 0; index < 4; index += 1) {
+      const card = document.createElement("article"); card.className = "stat"; card.setAttribute("aria-hidden", "true");
+      card.innerHTML = '<span class="sk" style="width:40%"></span><span class="sk"></span>'; grid.append(card);
+    }
+  }
   $("#overview-refresh").disabled = true;
   $("#overview-updated").textContent = "正在读取统计…";
   try {
@@ -1258,8 +1464,9 @@ async function loadOverview() {
       const name = document.createElement("span"); name.textContent = label;
       const where = document.createElement("span"); where.textContent = label === "已录入角色" ? "全局" : range;
       title.append(name, where);
-      const number = document.createElement("div"); number.className = "value"; number.textContent = value ?? "—";
-      if (value !== undefined && value !== null) { const small = document.createElement("small"); small.textContent = unit; number.append(small); }
+      const number = document.createElement("div"); number.className = "value";
+      const digits = document.createElement("span"); digits.textContent = value ?? "—"; number.append(digits);
+      if (value !== undefined && value !== null) { const small = document.createElement("small"); small.textContent = unit; number.append(small); countUp(digits, Number(value)); }
       card.append(title, number); grid.append(card);
     }
     const period = data.current_period;
@@ -1283,6 +1490,7 @@ async function loadOverview() {
     $("#overview-updated").textContent = `本页读取时间 ${refreshed}`;
   } catch (error) {
     if (sequence !== overviewLoadSequence) return;
+    if (grid.querySelector(".sk")) grid.replaceChildren();
     showNotice(`统计读取失败：${error.message || "请重试"}。${grid.children.length ? "保留上次成功数据。" : "当前没有可显示的数据。"}`, "error");
     $("#overview-updated").textContent = grid.children.length ? `上次数据 ${grid.dataset.refreshed || "时间未知"} · 待刷新` : "尚无统计数据";
   } finally { if (sequence === overviewLoadSequence) $("#overview-refresh").disabled = false; }
@@ -1349,16 +1557,44 @@ async function previewDraft() {
   finally { setBusy(false); updateDirtyState(); }
 }
 
+// 保存只经由草稿胶囊：按钮显示“保存中”，成功后变绿“已保存”约 0.6 秒再收起。
 async function saveDraft() {
   if (state.busy || !state.savedConfig) return false;
+  const saveButton = $("#save");
+  const saved = [...saveButton.childNodes];
+  const spinner = document.createElement("span"); spinner.className = "spin";
+  saveButton.replaceChildren(spinner, document.createTextNode("保存中"));
+  let ok = false;
   setBusy(true);
+  try {
+    ok = await submitDraft();
+    if (ok) {
+      $("#save-bar").classList.add("done");
+      saveButton.replaceChildren(document.createRange().createContextualFragment(icon("check")), document.createTextNode("已保存"));
+      await new Promise((resolve) => window.setTimeout(resolve, 600));
+    }
+    return ok;
+  } finally {
+    saveButton.replaceChildren(...saved);
+    $("#save-bar").classList.remove("done");
+    setBusy(false);
+    if (ok) await finishSave();
+    updateDirtyState();
+  }
+}
+
+let afterSave = null;
+async function finishSave() {
+  const task = afterSave; afterSave = null;
+  if (task) await task();
+}
+
+async function submitDraft() {
   try {
     if (state.saveNeedsReload) { await loadConfig(); return true; }
     if (!state.pendingSubmission) {
       const { draft, override } = validateDraft();
-      const preview = await apiPost("config/preview", apiConfigPayload({ scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }) }));
-      const scopeText = state.scopeId === "global" ? `全局配置，影响 ${preview.data.affected_scopes.length} 个已记录群` : $("#editor-title").textContent;
-      if (!await confirmAction(`将保存 ${dirtyPaths().length} 项配置修改。\n范围：${scopeText}\n角色、角色池和图片不包含在此提交中。继续吗？`)) return false;
+      await apiPost("config/preview", apiConfigPayload({ scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }) }));
       state.pendingSubmission = { scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }), expected_revision: state.revision, request_id: crypto.randomUUID() };
     }
     const payload = state.pendingSubmission;
@@ -1380,11 +1616,13 @@ async function saveDraft() {
     state.revision = state.scopeId === "global" ? result.revision.global : result.revision.scope;
     state.globalRevision = result.revision.global;
     $("#revision").textContent = `全局版本 ${state.globalRevision} · 当前范围版本 ${state.revision}`;
-    try { await loadConfig(); configFeedback("配置已保存，后续群事件将读取新配置。", "success"); }
-    catch { state.saveNeedsReload = true; configFeedback("配置已保存，重新读取失败。当前内容保留，请点击重新读取配置。", "success"); }
+    // “已保存”展示完再重新读取，避免胶囊在动画前就被收起。
+    afterSave = async () => {
+      try { await loadConfig(); configFeedback("配置已保存，立即生效。", "success"); }
+      catch { state.saveNeedsReload = true; configFeedback("配置已保存，重新读取失败。当前内容保留，请点击重新读取配置。", "success"); }
+    };
     return true;
   } catch (error) { configFeedback(error.message || "配置校验失败，草稿仍保留。"); showConfigError(error.message || ""); return false; }
-  finally { setBusy(false); updateDirtyState(); }
 }
 
 async function resolveDraft() {
@@ -1423,18 +1661,41 @@ for (const button of document.querySelectorAll(".segmented [data-config-view]"))
 const fab = $("#fab");
 const fabMenu = $("#fab-menu");
 function fabItems() { return [...fabMenu.querySelectorAll("[role=menuitem]")]; }
+// 菜单项自下而上依次出现。
+fabItems().forEach((item, index, items) => item.style.setProperty("--k", items.length - 1 - index));
+fabMenu.inert = true;
+function fabMenuOpen() { return fabMenu.classList.contains("on"); }
 function openFabMenu() {
-  fabMenu.hidden = false;
+  fabMenu.classList.add("on");
+  fabMenu.inert = false;
   fab.setAttribute("aria-expanded", "true");
   fabItems()[0].focus();
 }
 function closeFabMenu(restoreFocus = true) {
-  if (fabMenu.hidden) return;
-  fabMenu.hidden = true;
+  if (!fabMenuOpen()) return;
+  fabMenu.classList.remove("on");
+  fabMenu.inert = true;
   fab.setAttribute("aria-expanded", "false");
   if (restoreFocus && !fab.hidden) fab.focus();
 }
-fab.addEventListener("click", () => (fabMenu.hidden ? openFabMenu() : closeFabMenu()));
+fab.addEventListener("click", () => (fabMenuOpen() ? closeFabMenu() : openFabMenu()));
+
+// 草稿胶囊从圆形按钮展开；收起时等宽度过渡结束再换回圆形按钮。
+let pillTimer;
+function setDraftPill(visible) {
+  const pill = $("#save-bar");
+  if (visible === pill.classList.contains("on") && pill.hidden === !visible) return;
+  clearTimeout(pillTimer);
+  if (visible) {
+    closeFabMenu(false);
+    fab.hidden = true;
+    pill.hidden = false;
+    requestAnimationFrame(() => pill.classList.add("on"));
+  } else {
+    pill.classList.remove("on");
+    pillTimer = window.setTimeout(() => { pill.hidden = true; fab.hidden = false; }, 320);
+  }
+}
 fabMenu.addEventListener("keydown", (event) => {
   const items = fabItems(); const current = items.indexOf(document.activeElement);
   if (event.key === "Escape") { event.preventDefault(); closeFabMenu(); return; }
@@ -1500,10 +1761,15 @@ configFields.addEventListener("input", (event) => {
   }
   const error = input.closest(".config-field")?.querySelector(".config-error"); if (error) error.hidden = true;
   input.removeAttribute("aria-invalid");
+  if (state.unifiedModes && path.startsWith("modes.wife.") && unifiablePaths().includes(path)) propagateMode(path);
   updateDirtyState();
   if (/^(messages|reply_quote|reply_enabled)\./.test(path)) { clearTimeout(templatePreviewTimer); templatePreviewTimer = setTimeout(renderTemplatePreview, 120); }
 });
-configFields.addEventListener("change", updateDirtyState);
+configFields.addEventListener("change", (event) => {
+  const path = event.target.dataset?.configPath;
+  if (path && !path.startsWith("messages.")) flash(fieldCards.get(path));
+  updateDirtyState();
+});
 scopeSelect.addEventListener("change", () => changeScope(scopeSelect.value));
 function searchConfig() {
   const search = $("#config-search").value.trim(); if (!search) return;
@@ -1748,65 +2014,123 @@ function newCharacter() {
   renderCharacterImages();
 }
 
-function renderCharacterImages() {
-  const host = $("#character-images");
+// 角色图网格：普通档 3 列最多 5 张，第 6 格为“+N”；加宽档 5 列显示全部；全屏自适应。
+const NORMAL_THUMBS = 5;
+const catalogLayout = $("#catalog-layout");
+
+function catalogWide() { return catalogLayout.classList.contains("wide") && window.innerWidth > 1100; }
+
+function setCatalogWide(wide) {
+  catalogLayout.classList.toggle("wide", wide);
+  const button = $("#character-expand");
+  button.setAttribute("aria-pressed", String(wide));
+  button.setAttribute("aria-label", wide ? "收窄面板" : "加宽面板");
+  button.querySelector("svg.i")?.remove();
+  button.dataset.i = wide ? "right" : "left";
+  applyIcons(button.parentElement);
+  renderCharacterImages();
+}
+
+function thumbButton(hash, removable) {
+  const wrap = document.createElement("div");
+  wrap.className = "thumb-wrap";
+  const preview = document.createElement("button");
+  preview.type = "button";
+  preview.className = "thumb";
+  preview.disabled = true;
+  preview.textContent = "读取中…";
+  preview.dataset.hash = hash;
+  wrap.append(preview);
+  if (removable) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "thumb-remove";
+    remove.setAttribute("aria-label", `移除图片 ${hash.slice(0, 12)}`);
+    remove.innerHTML = icon("x");
+    remove.addEventListener("click", () => {
+      state.characterImages = state.characterImages.filter((value) => value !== hash);
+      renderCharacterImages();
+      showNotice("已从草稿移除 1 张图片，保存角色后生效。", "success", { action: "撤销", onAction: () => { if (!state.characterImages.includes(hash)) { state.characterImages.push(hash); renderCharacterImages(); } } });
+    });
+    wrap.append(remove);
+  }
+  if (!imagePreviewCache.has(hash)) {
+    imagePreviewCache.set(hash, apiGet(`media/preview/${encodeURIComponent(hash)}`).then((response) => response.data.src));
+  }
+  imagePreviewCache.get(hash).then((src) => {
+    if (!wrap.isConnected) return;
+    const image = document.createElement("img");
+    image.src = src;
+    image.alt = `${$("#character-name").value || "角色"} · 图 ${hash.slice(0, 8)}`;
+    // 媒体失败保留占位文字，不让格子消失。
+    image.addEventListener("error", () => { preview.replaceChildren(document.createTextNode("图片无法显示")); preview.disabled = true; });
+    preview.replaceChildren(image);
+    preview.disabled = false;
+  }).catch(() => {
+    imagePreviewCache.delete(hash);
+    if (wrap.isConnected) preview.textContent = "暂无预览";
+  });
+  return wrap;
+}
+
+function fillGallery(host, hashes, { limit = Infinity, removable = false } = {}) {
   host.replaceChildren();
-  if (!state.characterImages.length) {
+  if (!hashes.length) {
     const empty = document.createElement("p");
     empty.className = "muted";
     empty.textContent = "尚无角色图。上传后可在这里预览。";
     host.append(empty);
+    return;
   }
-  for (const hash of state.characterImages) {
-    const card = document.createElement("div");
-    card.className = "image-card";
-    const preview = document.createElement("button");
-    preview.type = "button";
-    preview.className = "image-thumb";
-    preview.disabled = true;
-    preview.textContent = "正在读取图片…";
-    const caption = document.createElement("small");
-    caption.textContent = `${hash.slice(0, 12)}…`;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "移除";
-    remove.addEventListener("click", () => {
-      state.characterImages = state.characterImages.filter((value) => value !== hash);
-      renderCharacterImages();
-    });
-    card.append(preview, caption, remove);
-    host.append(card);
-    if (!imagePreviewCache.has(hash)) {
-      imagePreviewCache.set(hash, apiGet(`media/preview/${encodeURIComponent(hash)}`).then((response) => response.data.src));
-    }
-    imagePreviewCache.get(hash).then((src) => {
-      if (!card.isConnected) return;
-      const image = document.createElement("img");
-      image.src = src;
-      image.alt = `角色图 ${hash.slice(0, 12)}`;
-      image.addEventListener("error", () => {
-        preview.replaceChildren(document.createTextNode("图片无法显示"));
-        preview.disabled = true;
-      });
-      preview.replaceChildren(image);
-      preview.disabled = false;
-      preview.addEventListener("click", () => {
-        $("#image-preview-content").src = src;
-        $("#image-preview-content").alt = image.alt;
-        $("#image-preview-caption").textContent = `${$("#character-name").value || "角色"} · ${hash}`;
-        $("#image-preview").showModal();
-      });
-    }).catch(() => {
-      imagePreviewCache.delete(hash);
-      if (card.isConnected) preview.textContent = "暂无图片预览";
-    });
+  const shown = hashes.length > limit ? hashes.slice(0, limit) : hashes;
+  for (const hash of shown) host.append(thumbButton(hash, removable));
+  if (shown.length < hashes.length) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "thumb more-thumbs";
+    more.textContent = `+${hashes.length - shown.length}`;
+    more.setAttribute("aria-label", `查看其余 ${hashes.length - shown.length} 张`);
+    more.addEventListener("click", () => (window.innerWidth <= 1100 ? openCharacterSheet() : setCatalogWide(true)));
+    host.append(more);
   }
 }
 
-$("#image-preview-close").addEventListener("click", () => $("#image-preview").close());
-$("#image-preview").addEventListener("close", () => {
-  $("#image-preview-content").removeAttribute("src");
+function renderCharacterImages() {
+  const count = state.characterImages.length;
+  const wide = catalogWide();
+  $("#character-expand").hidden = !(count >= 4 || wide);
+  fillGallery($("#character-images"), state.characterImages, { limit: wide ? Infinity : NORMAL_THUMBS, removable: true });
+}
+
+function openCharacterSheet() {
+  const name = $("#character-name").value || "新建角色";
+  openSheet(`${name}${$("#character-id").value ? ` · ${$("#character-id").value}` : ""}`, (body) => {
+    const meta = document.createElement("dl");
+    meta.className = "kv";
+    const pools = [...$("#character-pools").querySelectorAll("input:checked")].map((check) => check.closest("label")?.textContent.trim()).filter(Boolean);
+    const gender = $("#character-gender").selectedOptions[0]?.textContent || "";
+    for (const [label, value] of [["名称", name], ["ID", $("#character-id").value || "（未保存）"], ["性别", gender], ["别名", $("#character-aliases").value || "无"], ["抽取", $("#character-enabled").checked ? "已启用" : "已停用"], ["角色池", pools.join("、") || "未加入"], ["图片", `${state.characterImages.length} 张`]]) {
+      const term = document.createElement("dt"); term.textContent = label;
+      const detail = document.createElement("dd"); detail.textContent = value;
+      meta.append(term, detail);
+    }
+    const gallery = document.createElement("div");
+    gallery.className = "gallery";
+    fillGallery(gallery, state.characterImages);
+    body.append(meta, gallery);
+  });
+}
+
+// 缩略图统一通过灯箱查看，在同一网格内左右翻页。
+document.addEventListener("click", (event) => {
+  const thumb = event.target.closest(".gallery .thumb[data-hash]");
+  if (!thumb || thumb.disabled) return;
+  const items = [...thumb.closest(".gallery").querySelectorAll(".thumb[data-hash]:not(:disabled)")];
+  openLightbox(items, items.indexOf(thumb));
 });
+$("#character-expand").addEventListener("click", () => setCatalogWide(!catalogLayout.classList.contains("wide")));
+$("#character-full").addEventListener("click", openCharacterSheet);
+window.addEventListener("resize", () => { if (window.innerWidth <= 1100 && catalogLayout.classList.contains("wide")) setCatalogWide(false); });
 
 $("#character-image").addEventListener("change", (event) => withCatalogWrite(async () => {
   const files = [...(event.target.files || [])];
@@ -1869,7 +2193,8 @@ async function removeCatalogItem(kind, id, endpoint) {
     reason: "AstrBot 管理页面删除", request_id: crypto.randomUUID(),
   });
   showNotice(`已软删除 ${id}`, "success");
-  if (kind === "character") newCharacter(); else newPool();
+  // 被删除的选中项清空详情并退回普通档。
+  if (kind === "character") { setCatalogWide(false); newCharacter(); } else newPool();
   await loadCatalog();
 }
 
@@ -1986,7 +2311,7 @@ async function runQuery(query, offset = 0) {
     const host = $("#query-table"); host.replaceChildren();
     const scope = state.scopes.find((item) => String(item.id) === query.params.scope_id);
     const label = document.createElement("p"); label.className = "muted"; label.textContent = `群 ${scope?.group_id || query.params.scope_id} · 机器人 ${scope?.self_id || "—"} · ${query.name}${query.params.q || query.params.user_id || query.params.source_id ? " · 已应用用户过滤" : ""}`; host.append(label);
-    if (rows.length) host.append(dataTable(rows, Array.isArray(data.items) ? QUERY_COLUMNS[query.kind] : undefined));
+    if (rows.length) { const table = dataTable(rows, Array.isArray(data.items) ? QUERY_COLUMNS[query.kind] : undefined); host.append(table); staggerRows(table.tBodies[0].rows); }
     else host.append(document.createTextNode("暂无记录。"));
     const total = data.total ?? rows.length;
     $("#query-page").textContent = total ? `${offset + 1}–${offset + rows.length} / ${total}` : "暂无记录";
@@ -2012,13 +2337,15 @@ document.querySelectorAll("button[data-query]").forEach((button) => button.addEv
     if (!scopeId) throw new Error("先选择一个已记录的群作用域。");
     if (kind === "relationships") { if (userId) params.q = userId; params.mode = mode; }
     else if (kind === "quota") {
-      if (!userId) throw new Error("用户配额查询需要填写用户 ID。");
+      if (!userId) { nudge($("#data-user")); throw new Error("用户配额查询需要填写用户 ID。"); }
       endpoint = `users/${encodeURIComponent(userId)}/quota`; params.mode = mode;
     } else if (kind === "intimacy") { if (userId) params.source_id = userId; }
     else if (kind === "activity") { params.window_days = $("#data-window").value; if (userId) params.user_id = userId; }
     else if (kind === "invites") params.state = "pending";
     if (["invites", "history"].includes(kind) && userId) throw new Error("此查询接口不支持用户过滤，请清空用户 ID 后按群查询。");
-    await runQuery({ endpoint, params, kind, name: button.textContent });
+    for (const other of document.querySelectorAll("button[data-query]")) other.setAttribute("aria-pressed", String(other === button));
+    const name = button.textContent;
+    await busyButton(button, "查询中", () => runQuery({ endpoint, params, kind, name }));
   } catch (error) { showNotice(error.message, "error"); }
 }));
 $("#query-prev").addEventListener("click", () => { if (currentQuery) runQuery(currentQuery, Math.max(0, queryOffset - 50)); });

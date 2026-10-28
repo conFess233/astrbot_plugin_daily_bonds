@@ -80,10 +80,6 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .hint, .side-note { margin: 8px 0 14px; font-size: 12.5px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-.loading-progress { position: fixed; z-index: 1000; inset: 0 0 auto; height: 3px; overflow: hidden; background: var(--accent-soft); }
-.loading-progress span { display: block; width: 36%; height: 100%; background: var(--accent); animation: loading 1.1s ease-in-out infinite; }
-@keyframes loading { from { transform: translateX(-110%); } to { transform: translateX(380%); } }
-
 .shell { width: min(1440px, calc(100% - 48px)); margin: 0 auto; padding: 22px 0 110px; }
 
 /* 标题行与顶部悬浮岛 */
@@ -255,15 +251,47 @@ select[multiple] { min-height: 120px; padding: 6px; }
 .matrix-cell .config-note { display: none; }
 .matrix-cell.modified { box-shadow: inset 3px 0 0 var(--accent); background: var(--accent-soft); }
 .matrix-cell input[type="number"] { max-width: 120px; }
-.conditional-note { display: block; padding: 10px 14px; color: var(--muted); font-size: 12px; }
 .mode-details { padding: 0; overflow: hidden; }
-.mode-details > summary, .mode-copy > summary, .reply-bulk > summary, .raw-json > summary { padding: 14px 20px; font-weight: 600; cursor: pointer; }
+.mode-details > summary, .reply-bulk > summary, .raw-json > summary { padding: 14px 20px; font-weight: 600; cursor: pointer; }
 .mode-details[open] > summary { border-bottom: 1px solid var(--line); }
 .mode-details > .matrix-scroll { margin: 14px 20px; }
 .mode-details > .btn { margin: 0 20px 16px; }
-.mode-copy { padding: 0 0 16px; }
-.mode-copy > :not(summary) { margin-left: 20px; margin-right: 20px; }
-.mode-copy .field { max-width: 280px; }
+.mode-details > .group-closed { margin: 14px 20px; font-size: 12.5px; }
+.conditional-note { display: block; padding: 10px 14px; color: var(--muted); font-size: 12px; }
+.unified-title { display: none; }
+.modes-workspace[data-unified="true"] .unifiable tr > :nth-child(n+3) { display: none; }
+.modes-workspace[data-unified="true"] .unifiable thead th:nth-child(2) { font-size: 0; }
+.modes-workspace[data-unified="true"] .unifiable .unified-title { display: inline; font-size: 12px; }
+.modes-workspace[data-unified="true"] .unifiable { min-width: 0; }
+.modes-workspace[data-unified="true"] .unifiable th:first-child { width: 45%; }
+.modes-workspace[data-unified="true"] .mode-switcher { display: none !important; }
+.unify-toggle { flex: none; cursor: pointer; }
+.mode-toggle-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mode-toggle-row .config-field { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 1px solid var(--line); border-radius: 10px; }
+.mode-toggle-row .config-field .lbl label { font-weight: 600; }
+.mode-toggle-row .config-field .ctl { display: flex; align-items: center; gap: 8px; }
+.mode-toggle-row .config-note, .mode-toggle-row .toggle-state { display: none; }
+.mode-toggle-row .config-field.modified { border-color: var(--accent); background: var(--accent-soft); }
+.mode-toggle-row .config-field.modified .lbl label::after { display: none; }
+
+/* 合并项：一个名称下列出几项相关设置 */
+.config-compound > .ctl { gap: 2px; }
+.config-field.compound-item { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 14px; padding: 6px 0; border: 0; }
+.config-field.compound-item .lbl label { font-weight: 500; font-size: 13.5px; }
+.config-field.compound-item .ctl { justify-items: end; }
+.config-field.compound-item .config-note, .config-field.compound-item .toggle-state { display: none; }
+.config-field.compound-item:has(textarea), .config-field.compound-item:has(select) { grid-template-columns: minmax(0, 1fr) minmax(160px, 260px); }
+.config-field.compound-item:has(textarea) .ctl, .config-field.compound-item:has(select) .ctl { justify-items: stretch; }
+.config-field.compound-item textarea { min-height: 64px; }
+.render-form .segmented { justify-self: start; margin-bottom: 6px; }
+.render-detail { display: grid; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.config-sub + .config-sub { margin-top: 16px; }
+.config-sub > h4 { margin: 0 0 4px; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+details.config-sub { border: 1px solid var(--line); border-radius: 10px; }
+details.config-sub > summary { padding: 11px 14px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+details.config-sub[open] > summary { border-bottom: 1px solid var(--line); }
+details.config-sub > .config-rows { padding: 0 14px; }
+details.config-sub + details.config-sub { margin-top: 10px; }
 .rule-preview ul, .rule-help { margin: 0; padding-left: 18px; font-size: 13px; }
 .rule-preview li, .rule-help li { margin: 6px 0; }
 
@@ -345,13 +373,8 @@ select[multiple] { min-height: 120px; padding: 6px; }
 .import-decision { max-width: 300px; }
 .pool-membership { min-width: 0; margin: 12px 0; padding: 0; border: 0; }
 .pool-membership legend { margin-bottom: 6px; padding: 0; font-size: 12.5px; font-weight: 550; color: var(--muted); }
-.image-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 10px 0; }
-.image-gallery > .muted { grid-column: 1 / -1; }
-.image-card { display: grid; gap: 6px; min-width: 0; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
-.image-card small { overflow-wrap: anywhere; color: var(--muted); font-size: 12px; }
-.image-card > button:last-child { justify-self: start; border: 0; padding: 2px 0; background: transparent; color: var(--danger); font-size: 12.5px; cursor: pointer; }
-.image-thumb { display: grid; place-items: center; width: 100%; height: 130px; padding: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 12px; cursor: zoom-in; }
-.image-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.catalog-editor .gallery { margin: 10px 0; }
+.layout.wide .catalog-editor .form-grid.single { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 /* 数据 */
 .filter-card { margin-bottom: 14px; }
@@ -411,16 +434,6 @@ select[multiple] { min-height: 120px; padding: 6px; }
 .fab-error { max-width: 360px; margin: 0; padding: 9px 12px; border: 1px solid var(--danger); border-radius: 10px; background: var(--surface); color: var(--danger); font-size: 12.5px; box-shadow: var(--shadow-float); }
 @keyframes float-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-/* 通知 */
-.notification-stack { display: grid; gap: 8px; width: min(380px, calc(100vw - 32px)); max-height: min(40vh, 360px); overflow-y: auto; }
-.notification-stack[popover] { inset: 20px 20px auto auto; margin: 0; padding: 0; border: 0; background: transparent; color: var(--text); }
-.notification-stack:not(:popover-open) { display: none; }
-.notification { display: flex; align-items: flex-start; gap: 10px; padding: 11px 13px; border: 1px solid var(--line); border-left: 3px solid var(--success); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow-float); font-size: 13px; overflow-wrap: anywhere; animation: float-in .18s ease-out both; }
-.notification.error { border-left-color: var(--danger); color: var(--danger); }
-.notification > span { min-width: 0; flex: 1; }
-.notification-close { flex: none; border: 0; padding: 0 2px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
-.notification details { margin-top: 8px; max-height: 240px; overflow: auto; }
-
 /* 对话框 */
 dialog { border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--text); box-shadow: var(--shadow-float); }
 dialog::backdrop { background: var(--overlay); }
@@ -428,9 +441,6 @@ dialog[open] { animation: float-in .18s ease-out both; }
 .confirm-dialog { width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 22px; }
 .confirm-dialog h3 { margin-bottom: 8px; font-size: 17px; }
 .confirm-dialog .query-result { min-height: 0; max-height: min(50vh, 400px); }
-.image-preview { width: min(940px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 16px; }
-.image-preview > button { display: flex; margin-left: auto; }
-.image-preview img { display: block; width: 100%; max-height: calc(100vh - 140px); margin: 12px auto; object-fit: contain; }
 .batch-dialog { width: min(1100px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 22px; overflow: auto; }
 .batch-dialog .section-head { align-items: flex-start; }
 .batch-dialog .section-head p { margin: 2px 0 0; }
@@ -462,7 +472,6 @@ dialog[open] { animation: float-in .18s ease-out both; }
   .layout { grid-template-columns: minmax(0, 1fr); }
   .side { position: static; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .image-gallery { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 }
 @container (max-width: 760px) {
   .replies-workspace { grid-template-columns: minmax(0, 1fr); }
@@ -484,6 +493,8 @@ dialog[open] { animation: float-in .18s ease-out both; }
   .island { order: 3; margin: 0 auto; }
   .title-actions { flex: none; }
   .config-field { grid-template-columns: 1fr; gap: 8px; }
+  .mode-toggle-row { grid-template-columns: 1fr; }
+  .config-field.compound-item:has(textarea), .config-field.compound-item:has(select) { grid-template-columns: 1fr; }
   .tasks { grid-template-columns: 1fr; }
   .filters { grid-template-columns: 1fr 1fr; }
   .form-grid { grid-template-columns: 1fr; }
@@ -512,9 +523,6 @@ dialog[open] { animation: float-in .18s ease-out both; }
   .batch-row { grid-template-columns: 1fr; }
   .batch-row img { width: 100%; }
   .batch-thumbnail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 .catalog-item strong { display: block; font-size: 13.5px; font-weight: 600; }
 .catalog-item small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }

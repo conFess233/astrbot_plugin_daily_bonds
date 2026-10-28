@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>今日姻缘 · 管理</title>
     <link rel="stylesheet" href="./style.css" />
+    <link rel="stylesheet" href="./motion.css" />
   </head>
   <body>
-    <div id="loading-progress" class="loading-progress" role="progressbar" aria-label="正在加载管理数据" hidden><span></span></div>
+    <div id="loading-progress" class="topline" role="progressbar" aria-label="正在加载管理数据"></div>
     <main class="shell">
       <header class="titlebar">
         <div class="brand">
@@ -26,7 +27,6 @@
         </nav>
         <div class="title-actions"><button id="refresh" class="icon-btn" type="button" aria-label="刷新数据" title="刷新数据" data-i="refresh"></button></div>
       </header>
-      <div id="notice" class="notification-stack" popover="manual" aria-live="polite" aria-atomic="false"></div>
 
       <section id="overview-panel" class="panel" aria-labelledby="overview-title">
         <div class="section-head">
@@ -103,7 +103,7 @@
         </div>
         <div class="ruler"></div>
         <fieldset id="catalog-controls" class="control-group">
-          <div class="layout">
+          <div id="catalog-layout" class="layout">
             <div class="main">
               <section class="card card-pad catalog-sync-card">
                 <div class="card-title"><div><h3>同步仓库角色配置</h3><p>预览后选择要同步的项目；本地图片与仓库已移除的内容会保留。</p></div><button id="catalog-sync-check" class="btn btn-ghost btn-sm" type="button">重新检查</button></div>
@@ -154,7 +154,11 @@
             </div>
             <aside class="side">
               <section class="card side-card catalog-editor">
-                <h3 id="character-form-title">新建角色</h3>
+                <div class="side-head">
+                  <h3 id="character-form-title">新建角色</h3>
+                  <button id="character-expand" class="icon-btn" type="button" data-side-expand aria-pressed="false" aria-label="加宽面板" data-i="left" hidden></button>
+                  <button id="character-full" class="icon-btn" type="button" aria-label="全屏查看" data-i="maximize"></button>
+                </div>
                 <div class="form-grid single">
                   <label class="field"><span>ID（新建后固定）</span><input id="character-id" maxlength="64" /></label>
                   <label class="field"><span>名称</span><input id="character-name" maxlength="120" /></label>
@@ -168,7 +172,7 @@
                   <label class="field"><span>压缩质量（%）</span><input data-upload-setting="quality" type="number" min="0" max="100" step="any" value="80" /></label>
                 </div>
                 <p class="side-note">超出目标时在本地压缩为 WebP，保留透明背景与原文件名；两处上传区共用设置。</p>
-                <div id="character-images" class="image-gallery" aria-live="polite"></div>
+                <div id="character-images" class="gallery" aria-live="polite"></div>
                 <fieldset class="pool-membership"><legend>角色池</legend><div id="character-pools" class="check-list"></div></fieldset>
                 <div class="actions split">
                   <button id="new-character" class="btn btn-ghost" type="button">新建</button>
@@ -302,7 +306,7 @@
 
     <div class="fab-wrap">
       <p id="save-error" class="fab-error" role="alert" hidden></p>
-      <div id="fab-menu" class="fab-menu" role="menu" aria-label="快捷操作" hidden>
+      <div id="fab-menu" class="fab-menu" role="menu" aria-label="快捷操作">
         <button type="button" role="menuitem" data-fab="refresh" data-i="refresh">刷新数据</button>
         <button type="button" role="menuitem" data-fab="search" data-i="search">搜索配置项<kbd>/</kbd></button>
         <button type="button" role="menuitem" data-fab="batch" data-i="image">批量导入角色图</button>
@@ -317,11 +321,6 @@
     </div>
 
     <dialog id="draft-dialog" class="confirm-dialog" aria-labelledby="draft-dialog-title"><h3 id="draft-dialog-title">当前配置尚未保存</h3><p class="muted">先处理当前草稿，再切换范围或刷新配置。</p><div class="actions end"><button id="draft-cancel" class="btn btn-ghost" type="button">取消</button><button id="draft-discard" class="btn btn-danger" type="button">放弃并继续</button><button id="draft-save" class="btn btn-primary" type="button">保存并继续</button></div></dialog>
-    <dialog id="image-preview" class="image-preview" aria-label="角色图预览">
-      <button id="image-preview-close" class="btn btn-ghost" type="button">关闭预览</button>
-      <img id="image-preview-content" alt="" />
-      <p id="image-preview-caption" class="muted"></p>
-    </dialog>
     <dialog id="period-reset-dialog" class="confirm-dialog" aria-labelledby="period-reset-dialog-title">
       <h3 id="period-reset-dialog-title">确认重置</h3>
       <p class="muted">请核对当前群、玩法和受影响数量。</p>
