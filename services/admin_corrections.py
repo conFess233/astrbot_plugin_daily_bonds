@@ -6,7 +6,8 @@ import hashlib
 import json
 import sqlite3
 import uuid
-from typing import Any, Mapping
+from collections.abc import Mapping
+from typing import Any
 
 from ..models import StorageError
 from .storage import SQLiteStorage

@@ -242,7 +242,7 @@ class CatalogService:
                             session, character_id, spec, max_bytes, max_pixels
                         )
                         return ("downloaded" if saved else "present", None)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - 单个角色下载隔离，失败计入结果
                         return "failed", f"{character_id}: {type(exc).__name__}: {exc}"
 
             results = await asyncio.gather(

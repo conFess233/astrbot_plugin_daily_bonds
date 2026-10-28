@@ -98,7 +98,7 @@ class OneBotAdapter:
             platform = self.context.get_platform_inst(scope.platform_id)
             info = await platform.get_client().get_group_info(group_id=scope.group_id)
             return str(info.get("group_name") or "本群").strip() or "本群"
-        except Exception:
+        except Exception:  # noqa: BLE001 - OneBot 接口边界：降级为默认群名
             logger.warning("今日姻缘：读取群名失败，排行榜使用“本群”。", exc_info=True)
             return "本群"
 

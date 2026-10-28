@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     aiohttp = None  # type: ignore[assignment]
 
-from ..models import StorageError
+from ..models import InvalidInputError, StorageError
 from .catalog import (
     _atomic_content_write,
     _fetch_limited,
@@ -88,7 +88,7 @@ class CatalogSyncService:
     async def commit(self, payload: dict[str, Any], *, actor: str) -> dict[str, Any]:
         token = payload.get("preview_id")
         if not isinstance(token, str):
-            raise ValueError("请先检查仓库更新。")
+            raise InvalidInputError("请先检查仓库更新。")
         plan = self._plans.get(token)
         if plan is None or plan["actor"] != actor or plan["expires"] < int(time.time()):
             raise ValueError("同步预览已过期，请重新检查。")
@@ -345,7 +345,7 @@ class CatalogSyncService:
                     raise ValueError("仓库配置文件超出大小限制。")
         parsed = json.loads(data)
         if not isinstance(parsed, dict):
-            raise ValueError("仓库配置文件不是 JSON 对象。")
+            raise InvalidInputError("仓库配置文件不是 JSON 对象。")
         return parsed
 
     @staticmethod

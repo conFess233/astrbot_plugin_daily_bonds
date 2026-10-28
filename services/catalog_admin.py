@@ -5,15 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import time
 import uuid
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from ..models import StorageError
 from .catalog import _atomic_content_write, _inspect_image
 from .storage import SQLiteStorage
-
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -699,7 +698,8 @@ class CatalogAdminService:
             "revision": int(row["revision"]),
             "provenance": json.loads(row["provenance_json"]),
             "image_count": int(row["image_count"])
-            if "image_count" in row.keys()
+            # sqlite3.Row 的 in 比较的是值而非列名，必须保留 keys()。
+            if "image_count" in row.keys()  # noqa: SIM118
             else 0,
         }
 

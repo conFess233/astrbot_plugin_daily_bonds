@@ -90,11 +90,7 @@ def parse_command(
     candidates: list[tuple[str, str]] = []
     for action, aliases in keywords.items():
         for alias in aliases:
-            if (
-                rendered == alias
-                or rendered.startswith(alias + " ")
-                or rendered.startswith(alias + "<@")
-            ):
+            if rendered == alias or rendered.startswith((alias + " ", alias + "<@")):
                 candidates.append((alias, action))
     if not candidates:
         return None

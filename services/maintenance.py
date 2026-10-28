@@ -17,7 +17,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from ..models import StorageError
+from ..models import InvalidInputError, StorageError
 from .storage import SQLiteStorage
 
 _BACKUP_FORMAT = "astrbot-daily-bonds-backup"
@@ -368,7 +368,9 @@ class MaintenanceService:
                             for key in ("platform_id", "self_id", "group_id", "umo")
                         }
                     if not isinstance(candidate, dict):
-                        raise ValueError(f"scope {source_id} mapping must be an object")
+                        raise InvalidInputError(
+                            f"scope {source_id} mapping must be an object"
+                        )
                     target = tuple(
                         self._text(candidate.get(key), f"scope {source_id} {key}", 256)
                         for key in ("platform_id", "self_id", "group_id", "umo")

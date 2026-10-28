@@ -109,7 +109,7 @@ class AvatarCache:
                     user_id = reverse[task]
                     try:
                         result = task.result()
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - 头像下载与缓存降级：失败使用缓存或占位
                         logger.exception("今日姻缘：头像缓存任务失败，使用缓存或占位。")
                         result = None
                     resolved[user_id] = result if isinstance(result, Path) else None
@@ -153,7 +153,7 @@ class AvatarCache:
                     existing.unlink(missing_ok=True)
                     _cache_metadata_path(existing).unlink(missing_ok=True)
                 return target
-            except Exception:
+            except Exception:  # noqa: BLE001 - 头像下载与缓存降级：失败使用缓存或占位
                 logger.warning(
                     "今日姻缘：头像获取或缓存失败，使用缓存或占位。", exc_info=True
                 )

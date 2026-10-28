@@ -8,6 +8,8 @@ import time
 import uuid
 from typing import Any
 
+from astrbot.api import logger
+
 from .message_templates import render_message
 
 
@@ -103,8 +105,9 @@ class NotificationService:
                         item["umo"], MessageChain().message(item["text"])
                     )
                 )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - 发送边界：记录并写回通知队列
                 error = type(exc).__name__
+                logger.warning("今日姻缘：通知发送失败，原因=%s", error, exc_info=True)
             await asyncio.to_thread(
                 self._finish, item["id"], ok, error, int(time.time())
             )

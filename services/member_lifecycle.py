@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Set
+from collections.abc import Set as AbstractSet
 
 from .message_templates import render_message
 from .storage import SQLiteStorage
@@ -15,7 +15,7 @@ def reconcile_member_eligibility(
     *,
     scope_id: int,
     period_id: str,
-    eligible_user_ids: Set[str],
+    eligible_user_ids: AbstractSet[str],
     now: int,
 ) -> int:
     """解除失去参与资格者相关的关系，并为仍合资格的失配偶持有人补偿一次。"""

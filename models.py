@@ -42,3 +42,10 @@ class CommandSyntaxError(DomainError):
 
 class StorageError(DomainError):
     """数据库状态无法安全读取、迁移或写入。"""
+
+
+class InvalidInputError(ValueError):
+    """外部输入（请求体、导入文件、仓库配置）的结构不符合要求。
+
+    继承 ValueError，沿用各入口已有的“参数错误”转换。
+    """

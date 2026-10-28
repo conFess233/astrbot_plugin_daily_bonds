@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
-from ..models import StorageError
+from ..models import InvalidInputError, StorageError
 from .catalog import _atomic_content_write, _inspect_image
 from .storage import SQLiteStorage
 
@@ -71,7 +71,7 @@ class CatalogImportService:
             pools_raw = manifest.get("pools")
             characters_raw = manifest.get("characters")
             if not isinstance(pools_raw, list) or not isinstance(characters_raw, list):
-                raise ValueError("manifest 必须包含 pools characters 数组")
+                raise InvalidInputError("manifest 必须包含 pools characters 数组")
             if len(pools_raw) + len(characters_raw) > max_entries:
                 raise ValueError("目录项目数超import_max_entries")
 
@@ -194,7 +194,7 @@ class CatalogImportService:
                         ]
                         character["_index"] = index
                         planned_characters.append(character)
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - 单条角色预检隔离，错误随结果返回
                         planned_characters.append(
                             {
                                 "_index": index,
@@ -819,7 +819,7 @@ class CatalogImportService:
     @staticmethod
     def _zip_image_path(value: Any, members: dict[str, zipfile.ZipInfo]) -> str:
         if not isinstance(value, str):
-            raise ValueError("ZIP 图片必须给出 images/ 下的相对路径")
+            raise InvalidInputError("ZIP 图片必须给出 images/ 下的相对路径")
         name = CatalogImportService._safe_zip_name(value)
         if (
             not name.startswith("images/")
@@ -837,7 +837,7 @@ class CatalogImportService:
         for index, pool in enumerate(raw):
             try:
                 if not isinstance(pool, dict):
-                    raise ValueError("角色池必须是 JSON 对象")
+                    raise InvalidInputError("角色池必须是 JSON 对象")
                 pool_id = cls._identifier(pool.get("id"), "角色ID")
                 if pool_id in ids:
                     raise ValueError("角色ID 重复")
@@ -872,7 +872,7 @@ class CatalogImportService:
     @classmethod
     def _validate_character(cls, raw: Any, duplicates: set[str]) -> dict[str, Any]:
         if not isinstance(raw, dict):
-            raise ValueError("角色必须JSON 对象")
+            raise InvalidInputError("角色必须JSON 对象")
         character_id = cls._identifier(raw.get("id"), "角色 ID")
         if character_id in duplicates:
             raise ValueError("同一manifest 内存在重复角ID")
@@ -881,7 +881,7 @@ class CatalogImportService:
             raise ValueError("角色 gender 无效")
         enabled = raw.get("enabled", False)
         if not isinstance(enabled, bool):
-            raise ValueError("角色 enabled 必须是布尔值")
+            raise InvalidInputError("角色 enabled 必须是布尔值")
         aliases = cls._string_list(raw.get("aliases", []), "角色别名", 30, 80)
         pool_ids = cls._string_list(raw.get("pool_ids", []), "角色ID", 100, 128)
         images = raw.get("images", [])

@@ -107,7 +107,7 @@ class DailyBondsPlugin(Star):
             return
         try:
             response = await runtime.handle_group_message(event)
-        except Exception:
+        except Exception:  # noqa: BLE001 - Handler 边界：隔离未知异常，不影响其他插件
             logger.exception("今日姻缘：处理群消息失败。")
             return
         if response:
@@ -175,7 +175,7 @@ class DailyBondsPlugin(Star):
                 )
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except Exception:  # noqa: BLE001 - 后台任务边界：记录后继续运行
             logger.exception("今日姻缘：内置素材下载任务失败，可在后续启动时重试。")
 
     async def _maintenance_loop(
@@ -199,11 +199,11 @@ class DailyBondsPlugin(Star):
                         total = sum(pruned.values())
                         if total:
                             logger.info("今日姻缘：历史清理完成，共移除 %d 项。", total)
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - 历史清理失败，一小时后重试
                         cleanup_retry_at = now + 3600
                         logger.exception("今日姻缘：历史清理失败，将在稍后重试。")
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception:  # noqa: BLE001 - 后台任务边界：记录后继续运行
                 logger.exception("今日姻缘：邀请维护周期失败，将稍后重试。")
             await asyncio.sleep(5)

@@ -18,19 +18,19 @@ from astrbot.api import logger
 from astrbot.api.web import error_response, json_response, request
 from PIL import Image, ImageOps
 
-from ..models import ConfigurationError, StorageError
+from ..models import ConfigurationError, InvalidInputError, StorageError
 from .admin_corrections import AdminCorrectionService
 from .admin_queries import AdminQueryService
 from .batch_images import BatchImagesService
 from .catalog_admin import CatalogAdminService
 from .catalog_import import CatalogImportService
 from .catalog_sync import CatalogSyncService
+from .fonts import available_fonts, font_preview
 from .host_config import HostConfigBridge
 from .maintenance import MaintenanceService
 from .message_templates import template_fields
 from .settings import effective_config, validate_config
 from .storage import SQLiteStorage
-from .fonts import available_fonts, font_preview
 
 PLUGIN_NAME = "astrbot_plugin_daily_bonds"
 
@@ -312,7 +312,7 @@ class WebManager:
         return await self._batch_change("commit")
 
     async def fonts(self):
-        actor, denied = self._authorize()
+        _actor, denied = self._authorize()
         if denied:
             return denied
         fonts = await asyncio.to_thread(available_fonts)
@@ -321,7 +321,7 @@ class WebManager:
         )
 
     async def preview_font(self):
-        actor, denied = self._authorize()
+        _actor, denied = self._authorize()
         if denied:
             return denied
         try:
@@ -342,7 +342,7 @@ class WebManager:
         try:
             payload = await request.json(default={})
             if not isinstance(payload, dict):
-                raise ValueError("请求内容必须是 JSON 对象。")
+                raise InvalidInputError("请求内容必须是 JSON 对象。")
             if method == "create":
                 config, _revision = await asyncio.to_thread(self.storage.get_settings)
                 args = {
@@ -383,7 +383,7 @@ class WebManager:
             return self._error("BATCH_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("BATCH_CONFLICT", str(exc), 409)
-        except Exception:
+        except Exception:  # noqa: BLE001 - API 边界：记录堆栈并返回错误
             logger.exception("今日姻缘：批量图片导入操作失败。")
             return self._error("BATCH_FAILED", "批量导入操作失败，草稿仍保留。", 500)
 
@@ -451,7 +451,7 @@ class WebManager:
                 return self._error("BATCH_UPLOAD_INVALID", str(failure), 400)
             except StorageError as failure:
                 return self._error("BATCH_CONFLICT", str(failure), 409)
-        except Exception:
+        except Exception:  # noqa: BLE001 - API 边界：记录堆栈并返回错误
             logger.exception("今日姻缘：批量图片上传失败。")
             return self._error(
                 "BATCH_UPLOAD_FAILED", "上传失败，请重新选择该图片；其他条目保留。", 500
@@ -495,7 +495,7 @@ class WebManager:
         try:
             payload = await request.json(default={})
             if not isinstance(payload, dict):
-                raise ValueError("默认检测设置必须是 JSON 对象。")
+                raise InvalidInputError("默认检测设置必须是 JSON 对象。")
             data = await asyncio.to_thread(self._save_batch_defaults, payload, actor)
             if not data.pop("host_synced"):
                 return self._error(
@@ -508,7 +508,7 @@ class WebManager:
             return self._error("BATCH_DEFAULTS_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("BATCH_DEFAULTS_CONFLICT", str(exc), 409)
-        except Exception:
+        except Exception:  # noqa: BLE001 - API 边界：记录堆栈并返回错误
             logger.exception("今日姻缘：保存全局检测设置失败。")
             return self._error(
                 "BATCH_DEFAULTS_FAILED", "保存检测默认值失败，请刷新检查当前配置。", 500
@@ -543,7 +543,7 @@ class WebManager:
             try:
                 self.host_config.mirror(current, revision)
                 synced = True
-            except Exception:
+            except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
                 logger.exception("今日姻缘：全局检测设置已保存，但宿主同步失败。")
                 synced = False
         return {
@@ -1146,7 +1146,7 @@ class WebManager:
             return self._error("IMPORT_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("IMPORT_CONFLICT", str(exc), 409)
-        except Exception:
+        except Exception:  # noqa: BLE001 - API 边界：记录堆栈并返回错误
             logger.exception("今日姻缘：角色包导入预检失败。")
             return self._error(
                 "INTERNAL_ERROR", "导入预检失败，请检查文件后重试。", 500
@@ -1305,7 +1305,7 @@ class WebManager:
             return self._error("RESTORE_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("RESTORE_CONFLICT", str(exc), 409)
-        except Exception:
+        except Exception:  # noqa: BLE001 - API 边界：记录堆栈并返回错误
             logger.exception("今日姻缘：完整备份预检失败。")
             return self._error(
                 "INTERNAL_ERROR", "备份预检失败，请检查文件后重试。", 500
@@ -1340,7 +1340,7 @@ class WebManager:
                     self.runtime_reset()
                 try:
                     await asyncio.to_thread(self._mirror_current_config)
-                except Exception:
+                except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
                     logger.exception("今日姻缘：数据已恢复，但宿主配置同步失败。")
                     return self._error(
                         "RESTORE_CONFIG_SYNC_FAILED",
@@ -1525,7 +1525,7 @@ class WebManager:
                         await asyncio.to_thread(
                             self.host_config.mirror, saved_global, saved_revision
                         )
-                    except Exception:
+                    except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
                         logger.exception(
                             "今日姻缘：全局配置已保存，但宿主配置同步失败。"
                         )
@@ -1571,7 +1571,7 @@ class WebManager:
             if scope_id is None:
                 try:
                     await asyncio.to_thread(self.host_config.mirror, stored, revision)
-                except Exception:
+                except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
                     logger.exception("今日姻缘：全局配置已保存，但宿主配置同步失败。")
                     return self._error(
                         "CONFIG_SYNC_FAILED",
@@ -1661,7 +1661,7 @@ class WebManager:
         scope_id = self._requested_scope_id(payload)
         draft = payload.get("draft")
         if not isinstance(draft, dict):
-            raise ValueError("draft 必须是完整配置对象。")
+            raise InvalidInputError("draft 必须是完整配置对象。")
         if scope_id is None:
             validate_config(draft)
             return None, draft, draft

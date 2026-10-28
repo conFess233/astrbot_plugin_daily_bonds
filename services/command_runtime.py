@@ -25,9 +25,9 @@ from .gameplay import Candidate, GameplayService
 from .member_lifecycle import reconcile_member_eligibility
 from .message_templates import (
     IMAGE_TOKEN,
+    MESSAGE_CONTEXT,
     MessageText,
     render_message,
-    MESSAGE_CONTEXT,
     set_message_values,
 )
 from .rendering import CardRenderer, CardRow
@@ -81,7 +81,7 @@ class CommandRuntime:
             return None
         try:
             platform = self.context.get_platform_inst(str(event.get_platform_id()))
-        except Exception:
+        except Exception:  # noqa: BLE001 - 宿主接口边界：失败时跳过或降级
             logger.warning("今日姻缘：读取宿主平台失败，跳过本次事件。", exc_info=True)
             return None
         if platform is None or platform.meta().name != "aiocqhttp":
@@ -211,7 +211,7 @@ class CommandRuntime:
         if config["commands"]["allow_host_prefix"]:
             try:
                 host_prefix = self.context.get_config().get("wake_prefix", [])
-            except Exception:
+            except Exception:  # noqa: BLE001 - 宿主接口边界：失败时跳过或降级
                 logger.warning(
                     "今日姻缘：读取宿主命令前缀失败，使用裸关键词。", exc_info=True
                 )
@@ -1385,7 +1385,7 @@ class CommandRuntime:
                     font_id=MESSAGE_CONTEXT.get().get("font_id", "auto"),
                     **options,
                 )
-            except Exception:
+            except Exception:  # noqa: BLE001 - 渲染降级为文字
                 logger.exception("今日姻缘：卡片渲染失败，降级为文字。")
         visible = text.replace(IMAGE_TOKEN, "")
         if not images and not visible.strip():
@@ -1583,7 +1583,7 @@ class CommandRuntime:
                 max_entries=resources["avatar_cache_max_entries"],
                 group_ids=group_ids,
             )
-        except Exception:
+        except Exception:  # noqa: BLE001 - 头像降级为占位图
             logger.exception("今日姻缘：头像读取失败，使用占位图。")
             return {}
 

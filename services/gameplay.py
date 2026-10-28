@@ -3,17 +3,19 @@
 from __future__ import annotations
 
 import json
+import math
 import random
 import secrets
 import sqlite3
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 from ..models import Mode, StorageError
-from .storage import SQLiteStorage
-from .statistics import StatisticsService
 from .message_templates import render_message
+from .statistics import StatisticsService
+from .storage import SQLiteStorage
 
 
 @dataclass(frozen=True, slots=True)
@@ -1864,7 +1866,6 @@ def math_probability(value: float) -> bool:
     return (
         isinstance(value, (int, float))
         and not isinstance(value, bool)
-        and value == value
+        and math.isfinite(value)
         and 0 <= value <= 1
-        and value not in {float("inf"), float("-inf")}
     )
