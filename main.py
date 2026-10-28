@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
-from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.event import AstrMessageEvent, MessageChain, filter
 from astrbot.api.event.filter import EventMessageType
 from astrbot.api.star import Context, Star
 from astrbot.core.utils.astrbot_path import get_astrbot_data_path
@@ -20,7 +20,7 @@ from .services.command_replies import RuntimeReply
 from .services.command_runtime import CommandRuntime
 from .services.gameplay import GameplayService
 from .services.host_config import import_legacy_host_settings
-from .services.message_chain import reply_chain
+from .services.message_chain import bypass_host_quote, reply_chain
 from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
 from .services.onebot import OneBotAdapter
@@ -136,7 +136,10 @@ class DailyBondsPlugin(Star):
                             temporary_paths.append(send_path)
                     response = replace(response, image_paths=tuple(send_paths))
                 chain = reply_chain(response, event)
-                if chain:
+                if chain and self._bypass_host_quote(response, chain, event):
+                    # 直接发送不经过宿主结果装饰，宿主不会再补引用。
+                    await event.send(MessageChain(chain))
+                elif chain:
                     yield event.chain_result(chain)
             finally:
                 for image_path in temporary_paths:
@@ -144,6 +147,19 @@ class DailyBondsPlugin(Star):
                 if isinstance(response, RuntimeReply):
                     for image_path in response.cleanup_paths:
                         image_path.unlink(missing_ok=True)
+
+    def _bypass_host_quote(
+        self, response: str | RuntimeReply, chain: list, event: AstrMessageEvent
+    ) -> bool:
+        text = response.text if isinstance(response, RuntimeReply) else response
+        try:
+            host_config = self.context.get_config(umo=event.unified_msg_origin)
+        except Exception:  # noqa: BLE001 - 宿主接口边界：读取失败时交给宿主发送
+            logger.warning("今日姻缘：读取宿主回复设置失败。", exc_info=True)
+            return False
+        return bypass_host_quote(
+            chain, bool(getattr(text, "quote_source", False)), host_config
+        )
 
     async def terminate(self) -> None:
         """停止种子素材下载并关闭数据库连接。"""

@@ -10,6 +10,19 @@ from .command_replies import RuntimeReply
 from .message_templates import IMAGE_TOKEN
 
 
+def bypass_host_quote(chain: list[Any], quote_source: bool, host_config: Any) -> bool:
+    """宿主开启“回复时引用”时会给纯图文回复补引用；关闭引用的回复需绕过宿主装饰。"""
+
+    if quote_source or not chain:
+        return False
+    if not all(isinstance(component, (Plain, Image)) for component in chain):
+        return False
+    try:
+        return bool(host_config["platform_settings"]["reply_with_quote"])
+    except (KeyError, TypeError):
+        return False
+
+
 def reply_chain(response: str | RuntimeReply, event: Any) -> list[Any]:
     reply = response if isinstance(response, RuntimeReply) else RuntimeReply(response)
     if not reply.text.strip():
