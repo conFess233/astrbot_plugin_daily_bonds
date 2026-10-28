@@ -16,7 +16,7 @@ from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
 from ..game.members import reconcile_member_eligibility
 from ..game.operations import Candidate, GameplayService
 from ..game.statistics import StatisticsService
-from ..models import CommandSyntaxError, StorageError
+from ..models import CommandSyntaxError, Scope, StorageError
 from ..services.access import AccessService
 from ..services.admin_permissions import may_set_wife
 from ..services.avatar_cache import AvatarCache
@@ -55,6 +55,8 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         self.renderer = CardRenderer(storage.database_path.parent / "renders")
         self.avatar_cache = AvatarCache(storage.database_path.parent / "avatars")
         self._eligibility: dict[int, tuple[str, frozenset[str]]] = {}
+        # 作用域编号与会话标识在运行期很少变化，避免每条消息都写库。
+        self._scope_ids: dict[Scope, tuple[int, str]] = {}
 
     async def handle_group_message(self, event: Any) -> str | RuntimeReply | None:
         token = MESSAGE_CONTEXT.set({})
@@ -96,9 +98,15 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         if is_member_change:
             self.adapter.invalidate_members(scope)
 
-        scope_id = await asyncio.to_thread(
-            self.storage.ensure_scope, scope, str(event.unified_msg_origin), now
-        )
+        umo = str(event.unified_msg_origin)
+        cached_scope = self._scope_ids.get(scope)
+        if cached_scope is not None and cached_scope[1] == umo:
+            scope_id = cached_scope[0]
+        else:
+            scope_id = await asyncio.to_thread(
+                self.storage.ensure_scope, scope, umo, now
+            )
+            self._scope_ids[scope] = (scope_id, umo)
         set_message_values(scope_id=scope_id)
         global_config, global_revision = await asyncio.to_thread(
             self.storage.get_settings
@@ -443,6 +451,7 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         """恢复数据库后清除与旧成员及关系状态关联的快照。"""
         self.adapter.invalidate_all_members()
         self._eligibility.clear()
+        self._scope_ids.clear()
 
     def _candidates(
         self,

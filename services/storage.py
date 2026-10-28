@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import sqlite3
@@ -34,6 +35,11 @@ class SQLiteStorage:
         self.schema_path = schema_path or Path(__file__).with_name("migrations")
         self.connection: sqlite3.Connection | None = None
         self._lock = threading.RLock()
+        # 每条群消息都要读取设置；按两级修订号缓存校验后的结果，
+        # 其他写入方会递增修订号，恢复备份会重开连接并清空缓存。
+        self._settings_cache: dict[
+            int | None, tuple[tuple[int, int], dict[str, Any]]
+        ] = {}
 
     def open(self) -> None:
         """打开运行库并迁移；损坏库或未知版本直接失败，不重建。"""
@@ -46,6 +52,7 @@ class SQLiteStorage:
             check_same_thread=False,
         )
         connection.row_factory = sqlite3.Row
+        self._settings_cache.clear()
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=5000")
         connection.execute("PRAGMA journal_mode=WAL")
@@ -64,6 +71,7 @@ class SQLiteStorage:
         """关闭连接并释放 SQLite 资源。"""
 
         with self._lock:
+            self._settings_cache.clear()
             if self.connection is not None:
                 self.connection.close()
                 self.connection = None
@@ -130,6 +138,22 @@ class SQLiteStorage:
                 )
                 .fetchall()
             )
+        revisions = {row["scope_key"]: int(row["revision"]) for row in rows}
+        key = (
+            revisions.get("global", 0),
+            revisions.get(f"scope:{scope_id}", 0) if scope_id is not None else 0,
+        )
+        cached = self._settings_cache.get(scope_id)
+        if cached is not None and cached[0] == key:
+            return copy.deepcopy(cached[1]), key[1] if scope_id is not None else key[0]
+        value, revision = self._load_settings(rows, scope_id)
+        self._settings_cache[scope_id] = (key, copy.deepcopy(value))
+        return value, revision
+
+    @staticmethod
+    def _load_settings(
+        rows: list[sqlite3.Row], scope_id: int | None
+    ) -> tuple[dict[str, Any], int]:
         global_row = next((row for row in rows if row["scope_key"] == "global"), None)
         defaults = default_config()
         global_value = (
