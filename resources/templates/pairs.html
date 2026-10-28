@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.card { max-width: none; }
+.podium {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.top {
+  position: relative;
+  padding: 18px 16px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+  text-align: center;
+  min-width: 0;
+}
+.top.first {
+  background: var(--pink-soft);
+  border-color: transparent;
+}
+.top .no {
+  position: absolute;
+  top: 10px;
+  left: 12px;
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--gold);
+}
+.duo-av { display: inline-flex; }
+.duo-av .avatar { border: 2px solid var(--surface); }
+.duo-av .avatar + .avatar { margin-left: -14px; }
+.top .avatar { width: 64px; height: 64px; font-size: 22px; }
+.top .names {
+  margin-top: 8px;
+  font-weight: 650;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.top .names span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.top .names i { font-style: normal; color: var(--pink); font-size: 12px; }
+.top .total {
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--pink);
+  font-variant-numeric: tabular-nums;
+}
+.dir {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.bar { display: flex; gap: 2px; height: 6px; margin: 6px 0 4px; }
+.bar i { flex: 1; border-radius: 2px; background: var(--seg-off); }
+.bar i.a { background: var(--primary); }
+.bar i.b { background: var(--pink); }
+.list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-template-rows: repeat({{ rows_per_column }}, auto);
+  gap: 8px 14px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 28px auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+.row .no {
+  color: var(--subtle);
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.row .avatar { width: 36px; height: 36px; font-size: 13px; }
+.row .duo-av .avatar + .avatar { margin-left: -10px; }
+.row .who { min-width: 0; }
+.row .pair {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row .pair i { font-style: normal; color: var(--pink); margin: 0 4px; }
+.row .total {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--primary);
+  font-variant-numeric: tabular-nums;
+}
+.legend {
+  display: flex;
+  gap: 14px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.legend b {
+  display: inline-block;
+  width: 10px;
+  height: 6px;
+  border-radius: 2px;
+  margin-right: 5px;
+  vertical-align: 1px;
+}
+</style>
+</head>
+<body>
+{% macro avatar(side) %}{% if side.avatar %}<img class="avatar" src="{{ side.avatar }}">{% else %}<span class="avatar initial">{{ side.initial | e }}</span>{% endif %}{% endmacro %}
+{% macro bar(pair) %}<div class="bar">{% for k in range(12) %}<i class="{{ 'a' if k < pair.split else 'b' }}"></i>{% endfor %}</div>
+<div class="dir"><span>→ {{ pair.forward }}</span><span>{{ pair.reverse }} ←</span></div>{% endmacro %}
+<div class="card">
+  <div class="card-header">
+    {% if header_avatar %}<img class="avatar lg" src="{{ header_avatar }}">{% endif %}
+    <div>
+      <h1>{{ title | e }}</h1>
+      {% if subtitle %}<div class="sub">{{ subtitle | e }}</div>{% endif %}
+    </div>
+    {% if range_label %}<div class="range">{{ range_label | e }}</div>{% endif %}
+  </div>
+  <div class="card-body">
+    {% if top %}
+    <div class="podium">
+      {% for pair in top %}
+      <div class="top{% if loop.first %} first{% endif %}">
+        <div class="no">{{ pair.rank }}</div>
+        <div class="duo-av">{{ avatar(pair.left) }}{{ avatar(pair.right) }}</div>
+        <div class="names"><span>{{ pair.left.name | e }}</span><i>⇄</i><span>{{ pair.right.name | e }}</span></div>
+        <div class="total">{{ pair.total }}</div>
+        {{ bar(pair) }}
+      </div>
+      {% endfor %}
+    </div>
+    {% if rest %}
+    <div class="list">
+      {% for pair in rest %}
+      <div class="row">
+        <div class="no">{{ pair.rank }}</div>
+        <div class="duo-av">{{ avatar(pair.left) }}{{ avatar(pair.right) }}</div>
+        <div class="who">
+          <div class="pair">{{ pair.left.name | e }}<i>⇄</i>{{ pair.right.name | e }}</div>
+          {{ bar(pair) }}
+        </div>
+        <div class="total">{{ pair.total }}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="legend"><span><b style="background:var(--primary)"></b>左 → 右</span><span><b style="background:var(--pink)"></b>右 → 左</span></div>
+    {% else %}
+    <div class="empty">{{ empty_text | e }}</div>
+    {% endif %}
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

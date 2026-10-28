@@ -22,9 +22,20 @@ from .message_templates import MESSAGE_CONTEXT
 TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "resources" / "templates"
 RenderHtml = Callable[..., Awaitable[str]]
 # 截图使用 JPEG：PNG 不接受宿主默认附带的 quality 参数。
-_RENDER_OPTIONS = {"full_page": True, "type": "jpeg", "quality": 90}
-_RANK_COLUMNS = 3
+# t2i 服务默认视口高 720px，整页截图不会矮于视口；调低视口高度让图片贴合卡片内容。
+_RENDER_OPTIONS = {
+    "full_page": True,
+    "type": "jpeg",
+    "quality": 90,
+    "viewport_height": 1,
+}
+# 多列卡片按模板加宽视口，一张图排更多列；默认 800px 下排行会截断消息数与活跃天数。
+_VIEWPORT_WIDTHS = {"ranking.html": 1900, "list.html": 1600, "pairs.html": 1400}
+_RANK_COLUMNS = 5
 _RANK_ROWS_PER_COLUMN = 10
+# 全群亲密度按对合并后只展示前 50 对，一张图放下。
+PAIR_LIMIT = 50
+_PAIR_TOP = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,9 +117,13 @@ class CardService:
         return self.render_html is not None
 
     @staticmethod
-    def page_capacity(*, max_rows: int, ranking: bool = False, **_: Any) -> int:
+    def page_capacity(
+        *, max_rows: int, ranking: bool = False, pairs: bool = False, **_: Any
+    ) -> int:
         if max_rows < 1:
             raise ValueError("每张卡片的行数必须为正数。")
+        if pairs:
+            return PAIR_LIMIT
         if ranking:
             return min(max_rows, _RANK_COLUMNS * _RANK_ROWS_PER_COLUMN)
         return max_rows
@@ -118,8 +133,11 @@ class CardService:
 
         if self.render_html is None:
             raise RuntimeError("卡片渲染不可用")
+        options = dict(_RENDER_OPTIONS)
+        if name in _VIEWPORT_WIDTHS:
+            options["viewport_width"] = _VIEWPORT_WIDTHS[name]
         path = await self.render_html(
-            _template(name), dict(data), return_url=False, options=_RENDER_OPTIONS
+            _template(name), dict(data), return_url=False, options=options
         )
         result = Path(str(path))
         if not result.is_file():
@@ -136,6 +154,7 @@ class CardService:
         max_rows: int = 20,
         empty_text: str = "暂无记录。",
         ranking: bool = False,
+        pairs: bool = False,
         subtitle: str = "",
         range_label: str = "",
         **_: Any,
@@ -144,6 +163,17 @@ class CardService:
 
         if self.render_html is None:
             return ()
+        if pairs:
+            header = await asyncio.to_thread(data_uri, header_avatar_path, 160)
+            data = await asyncio.to_thread(self._pair_rows, rows[:PAIR_LIMIT])
+            data.update(
+                title=title,
+                subtitle=subtitle,
+                range_label=range_label,
+                header_avatar=header,
+                empty_text=empty_text,
+            )
+            return (await self.render_template("pairs.html", data),)
         per_card = self.page_capacity(max_rows=max_rows, ranking=ranking)
         chunks = [rows[i : i + per_card] for i in range(0, len(rows), per_card)] or [()]
         header = await asyncio.to_thread(data_uri, header_avatar_path, 160)
@@ -162,8 +192,13 @@ class CardService:
                         "header_avatar": header,
                         "empty_text": empty_text,
                         "rows": await asyncio.to_thread(self._rank_rows, chunk),
+                        "columns": _RANK_COLUMNS,
                         "rows_per_column": max(
-                            1, min(_RANK_ROWS_PER_COLUMN, math.ceil(len(chunk) / 3))
+                            1,
+                            min(
+                                _RANK_ROWS_PER_COLUMN,
+                                math.ceil(len(chunk) / _RANK_COLUMNS),
+                            ),
                         ),
                     }
                 else:
@@ -234,6 +269,42 @@ class CardService:
             }
             for row in rows
         ]
+
+    @staticmethod
+    def _pair_rows(rows: Sequence[CardRow]) -> dict[str, Any]:
+        """双向合并的亲密度对：前三名放大，其余两列按列排布。"""
+
+        pairs = []
+        for row in rows:
+            left_name, right_name = row.pair_names or ("", "")
+            forward, reverse = row.pair_scores or (0, 0)
+            total = forward + reverse
+            pairs.append(
+                {
+                    "rank": row.pair_rank,
+                    "total": total,
+                    "forward": forward,
+                    "reverse": reverse,
+                    # 12 段比例条中左 → 右所占段数。
+                    "split": round(12 * forward / total) if total else 6,
+                    "left": {
+                        "name": left_name,
+                        "avatar": data_uri(row.avatar_path, 128),
+                        "initial": _initial(left_name),
+                    },
+                    "right": {
+                        "name": right_name,
+                        "avatar": data_uri(row.other_avatar_path, 128),
+                        "initial": _initial(right_name),
+                    },
+                }
+            )
+        rest = pairs[_PAIR_TOP:]
+        return {
+            "top": pairs[:_PAIR_TOP],
+            "rest": rest,
+            "rows_per_column": max(1, math.ceil(len(rest) / 3)),
+        }
 
     @staticmethod
     async def _affection(title: str, rows: Sequence[CardRow]) -> dict[str, Any]:

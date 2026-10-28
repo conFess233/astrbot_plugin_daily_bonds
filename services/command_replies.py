@@ -81,6 +81,7 @@ class ReplyMixin:
         limit = CardService.page_capacity(
             max_rows=int(options.get("max_rows", 20)),
             ranking=bool(options.get("ranking")),
+            pairs=bool(options.get("pairs")),
         )
         merged = merge_long and (len(rows) > limit or len(images) > 1)
         chunks: list[str] = []

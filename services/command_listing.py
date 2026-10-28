@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
-from .cards import CardRow, render_mode
+from .cards import PAIR_LIMIT, CardRow, render_mode
 from .command_replies import RuntimeReply
 from .message_templates import (
     IMAGE_TOKEN,
@@ -98,6 +98,8 @@ class ListingMixin:
             name = " ".join(names.get(user_id, "群友").split())
             return name if len(name) <= maximum else name[: maximum - 1] + "…"
 
+        if global_directed:
+            return await self._pair_rank(values, ranked, title, display_name)
         page_size, page = config["display"]["page_size"], command.page or 1
         pages = max(1, (len(ranked) + page_size - 1) // page_size)
         pagination = config["display"]["pagination_enabled"]
@@ -205,6 +207,87 @@ class ListingMixin:
             merge_long=True,
             chunk_chars=config["resources"]["text_chunk_chars"],
             **options,
+        )
+
+    async def _pair_rank(
+        self,
+        values: Mapping[str, Any],
+        ranked: list[tuple[str, str, int, int]],
+        title: str,
+        display_name: Callable[..., str],
+    ) -> str | RuntimeReply:
+        """全群亲密度：A→B 与 B→A 合并为一对，按双向总分排序，只展示前 50 对。"""
+
+        config = values["config"]
+        if (values["command"].page or 1) > 1:
+            return render_message(config, "errors", "page_out_of_range", pages=1)
+        directed = {(source, target): score for source, target, score, _ in ranked}
+        merged = []
+        for left, right in {tuple(sorted(key)) for key in directed}:
+            forward = directed.get((left, right), 0)
+            reverse = directed.get((right, left), 0)
+            # 付出更多的一方放在左边，比例条以主色开头。
+            if reverse > forward:
+                left, right, forward, reverse = right, left, reverse, forward
+            merged.append((left, right, forward, reverse))
+        merged.sort(key=lambda pair: (-(pair[2] + pair[3]), -pair[2], pair[0], pair[1]))
+        shown = merged[:PAIR_LIMIT]
+        avatars = await self._avatars(
+            list({user for left, right, _, _ in shown for user in (left, right)}),
+            config,
+        )
+        lines, cards = [], []
+        for index, (left, right, forward, reverse) in enumerate(shown, 1):
+            left_name, right_name = display_name(left, 16), display_name(right, 16)
+            detail = render_message(
+                config, "titles", "intimacy_value", score=forward + reverse
+            )
+            lines.append(
+                f"{index}. {left_name} ⇄ {right_name} · {detail}（→{forward} / {reverse}←）"
+            )
+            cards.append(
+                CardRow(
+                    f"{left_name} ⇄ {right_name}",
+                    detail,
+                    avatar_path=avatars.get(left),
+                    avatar_user_id=left,
+                    other_avatar_path=avatars.get(right),
+                    other_avatar_user_id=right,
+                    pair_names=(left_name, right_name),
+                    pair_scores=(forward, reverse),
+                    pair_rank=index,
+                    score=forward + reverse,
+                )
+            )
+        summary = render_message(
+            config, "titles", "rank_summary", title=title, count=len(merged)
+        )
+        lines_text = "\n".join(lines) or render_message(config, "titles", "empty")
+        text = render_message(
+            config,
+            "results",
+            "rank_intimacy",
+            title=title,
+            count=len(merged),
+            lines=lines_text,
+            group_name=values.get("group_name", "本群"),
+        )
+        subtitle = f"双向合并 · 共 {len(merged)} 对" + (
+            f" · 显示前 {PAIR_LIMIT} 对" if len(merged) > PAIR_LIMIT else ""
+        )
+        return await self._reply_with_card(
+            text,
+            title,
+            cards,
+            fallback_text=f"{summary}\n{lines_text}",
+            merge_long=True,
+            chunk_chars=config["resources"]["text_chunk_chars"],
+            ranking=True,
+            pairs=True,
+            subtitle=subtitle,
+            range_label="统计范围：累计",
+            max_rows=config["display"]["rank_merge_rows"],
+            empty_text=render_message(config, "titles", "empty"),
         )
 
     async def _affection(self, values: Mapping[str, Any]) -> str | RuntimeReply:
