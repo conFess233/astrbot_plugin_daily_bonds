@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.1.13-blue" alt="版本 0.1.13"></a>
-  <a href="./metadata.yml"><img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上"></a>
+  <a href="./metadata.yaml"><img src="https://img.shields.io/badge/AstrBot-%3E%3D4.28.2-blue" alt="AstrBot 4.28.2 及以上"></a>
   <a href="#limits"><img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证"></a>
 </p>
