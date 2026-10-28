@@ -257,6 +257,7 @@ class ListingMixin:
                     pair_scores=(forward, reverse),
                     pair_rank=index,
                     score=forward + reverse,
+                    highlight=values.get("actor_id") in (left, right),
                 )
             )
         summary = render_message(

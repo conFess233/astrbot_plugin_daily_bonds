@@ -282,6 +282,7 @@ class CardService:
             pairs.append(
                 {
                     "rank": row.pair_rank,
+                    "highlight": row.highlight,
                     "total": total,
                     "forward": forward,
                     "reverse": reverse,

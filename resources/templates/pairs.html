@@ -20,6 +20,11 @@
   text-align: center;
   min-width: 0;
 }
+.top.highlight, .row.highlight {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.row.highlight { background: var(--primary-soft); }
 .top.first {
   background: var(--pink-soft);
   border-color: transparent;
@@ -137,7 +142,7 @@
     {% if top %}
     <div class="podium">
       {% for pair in top %}
-      <div class="top{% if loop.first %} first{% endif %}">
+      <div class="top{% if loop.first %} first{% endif %}{% if pair.highlight %} highlight{% endif %}">
         <div class="no">{{ pair.rank }}</div>
         <div class="duo-av">{{ avatar(pair.left) }}{{ avatar(pair.right) }}</div>
         <div class="names"><span>{{ pair.left.name | e }}</span><i>⇄</i><span>{{ pair.right.name | e }}</span></div>
@@ -149,7 +154,7 @@
     {% if rest %}
     <div class="list">
       {% for pair in rest %}
-      <div class="row">
+      <div class="row{% if pair.highlight %} highlight{% endif %}">
         <div class="no">{{ pair.rank }}</div>
         <div class="duo-av">{{ avatar(pair.left) }}{{ avatar(pair.right) }}</div>
         <div class="who">
