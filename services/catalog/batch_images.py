@@ -10,10 +10,10 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from ..models import StorageError
-from .catalog import _atomic_content_write, _inspect_image
-from .catalog_admin import _ID, CatalogAdminService
-from .storage import SQLiteStorage
+from ...models import StorageError
+from ..storage import SQLiteStorage
+from .admin import _ID, CatalogAdminService
+from .core import _atomic_content_write, _inspect_image
 
 
 class BatchImagesService:

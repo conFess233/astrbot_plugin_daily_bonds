@@ -11,7 +11,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..models import StorageError
-from .storage import SQLiteStorage
+from ..services.storage import SQLiteStorage
 
 
 class StatisticsService:

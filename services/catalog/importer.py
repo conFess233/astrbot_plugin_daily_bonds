@@ -17,9 +17,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin, urlsplit
 
-from ..models import InvalidInputError, StorageError
-from .catalog import _atomic_content_write, _inspect_image
-from .storage import SQLiteStorage
+from ...models import InvalidInputError, StorageError
+from ..storage import SQLiteStorage
+from .core import _atomic_content_write, _inspect_image
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")

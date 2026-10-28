@@ -16,23 +16,23 @@ from typing import Any
 from astrbot.api import logger
 
 from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
+from ..game.members import reconcile_member_eligibility
+from ..game.operations import Candidate, GameplayService
+from ..game.statistics import StatisticsService
 from ..models import CommandSyntaxError, ParsedCommand, StorageError
-from ..utils.command_parser import parse_command
-from .access import AccessService
-from .admin_permissions import may_set_wife
-from .avatar_cache import AvatarCache
-from .gameplay import Candidate, GameplayService
-from .member_lifecycle import reconcile_member_eligibility
-from .message_templates import (
+from ..services.access import AccessService
+from ..services.admin_permissions import may_set_wife
+from ..services.avatar_cache import AvatarCache
+from ..services.message_templates import (
     IMAGE_TOKEN,
     MESSAGE_CONTEXT,
     MessageText,
     render_message,
     set_message_values,
 )
-from .rendering import CardRenderer, CardRow
-from .statistics import StatisticsService
-from .storage import SQLiteStorage
+from ..services.rendering import CardRenderer, CardRow
+from ..services.storage import SQLiteStorage
+from .parser import parse_command
 
 
 @dataclass(frozen=True, slots=True)

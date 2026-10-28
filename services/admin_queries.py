@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .statistics import StatisticsService
+from ..game.statistics import StatisticsService
 from .storage import SQLiteStorage
 
 

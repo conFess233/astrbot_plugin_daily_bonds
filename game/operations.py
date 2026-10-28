@@ -13,9 +13,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..models import Mode, StorageError
-from .message_templates import render_message
+from ..services.message_templates import render_message
+from ..services.storage import SQLiteStorage
 from .statistics import StatisticsService
-from .storage import SQLiteStorage
 
 
 @dataclass(frozen=True, slots=True)

@@ -21,8 +21,8 @@ except (
     aiohttp = None  # type: ignore[assignment]
 from PIL import Image, UnidentifiedImageError
 
-from ..models import StorageError
-from .storage import SQLiteStorage
+from ...models import StorageError
+from ..storage import SQLiteStorage
 
 _IMAGE_FORMATS = {
     "PNG": ("png", "image/png"),
@@ -218,7 +218,7 @@ class CatalogService:
             return DownloadReport(0, 0, ())
         semaphore = asyncio.Semaphore(max(1, concurrency))
         timeout = aiohttp.ClientTimeout(total=timeout_seconds)
-        from .catalog_import import _PublicResolver
+        from .importer import _PublicResolver
 
         connector = aiohttp.TCPConnector(
             resolver=_PublicResolver(), use_dns_cache=False, limit=max(1, concurrency)
@@ -427,7 +427,7 @@ async def _fetch_limited(
 
 
 def _validate_image_url(url: str) -> str:
-    from .catalog_import import _validate_public_url
+    from .importer import _validate_public_url
 
     _validate_public_url(url)
     if urlparse(url).scheme != "https":

@@ -14,19 +14,19 @@ from astrbot.api.star import Context, Star, StarTools
 from PIL import Image as PILImage
 
 from .adapters.onebot import OneBotAdapter
+from .commands.replies_send import reply_chain
+from .commands.runtime import CommandRuntime, RuntimeReply
+from .game.operations import GameplayService
+from .game.statistics import StatisticsService
 from .services.access import AccessService
-from .services.catalog import CatalogService
-from .services.command_runtime import CommandRuntime, RuntimeReply
-from .services.gameplay import GameplayService
+from .services.catalog.core import CatalogService
 from .services.host_config import HostConfigBridge
 from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
 from .services.outgoing_images import prepare_outgoing_image
-from .services.reply_messages import reply_chain
 from .services.retention import RetentionService
-from .services.statistics import StatisticsService
 from .services.storage import SQLiteStorage
-from .services.web_manager import WebManager
+from .web.manager import WebManager
 
 
 class DailyBondsPlugin(Star):

@@ -19,18 +19,18 @@ from astrbot.api.web import error_response, json_response, request
 from PIL import Image, ImageOps
 
 from ..models import ConfigurationError, InvalidInputError, StorageError
-from .admin_corrections import AdminCorrectionService
-from .admin_queries import AdminQueryService
-from .batch_images import BatchImagesService
-from .catalog_admin import CatalogAdminService
-from .catalog_import import CatalogImportService
-from .catalog_sync import CatalogSyncService
-from .fonts import available_fonts, font_preview
-from .host_config import HostConfigBridge
-from .maintenance import MaintenanceService
-from .message_templates import template_fields
-from .settings import effective_config, validate_config
-from .storage import SQLiteStorage
+from ..services.admin_corrections import AdminCorrectionService
+from ..services.admin_queries import AdminQueryService
+from ..services.catalog.admin import CatalogAdminService
+from ..services.catalog.batch_images import BatchImagesService
+from ..services.catalog.importer import CatalogImportService
+from ..services.catalog.sync import CatalogSyncService
+from ..services.fonts import available_fonts, font_preview
+from ..services.host_config import HostConfigBridge
+from ..services.maintenance import MaintenanceService
+from ..services.message_templates import template_fields
+from ..services.settings import effective_config, validate_config
+from ..services.storage import SQLiteStorage
 
 PLUGIN_NAME = "astrbot_plugin_daily_bonds"
 
