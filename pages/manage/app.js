@@ -143,7 +143,8 @@ function placeNotice() {
   // A modal makes nodes outside it inert, even when a toast uses the top layer.
   const modal = [...document.querySelectorAll("dialog[open]")].at(-1);
   (modal || document.body).append(notice);
-  notice.style.top = `${Math.max(20, $(".topbar").getBoundingClientRect().bottom + 12)}px`;
+  // 页头不再固定在顶部，通知固定显示在视口右上角。
+  notice.style.top = "20px";
   if (notice.children.length) notice.showPopover?.();
 }
 

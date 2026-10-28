@@ -9,10 +9,23 @@
   </head>
   <body>
     <div id="loading-progress" class="loading-progress" role="progressbar" aria-label="正在加载管理数据" hidden><span></span></div>
-    <aside class="sidebar">
-      <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span><div><strong>今日姻缘</strong><small>ASTRBOT PLUGIN</small></div></div>
-      <p class="nav-label">插件管理</p>
-      <nav class="tabs" role="tablist" aria-orientation="vertical" aria-label="管理页面">
+    <main class="shell">
+      <header class="page-header">
+        <div class="page-title-group">
+          <span class="brand-mark" aria-hidden="true">✦</span>
+          <div>
+            <p class="eyebrow">今日姻缘 · <span id="breadcrumb-page">概览</span></p>
+            <h1 id="page-title">今日姻缘 · 插件概览</h1>
+            <p id="page-description" class="muted">查看实际数据状态与常用操作。</p>
+          </div>
+        </div>
+        <div class="toolbar-controls">
+          <label class="toolbar-search"><span class="sr-only">搜索配置项</span><input id="config-search" type="search" placeholder="搜索配置项" list="config-search-options" /><datalist id="config-search-options"></datalist></label>
+          <label class="scope-toolbar"><span>配置范围</span><select id="scope-select"><option value="global">全局配置</option></select></label>
+          <button id="refresh" class="button secondary" type="button">刷新数据</button>
+        </div>
+      </header>
+      <nav class="tabs" role="tablist" aria-orientation="horizontal" aria-label="管理页面">
         <button class="tab active" type="button" data-tab="overview" id="tab-overview" role="tab" aria-controls="overview-panel" aria-selected="true" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"/></svg><span>概览</span></button>
         <button class="tab" type="button" data-tab="settings" id="tab-settings" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"/></svg><span>玩法设置</span></button>
         <button class="tab" type="button" data-tab="catalog" id="tab-catalog" role="tab" aria-controls="catalog-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-3a7 7 0 0 1 14 0v3 M17 4a4 4 0 0 1 0 8 M19 15a5 5 0 0 1 3 5"/></svg><span>角色与角色池</span></button>
@@ -20,18 +33,6 @@
         <button class="tab" type="button" data-tab="data" id="tab-data" role="tab" aria-controls="data-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V9h4v11 M10 20V4h4v16 M16 20V12h4v8"/></svg><span>数据查询</span></button>
         <button class="tab" type="button" data-tab="advanced" id="tab-advanced" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3 M12 18v3 M3 12h3 M18 12h3 M6 6l2 2 M16 16l2 2 M6 18l2-2 M16 8l2-2 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0"/></svg><span>高级设置</span></button>
       </nav>
-      <p class="sidebar-foot">今日姻缘 · 插件管理</p>
-    </aside>
-    <main class="shell">
-      <header class="topbar">
-        <p class="breadcrumb">插件管理 <span>/</span> 今日姻缘 <span>/</span> <strong id="breadcrumb-page">概览</strong></p>
-        <div class="toolbar-controls">
-          <label class="toolbar-search"><span class="sr-only">搜索配置项</span><input id="config-search" type="search" placeholder="搜索配置项" list="config-search-options" /><datalist id="config-search-options"></datalist></label>
-          <label class="scope-toolbar"><span>配置范围</span><select id="scope-select"><option value="global">全局配置</option></select></label>
-          <button id="refresh" class="button secondary" type="button">刷新数据</button>
-        </div>
-      </header>
-      <div class="page-heading"><h1 id="page-title">今日姻缘 · 插件概览</h1><p id="page-description" class="muted">查看实际数据状态与常用操作。</p></div>
       <div id="notice" class="notification-stack" popover="manual" aria-live="polite" aria-atomic="false"></div>
 
       <section id="overview-panel" class="panel" role="tabpanel" aria-labelledby="tab-overview">
