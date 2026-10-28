@@ -10,13 +10,12 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
-from astrbot.api import logger
 from astrbot.api.web import json_response, request
 
 from ..models import ConfigurationError, InvalidInputError, StorageError
 from ..services.fonts import available_fonts, font_preview
 from ..services.message_templates import template_fields
-from ..services.settings import effective_config, validate_config
+from ..services.settings import SCOPE_OVERRIDABLE, effective_config, validate_config
 
 
 class ConfigRoutes:
@@ -139,23 +138,6 @@ class ConfigRoutes:
                 draft_hash,
             )
             if replay is not None:
-                if scope_id is None:
-                    saved_global, saved_revision = await asyncio.to_thread(
-                        self.storage.get_settings
-                    )
-                    try:
-                        await asyncio.to_thread(
-                            self.host_config.mirror, saved_global, saved_revision
-                        )
-                    except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
-                        logger.exception(
-                            "今日姻缘：全局配置已保存，但宿主配置同步失败。"
-                        )
-                        return self._error(
-                            "CONFIG_SYNC_FAILED",
-                            "全局配置已保存，但同步到 AstrBot 配置失败；请重试。",
-                            503,
-                        )
                 return json_response(
                     {
                         "ok": True,
@@ -190,16 +172,6 @@ class ConfigRoutes:
                 request_id=request_id.strip(),
                 request_hash=draft_hash,
             )
-            if scope_id is None:
-                try:
-                    await asyncio.to_thread(self.host_config.mirror, stored, revision)
-                except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
-                    logger.exception("今日姻缘：全局配置已保存，但宿主配置同步失败。")
-                    return self._error(
-                        "CONFIG_SYNC_FAILED",
-                        "全局配置已保存，但同步到 AstrBot 配置失败；请重试。",
-                        503,
-                    )
             saved_request = await asyncio.to_thread(
                 self.storage.get_settings_request_replay,
                 scope_id,
@@ -357,21 +329,7 @@ def _sparse_diff(base: Mapping[str, Any], value: Mapping[str, Any]) -> dict[str,
 
 
 def _validate_scope_override(value: Mapping[str, Any]) -> None:
-    allowed = {
-        "enabled",
-        "access",
-        "reset",
-        "commands",
-        "modes",
-        "statistics",
-        "weights",
-        "display",
-        "members",
-        "messages",
-        "reply_quote",
-        "reply_enabled",
-    }
-    if set(value) - allowed:
+    if set(value) - SCOPE_OVERRIDABLE:
         raise ConfigurationError("群覆盖包含仅允许全局设置的字段。")
     access = value.get("access", {})
     if not isinstance(access, dict) or set(access) - {"users", "extra_bot_ids"}:

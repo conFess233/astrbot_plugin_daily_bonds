@@ -314,13 +314,6 @@ class ReplyMixin:
             return render_message(
                 config, "results", "capacity_full", names=names, name=names
             )
-        if code == "STEAL_SLOT_FULL":
-            return render_message(
-                config,
-                "results",
-                "steal_slot_full",
-                role=render_message(config, "titles", mode),
-            )
         key = code.lower()
         if key in config["messages"]["results"]:
             return render_message(

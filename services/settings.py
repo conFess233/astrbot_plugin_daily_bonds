@@ -17,29 +17,25 @@ from .message_templates import validate_messages
 _DEFAULTS_PATH = (
     Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
 )
-LEGACY_MESSAGES = {
-    "titles.rank_activity": "近 {days} 天活跃度排行",
-    "titles.normal_slot": "普通",
-    "titles.steal_slot": "抢夺",
-    "draw_wife": "娶到老婆：{name}{image}",
-    "draw_husband": "娶到老公：{name}{image}",
-    "draw_member": "娶到群友：{name}{image}",
-    "designated_wife": "指定老婆：{name}{image}",
-    "designated_husband": "指定老公：{name}{image}",
-    "stolen": "抢夺成功",
-    "steal_failed": "抢夺失败；配偶保留原关系",
-    "divorced": "关系已解除，你获得一次补抽资格",
-    "gifted": "赠送完成",
-    "invite_created": "赠送邀请已创建，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
-    "gift_accepted": "赠送已接受",
-    "invite_rejected": "已拒绝赠送",
-    "invite_cancelled": "已取消赠送",
-    "admin_set_wife": "设置今日老婆：{name}{image}",
-    "notifications.member_redraw": "{name}（持有人 {owner_id} 获得补抽资格）",
-    "notifications.owner_ineligible": "{name}（持有人 {owner_id} 已失去资格）",
-}
 
 _MODES = ("wife", "husband", "member")
+# 群级覆盖允许的顶层字段；其余字段只能全局配置。
+SCOPE_OVERRIDABLE = frozenset(
+    {
+        "enabled",
+        "access",
+        "reset",
+        "commands",
+        "modes",
+        "statistics",
+        "weights",
+        "display",
+        "members",
+        "messages",
+        "render",
+    }
+)
+RENDER_TYPES = ("draw", "status", "help", "list", "rank", "affection", "collection")
 _ACTIONS = (
     "draw_wife",
     "draw_husband",
@@ -63,6 +59,9 @@ _ACTIONS = (
     "gift_reject",
     "gift_cancel",
     "query_affection",
+    "my_status",
+    "help",
+    "my_collection",
 )
 
 
@@ -79,28 +78,6 @@ def merge_sparse(
 
     result = copy.deepcopy(dict(base))
     for key, value in override.items():
-        if _path == "resources" and key == "font_id" and value == "bundled":
-            value = "auto"
-        if _path == "resources" and key in {
-            "render_concurrency",
-            "render_max_height",
-            "send_interval_seconds",
-            "render_width",
-        }:
-            continue
-        if _path == "weights" and key == "activity_full_messages":
-            continue
-        legacy_key = (
-            key
-            if _path == "messages.results"
-            else "notifications." + key
-            if _path == "messages.notifications"
-            else "titles." + key
-            if _path == "messages.titles"
-            else ""
-        )
-        if legacy_key in LEGACY_MESSAGES and value == LEGACY_MESSAGES[legacy_key]:
-            value = default_config()["messages"][_path.split(".")[1]][key]
         if key not in result:
             raise ConfigurationError(f"未知配置字段：{key}")
         if isinstance(result[key], dict) and isinstance(value, Mapping):
@@ -129,8 +106,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
 
     defaults = default_config()
     _check_shape(config, defaults, "config")
-    if config["schema_version"] != 1 or isinstance(config["schema_version"], bool):
-        raise ConfigurationError("schema_version 必须为 1")
+    if config["schema_version"] != 2 or isinstance(config["schema_version"], bool):
+        raise ConfigurationError("schema_version 必须为 2")
 
     _enum(config, "access.groups.mode", {"unrestricted", "blacklist", "whitelist"})
     _enum(config, "access.users.mode", {"unrestricted", "blacklist", "whitelist"})
@@ -217,7 +194,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
         for field in ("enabled", "steal_enabled", "gift_enabled", "divorce_enabled"):
             _boolean(config, f"modes.{mode}.{field}")
         _integer(config, f"modes.{mode}.capacity", 1, 100)
-        _integer(config, f"modes.{mode}.steal_slot_capacity", 0, 100)
         for field in ("steal_attempt_limit", "stolen_limit", "divorce_limit"):
             _integer(config, f"modes.{mode}.{field}", 0, 100000)
         for field in ("steal_cooldown_seconds", "gift_timeout_seconds"):
@@ -230,10 +206,14 @@ def validate_config(config: Mapping[str, Any]) -> None:
         _finite_number(config, f"modes.{mode}.steal_probability")
         if not 0 <= current["steal_probability"] <= 1:
             raise ConfigurationError(f"modes.{mode}.steal_probability 必须在 0～1 之间")
+        for field in ("steal_intimacy_bonus", "steal_probability_max"):
+            _finite_number(config, f"modes.{mode}.{field}")
+            if not 0 <= current[field] <= 1:
+                raise ConfigurationError(f"modes.{mode}.{field} 必须在 0～1 之间")
         if current["gift_mode"] not in {"direct", "confirm"}:
             raise ConfigurationError(f"modes.{mode}.gift_mode 无效")
         if mode in {"wife", "husband"}:
-            _integer(config, f"modes.{mode}.designated_capacity", 0, 100)
+            _integer(config, f"modes.{mode}.designated_limit", 0, 100)
             _boolean(config, f"modes.{mode}.designated_unique")
             pools = current["pool_ids"]
             if not isinstance(pools, list) or any(
@@ -268,9 +248,9 @@ def validate_config(config: Mapping[str, Any]) -> None:
     ):
         raise ConfigurationError("导入展开上限不能小于上传上限")
 
-    for section, entries in config["reply_quote"].items():
-        for key in entries:
-            _boolean(config, f"reply_quote.{section}.{key}")
+    _enum(config, "render.mode", {"card", "text"})
+    for kind in RENDER_TYPES:
+        _enum(config, f"render.types.{kind}", {"inherit", "card", "text"})
     batch = config["batch_import"]
     for key in ("male_keywords", "female_keywords"):
         values = batch[key]
@@ -290,11 +270,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
             batch[key] and not re.fullmatch(r"[a-z0-9][a-z0-9._:-]{0,127}", batch[key])
         ):
             raise ConfigurationError(f"batch_import.{key} 必须为空或有效卡池 ID")
-    font_id = config["resources"]["font_id"]
-    if not isinstance(font_id, str) or not (
-        font_id == "auto" or re.fullmatch(r"[0-9a-f]{24}", font_id)
-    ):
-        raise ConfigurationError("图片字体标识无效，请从管理页选择字体。")
     validate_keywords(config["commands"]["keywords"])
     validate_messages(config["messages"], defaults["messages"])
 

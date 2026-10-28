@@ -1,115 +1,78 @@
-"""Keep AstrBot's native global settings and the runtime store in sync."""
+"""一次性导入 0.1.x 写在 AstrBot 原生配置页中的业务配置。
+
+0.2.0 起业务配置只保存在插件数据库。宿主会删除 schema 中不存在的键，
+因此 `_conf_schema.json` 把 `settings` 保留为隐藏的自由字典，启动时导入后清空。
+"""
 
 from __future__ import annotations
 
+import json
 import time
+import uuid
 from collections.abc import MutableMapping
 from copy import deepcopy
 from typing import Any
 
+from astrbot.api import logger
+
+from .config_upgrade import upgrade_config
 from .settings import default_config, merge_sparse, validate_config
 from .storage import SQLiteStorage
 
 
-class HostConfigBridge:
-    def __init__(
-        self, config: MutableMapping[str, Any], storage: SQLiteStorage
-    ) -> None:
-        self.config = config
-        self.storage = storage
+def import_legacy_host_settings(
+    config: MutableMapping[str, Any], storage: SQLiteStorage
+) -> bool:
+    """宿主配置中残留旧版设置时导入数据库；返回是否写入了新配置。"""
 
-    def reconcile(self) -> dict[str, Any]:
-        """Apply a native edit, or import an existing Web UI configuration."""
-
-        stored, revision = self.storage.get_settings()
-        native = merge_sparse(
-            default_config(), deepcopy(self.config.get("settings", default_config()))
-        )
-        validate_config(native)
-        marker = self.config.get("_settings_revision", 0)
-        if isinstance(marker, bool) or not isinstance(marker, int) or marker < 0:
-            marker = 0
-
-        if revision == 0:
-            revision = self._save_runtime(native, revision)
-        elif marker == 0:
-            # On upgrade, AstrBot adds schema defaults before the plugin starts.
-            # Preserve existing Web UI edits unless the native page was edited.
-            if native == default_config() or _matches_migrated_defaults(native, stored):
-                native = stored
-            elif native != stored:
-                revision = self._save_runtime(native, revision)
-        elif marker < revision:
-            # A newer runtime revision takes precedence after a failed host save.
-            native = stored
-        elif native != stored:
-            revision = self._save_runtime(native, revision)
-
-        self.mirror(native, revision)
-        return native
-
-    def mirror(self, value: dict[str, Any], revision: int) -> None:
-        """Publish a committed global revision to AstrBot's configuration page."""
-
-        if (
-            self.config.get("settings") == value
-            and self.config.get("_settings_revision") == revision
-        ):
-            return
-        previous_settings = self.config.get("settings")
-        previous_revision = self.config.get("_settings_revision")
-        self.config["settings"] = deepcopy(value)
-        self.config["_settings_revision"] = revision
-        save = getattr(self.config, "save_config", None)
-        if callable(save):
-            try:
-                save()
-            except Exception:
-                if previous_settings is None:
-                    self.config.pop("settings", None)
-                else:
-                    self.config["settings"] = previous_settings
-                if previous_revision is None:
-                    self.config.pop("_settings_revision", None)
-                else:
-                    self.config["_settings_revision"] = previous_revision
-                raise
-
-    def _save_runtime(self, value: dict[str, Any], revision: int) -> int:
-        return self.storage.save_settings(
+    legacy = config.get("settings")
+    if not isinstance(legacy, dict) or not legacy:
+        return False
+    marker = config.get("_settings_revision", 0)
+    if isinstance(marker, bool) or not isinstance(marker, int) or marker < 0:
+        marker = 0
+    stored, revision = storage.get_settings()
+    upgraded, notes = upgrade_config(legacy, sparse=False)
+    candidate = merge_sparse(default_config(), upgraded)
+    validate_config(candidate)
+    # 0.1.x 每次保存都会把数据库修订号写回宿主；只有原生页在最后一次同步后
+    # 又被编辑（修订号不落后且内容不同），或数据库还没有配置时才采用宿主值。
+    imported = revision == 0 or (marker >= revision and candidate != stored)
+    if imported:
+        storage.save_settings(
             None,
-            value,
+            candidate,
             expected_revision=revision,
             now=int(time.time()),
-            updated_by="system:astrbot-config",
+            updated_by="system:legacy-host-config",
         )
-
-
-def _matches_migrated_defaults(native: dict[str, Any], stored: dict[str, Any]) -> bool:
-    """Recognize the one-time default updates in migration 006 before host reconciliation."""
-
-    candidate = deepcopy(native)
-    for mode in ("wife", "husband", "member"):
-        key = f"draw_{mode}"
-        original = candidate["messages"]["results"][key]
-        if (
-            "{image}" not in original
-            and stored["messages"]["results"][key] == original + "{image}"
-        ):
-            candidate["messages"]["results"][key] += "{image}"
-    if candidate["commands"]["keywords"]["divorce_member"] == ["踹群友"]:
-        candidate["commands"]["keywords"]["divorce_member"] = ["踹群友", "离婚群友"]
-    errors = candidate["messages"]["errors"]
-    if (
-        errors["divorce_ambiguous"]
-        == "没有找到唯一匹配的关系；如果同名或跨玩法，请用“离婚老婆/离婚老公”并指定 #ID。"
-    ):
-        errors["divorce_ambiguous"] = (
-            "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID："
+    with storage.transaction() as db:
+        db.execute(
+            "INSERT INTO migration_reports(id,source,from_version,to_version,report_json,created_at) VALUES(?,?,?,?,?,?)",
+            (
+                str(uuid.uuid4()),
+                "host_config",
+                1,
+                2,
+                json.dumps({"imported": imported, "notes": notes}, ensure_ascii=False),
+                int(time.time()),
+            ),
         )
-    if (
-        errors["divorce_relation_missing"]
-        == "没有找到唯一匹配的关系；跨玩法或同名对象请使用明确指令和 #ID。"
-    ):
-        errors["divorce_relation_missing"] = "没有找到匹配的当前关系。"
-    return candidate == stored
+    previous = deepcopy(legacy), marker
+    config["settings"] = {}
+    config["_settings_revision"] = 0
+    save = getattr(config, "save_config", None)
+    if callable(save):
+        try:
+            save()
+        except Exception:  # noqa: BLE001 - 宿主保存失败只影响清理，导入已完成
+            config["settings"], config["_settings_revision"] = previous
+            logger.warning(
+                "今日姻缘：旧版宿主配置已导入，但清空宿主配置失败；下次启动会再次比对。",
+                exc_info=True,
+            )
+    logger.info(
+        "今日姻缘：已处理旧版宿主配置，%s。",
+        "导入为当前配置" if imported else "数据库配置更新，保留数据库版本",
+    )
+    return imported

@@ -167,18 +167,8 @@ class MaintenanceRoutes:
                 now=int(time.time()),
                 keep_count=int(config["resources"].get("backup_keep_count", 10)),
             )
-            if data.get("restored"):
-                if self.runtime_reset is not None:
-                    self.runtime_reset()
-                try:
-                    await asyncio.to_thread(self._mirror_current_config)
-                except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
-                    logger.exception("今日姻缘：数据已恢复，但宿主配置同步失败。")
-                    return self._error(
-                        "RESTORE_CONFIG_SYNC_FAILED",
-                        "数据已恢复，但同步到 AstrBot 配置失败；请重试本次提交以完成同步。",
-                        503,
-                    )
+            if data.get("restored") and self.runtime_reset is not None:
+                self.runtime_reset()
             return json_response(
                 {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
             )
@@ -186,8 +176,3 @@ class MaintenanceRoutes:
             return self._error("RESTORE_INVALID", str(exc), 400)
         except StorageError as exc:
             return self._error("RESTORE_CONFLICT", str(exc), 409)
-
-    def _mirror_current_config(self) -> None:
-        with self.storage._lock:
-            config, revision = self.storage.get_settings()
-            self.host_config.mirror(config, revision)

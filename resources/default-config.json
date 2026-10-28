@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "enabled": true,
   "access": {
     "groups": {
@@ -90,6 +90,15 @@
       ],
       "query_affection": [
         "查询好感度"
+      ],
+      "my_status": [
+        "我的姻缘"
+      ],
+      "help": [
+        "姻缘帮助"
+      ],
+      "my_collection": [
+        "我的图鉴"
       ]
     }
   },
@@ -98,7 +107,6 @@
       "enabled": true,
       "capacity": 1,
       "steal_enabled": true,
-      "steal_slot_capacity": 1,
       "steal_attempt_limit": 3,
       "steal_cooldown_seconds": 60,
       "steal_probability": 0.3,
@@ -111,14 +119,15 @@
       "pool_ids": [
         "wuwa_wife"
       ],
-      "designated_capacity": 1,
-      "designated_unique": true
+      "designated_unique": true,
+      "designated_limit": 1,
+      "steal_intimacy_bonus": 0.0,
+      "steal_probability_max": 0.9
     },
     "husband": {
       "enabled": true,
       "capacity": 1,
       "steal_enabled": true,
-      "steal_slot_capacity": 1,
       "steal_attempt_limit": 3,
       "steal_cooldown_seconds": 60,
       "steal_probability": 0.3,
@@ -131,14 +140,15 @@
       "pool_ids": [
         "wuwa_husband"
       ],
-      "designated_capacity": 1,
-      "designated_unique": true
+      "designated_unique": true,
+      "designated_limit": 1,
+      "steal_intimacy_bonus": 0.0,
+      "steal_probability_max": 0.9
     },
     "member": {
       "enabled": true,
       "capacity": 1,
       "steal_enabled": true,
-      "steal_slot_capacity": 1,
       "steal_attempt_limit": 3,
       "steal_cooldown_seconds": 60,
       "steal_probability": 0.3,
@@ -147,7 +157,9 @@
       "gift_mode": "direct",
       "gift_timeout_seconds": 60,
       "divorce_enabled": true,
-      "divorce_limit": 1
+      "divorce_limit": 1,
+      "steal_intimacy_bonus": 0.0,
+      "steal_probability_max": 0.9
     }
   },
   "statistics": {
@@ -179,96 +191,424 @@
   },
   "messages": {
     "results": {
-      "draw_wife": "{actor_name}娶到老婆：{name}{image}",
-      "draw_husband": "{actor_name}娶到老公：{name}{image}",
-      "draw_member": "{actor_name}娶到群友：{name}{image}",
-      "capacity_full": "持有名额已满：{names}",
-      "steal_slot_full": "你今天已经抢过{role}啦～",
-      "relationship_locked": "抢夺或指定槽位关系不可主动解除或赠送。",
-      "steal_slot_locked": "对方的抢夺或指定槽位关系不可抢夺。",
-      "capacity_full_single_wife": "你今日已有老婆啦，请明日再来。",
-      "capacity_full_single_husband": "你今日已有老公啦，请明日再来。",
-      "no_draw_quota": "今天的普通抽取额度已用完",
-      "no_candidate": "当前没有可抽取对象",
-      "steal_failed": "{actor_name}抢夺失败，{subject_name}仍属于{owner_name}。",
-      "stolen": "{actor_name}从{owner_name}处抢到了{subject_name}。",
-      "divorced": "{actor_name}与{subject_name}的关系已解除，获得一次补抽资格。",
-      "gifted": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
-      "invite_created": "{sender_name}邀请{recipient_name}接受{subject_name}，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
-      "gift_accepted": "{recipient_name}接受了{sender_name}赠送的{subject_name}。",
-      "invite_rejected": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
-      "invite_cancelled": "{actor_name}已取消向{recipient_name}赠送{subject_name}的邀请。",
-      "invite_expired": "赠送邀请已过期",
-      "invite_invalidated": "赠送邀请已失效",
-      "invite_not_owned": "你无权处理这条邀请",
-      "steal_cooldown": "抢夺冷却中",
-      "steal_limit": "本周期抢夺尝试次数已用完",
-      "target_protected": "该持有者本周期已受抢夺保护",
-      "divorce_limit": "本周期解除关系次数已用完",
-      "relationship_not_found": "没有找到可处理的关系",
-      "invalid_target": "目标无效",
-      "no_target_relationship": "目标没有可抢夺的关系",
-      "mode_disabled": "这个玩法当前已关闭",
-      "invalid_probability": "抢夺概率配置无效",
-      "invalid_timeout": "赠送超时配置无效",
-      "invite_already_pending": "该关系已有待处理赠送邀请，编号 {invite_id}",
-      "invite_limit": "待处理赠送邀请已达上限 {limit}",
-      "invite_invalid": "赠送邀请已无效",
-      "unknown_result": "操作未完成：{code}",
-      "designated_wife": "{actor_name}指定老婆：{name}{image}",
-      "designated_husband": "{actor_name}指定老公：{name}{image}",
-      "designated_disabled": "指定抽取当前已关闭。",
-      "designated_slot_full": "指定槽位已满，请等待下个周期。",
-      "no_designated_quota": "本周期指定次数已用完。",
-      "designated_occupied": "该角色已有关系，当前开启了指定角色独占。",
-      "designated_drawn": "指定成功：{name}{image}",
-      "designated_relationship_locked": "指定槽位关系不可抢夺、赠送或主动解除。",
-      "list_wife": "{title}（共 {count}）\n{lines}{image}",
-      "list_husband": "{title}（共 {count}）\n{lines}{image}",
-      "list_member": "{title}（共 {count}）\n{lines}{image}",
-      "rank_intimacy": "{image}",
-      "rank_activity": "{image}",
-      "query_affection": "{image}",
-      "admin_set_wife": "{actor_name}设置今日老婆：{name}{image}",
-      "already_held": "你今天已持有 {name}。"
+      "draw_wife": {
+        "text": "{actor_name}娶到老婆：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "draw_husband": {
+        "text": "{actor_name}娶到老公：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "draw_member": {
+        "text": "{actor_name}娶到群友：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "capacity_full": {
+        "text": "持有名额已满：{names}",
+        "enabled": true,
+        "quote": false
+      },
+      "relationship_locked": {
+        "text": "抢夺或指定槽位关系不可主动解除或赠送。",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_slot_locked": {
+        "text": "对方的抢夺或指定槽位关系不可抢夺。",
+        "enabled": true,
+        "quote": false
+      },
+      "capacity_full_single_wife": {
+        "text": "你今日已有老婆啦，请明日再来。",
+        "enabled": true,
+        "quote": false
+      },
+      "capacity_full_single_husband": {
+        "text": "你今日已有老公啦，请明日再来。",
+        "enabled": true,
+        "quote": false
+      },
+      "no_draw_quota": {
+        "text": "今天的普通抽取额度已用完",
+        "enabled": true,
+        "quote": false
+      },
+      "no_candidate": {
+        "text": "当前没有可抽取对象",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_failed": {
+        "text": "{actor_name}抢夺失败，{subject_name}仍属于{owner_name}。",
+        "enabled": true,
+        "quote": false
+      },
+      "stolen": {
+        "text": "{actor_name}从{owner_name}处抢到了{subject_name}。",
+        "enabled": true,
+        "quote": false
+      },
+      "divorced": {
+        "text": "{actor_name}与{subject_name}的关系已解除，获得一次补抽资格。",
+        "enabled": true,
+        "quote": false
+      },
+      "gifted": {
+        "text": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_created": {
+        "text": "{sender_name}邀请{recipient_name}接受{subject_name}，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
+        "enabled": true,
+        "quote": false
+      },
+      "gift_accepted": {
+        "text": "{recipient_name}接受了{sender_name}赠送的{subject_name}。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_rejected": {
+        "text": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_cancelled": {
+        "text": "{actor_name}已取消向{recipient_name}赠送{subject_name}的邀请。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_expired": {
+        "text": "赠送邀请已过期",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_invalidated": {
+        "text": "赠送邀请已失效",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_not_owned": {
+        "text": "你无权处理这条邀请",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_cooldown": {
+        "text": "抢夺冷却中",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_limit": {
+        "text": "本周期抢夺尝试次数已用完",
+        "enabled": true,
+        "quote": false
+      },
+      "target_protected": {
+        "text": "该持有者本周期已受抢夺保护",
+        "enabled": true,
+        "quote": false
+      },
+      "divorce_limit": {
+        "text": "本周期解除关系次数已用完",
+        "enabled": true,
+        "quote": false
+      },
+      "relationship_not_found": {
+        "text": "没有找到可处理的关系",
+        "enabled": true,
+        "quote": false
+      },
+      "invalid_target": {
+        "text": "目标无效",
+        "enabled": true,
+        "quote": false
+      },
+      "no_target_relationship": {
+        "text": "目标没有可抢夺的关系",
+        "enabled": true,
+        "quote": false
+      },
+      "mode_disabled": {
+        "text": "这个玩法当前已关闭",
+        "enabled": true,
+        "quote": false
+      },
+      "invalid_probability": {
+        "text": "抢夺概率配置无效",
+        "enabled": true,
+        "quote": false
+      },
+      "invalid_timeout": {
+        "text": "赠送超时配置无效",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_already_pending": {
+        "text": "该关系已有待处理赠送邀请，编号 {invite_id}",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_limit": {
+        "text": "待处理赠送邀请已达上限 {limit}",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_invalid": {
+        "text": "赠送邀请已无效",
+        "enabled": true,
+        "quote": false
+      },
+      "unknown_result": {
+        "text": "操作未完成：{code}",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_wife": {
+        "text": "{actor_name}指定老婆：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_husband": {
+        "text": "{actor_name}指定老公：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_disabled": {
+        "text": "指定抽取当前已关闭。",
+        "enabled": true,
+        "quote": false
+      },
+      "no_designated_quota": {
+        "text": "本周期指定次数已用完。",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_occupied": {
+        "text": "该角色已有关系，当前开启了指定角色独占。",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_drawn": {
+        "text": "指定成功：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_relationship_locked": {
+        "text": "指定槽位关系不可抢夺、赠送或主动解除。",
+        "enabled": true,
+        "quote": false
+      },
+      "list_wife": {
+        "text": "{title}（共 {count}）\n{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "list_husband": {
+        "text": "{title}（共 {count}）\n{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "list_member": {
+        "text": "{title}（共 {count}）\n{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "rank_intimacy": {
+        "text": "{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "rank_activity": {
+        "text": "{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "query_affection": {
+        "text": "{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "admin_set_wife": {
+        "text": "{actor_name}设置今日老婆：{name}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "already_held": {
+        "text": "你今天已持有 {name}。",
+        "enabled": true,
+        "quote": false
+      }
     },
     "errors": {
-      "syntax_error": "{detail}",
-      "operation_error": "{detail}",
-      "mode_closed": "这个玩法当前已关闭。",
-      "command_cooldown": "指令冷却中，请在 {remaining_seconds} 秒后重试。",
-      "steal_disabled": "这个玩法当前不允许抢夺。",
-      "steal_target_required": "请 @ 一位当前群内且允许参与的持有者。",
-      "steal_relation_ambiguous": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。",
-      "gift_disabled": "这个玩法当前不允许赠送。",
-      "gift_target_required": "请 @ 一位当前群内且允许参与的接收者。",
-      "gift_relation_ambiguous": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
-      "divorce_ambiguous": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID：",
-      "divorce_disabled": "这个玩法当前不允许解除关系。",
-      "divorce_relation_missing": "没有找到匹配的当前关系。",
-      "invite_multiple": "你有多条待处理赠送，请在命令后填写邀请编号。",
-      "invite_none": "没有可处理的待赠送邀请。",
-      "invite_invalid_id": "邀请编号无效或不属于当前群。",
-      "rank_intimacy_disabled": "亲密度排行当前已关闭。",
-      "rank_activity_disabled": "活跃度排行当前已关闭。",
-      "activity_disabled": "活跃度统计已关闭；当前保留历史排行。",
-      "page_out_of_range": "页码超出范围；共 {pages} 页。",
-      "list_empty": "{title}：当前没有关系。",
-      "designated_missing": "未找到当前角色池内可指定的角色；请使用精确名称、别名或 ID。",
-      "designated_ambiguous": "匹配到多个角色，请使用明确 ID：\n{candidates}",
-      "affection_target_required": "请 @ 一位当前群内且允许参与的其他成员。",
-      "admin_set_denied": "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。",
-      "admin_set_missing": "未找到可用的今日老婆角色：{name}",
-      "admin_set_ambiguous": "角色名或别名不唯一：{name}；请使用完整角色名。",
-      "admin_set_unavailable": "角色当前不可用：{name}"
+      "syntax_error": {
+        "text": "{detail}",
+        "enabled": true,
+        "quote": false
+      },
+      "operation_error": {
+        "text": "{detail}",
+        "enabled": true,
+        "quote": false
+      },
+      "mode_closed": {
+        "text": "这个玩法当前已关闭。",
+        "enabled": true,
+        "quote": false
+      },
+      "command_cooldown": {
+        "text": "指令冷却中，请在 {remaining_seconds} 秒后重试。",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_disabled": {
+        "text": "这个玩法当前不允许抢夺。",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_target_required": {
+        "text": "请 @ 一位当前群内且允许参与的持有者。",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_relation_ambiguous": {
+        "text": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。",
+        "enabled": true,
+        "quote": false
+      },
+      "gift_disabled": {
+        "text": "这个玩法当前不允许赠送。",
+        "enabled": true,
+        "quote": false
+      },
+      "gift_target_required": {
+        "text": "请 @ 一位当前群内且允许参与的接收者。",
+        "enabled": true,
+        "quote": false
+      },
+      "gift_relation_ambiguous": {
+        "text": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
+        "enabled": true,
+        "quote": false
+      },
+      "divorce_ambiguous": {
+        "text": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID：",
+        "enabled": true,
+        "quote": false
+      },
+      "divorce_disabled": {
+        "text": "这个玩法当前不允许解除关系。",
+        "enabled": true,
+        "quote": false
+      },
+      "divorce_relation_missing": {
+        "text": "没有找到匹配的当前关系。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_multiple": {
+        "text": "你有多条待处理赠送，请在命令后填写邀请编号。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_none": {
+        "text": "没有可处理的待赠送邀请。",
+        "enabled": true,
+        "quote": false
+      },
+      "invite_invalid_id": {
+        "text": "邀请编号无效或不属于当前群。",
+        "enabled": true,
+        "quote": false
+      },
+      "rank_intimacy_disabled": {
+        "text": "亲密度排行当前已关闭。",
+        "enabled": true,
+        "quote": false
+      },
+      "rank_activity_disabled": {
+        "text": "活跃度排行当前已关闭。",
+        "enabled": true,
+        "quote": false
+      },
+      "activity_disabled": {
+        "text": "活跃度统计已关闭；当前保留历史排行。",
+        "enabled": true,
+        "quote": false
+      },
+      "page_out_of_range": {
+        "text": "页码超出范围；共 {pages} 页。",
+        "enabled": true,
+        "quote": false
+      },
+      "list_empty": {
+        "text": "{title}：当前没有关系。",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_missing": {
+        "text": "未找到当前角色池内可指定的角色；请使用精确名称、别名或 ID。",
+        "enabled": true,
+        "quote": false
+      },
+      "designated_ambiguous": {
+        "text": "匹配到多个角色，请使用明确 ID：\n{candidates}",
+        "enabled": true,
+        "quote": false
+      },
+      "affection_target_required": {
+        "text": "请 @ 一位当前群内且允许参与的其他成员。",
+        "enabled": true,
+        "quote": false
+      },
+      "admin_set_denied": {
+        "text": "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。",
+        "enabled": true,
+        "quote": false
+      },
+      "admin_set_missing": {
+        "text": "未找到可用的今日老婆角色：{name}",
+        "enabled": true,
+        "quote": false
+      },
+      "admin_set_ambiguous": {
+        "text": "角色名或别名不唯一：{name}；请使用完整角色名。",
+        "enabled": true,
+        "quote": false
+      },
+      "admin_set_unavailable": {
+        "text": "角色当前不可用：{name}",
+        "enabled": true,
+        "quote": false
+      }
     },
     "notifications": {
-      "restart_invalidated": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
-      "invite_expired": "以下赠送邀请已超时：{invite_ids}",
-      "member_reconcile": "成员资格变化，以下关系或邀请已结束：{details}",
-      "member_redraw": "{name}（持有人 {owner_name} 获得补抽资格）",
-      "owner_ineligible": "{name}（持有人 {owner_name} 已失去资格）",
-      "participant_ineligible": "赠送邀请 {invite_id}（参与者已失去资格）"
+      "restart_invalidated": {
+        "text": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
+        "enabled": true
+      },
+      "invite_expired": {
+        "text": "以下赠送邀请已超时：{invite_ids}",
+        "enabled": true
+      },
+      "member_reconcile": {
+        "text": "成员资格变化，以下关系或邀请已结束：{details}",
+        "enabled": true
+      },
+      "member_redraw": {
+        "text": "{name}（持有人 {owner_name} 获得补抽资格）",
+        "enabled": true
+      },
+      "owner_ineligible": {
+        "text": "{name}（持有人 {owner_name} 已失去资格）",
+        "enabled": true
+      },
+      "participant_ineligible": {
+        "text": "赠送邀请 {invite_id}（参与者已失去资格）",
+        "enabled": true
+      }
     },
     "titles": {
       "list_wife": "老婆列表",
@@ -310,94 +650,7 @@
     "avatar_cache_max_entries": 5000,
     "dedupe_retention_days": 30,
     "backup_keep_count": 5,
-    "download_concurrency": 4,
-    "font_id": "auto"
-  },
-  "reply_quote": {
-    "results": {
-      "draw_wife": false,
-      "draw_husband": false,
-      "draw_member": false,
-      "capacity_full": false,
-      "steal_slot_full": false,
-      "relationship_locked": false,
-      "steal_slot_locked": false,
-      "capacity_full_single_wife": false,
-      "capacity_full_single_husband": false,
-      "no_draw_quota": false,
-      "no_candidate": false,
-      "steal_failed": false,
-      "stolen": false,
-      "divorced": false,
-      "gifted": false,
-      "invite_created": false,
-      "gift_accepted": false,
-      "invite_rejected": false,
-      "invite_cancelled": false,
-      "invite_expired": false,
-      "invite_invalidated": false,
-      "invite_not_owned": false,
-      "steal_cooldown": false,
-      "steal_limit": false,
-      "target_protected": false,
-      "divorce_limit": false,
-      "relationship_not_found": false,
-      "invalid_target": false,
-      "no_target_relationship": false,
-      "mode_disabled": false,
-      "invalid_probability": false,
-      "invalid_timeout": false,
-      "invite_already_pending": false,
-      "invite_limit": false,
-      "invite_invalid": false,
-      "unknown_result": false,
-      "designated_wife": false,
-      "designated_husband": false,
-      "designated_disabled": false,
-      "designated_slot_full": false,
-      "no_designated_quota": false,
-      "designated_occupied": false,
-      "designated_drawn": false,
-      "designated_relationship_locked": false,
-      "list_wife": false,
-      "list_husband": false,
-      "list_member": false,
-      "rank_intimacy": false,
-      "rank_activity": false,
-      "query_affection": false,
-      "admin_set_wife": false,
-      "already_held": false
-    },
-    "errors": {
-      "syntax_error": false,
-      "operation_error": false,
-      "mode_closed": false,
-      "command_cooldown": false,
-      "steal_disabled": false,
-      "steal_target_required": false,
-      "steal_relation_ambiguous": false,
-      "gift_disabled": false,
-      "gift_target_required": false,
-      "gift_relation_ambiguous": false,
-      "divorce_ambiguous": false,
-      "divorce_disabled": false,
-      "divorce_relation_missing": false,
-      "invite_multiple": false,
-      "invite_none": false,
-      "invite_invalid_id": false,
-      "rank_intimacy_disabled": false,
-      "rank_activity_disabled": false,
-      "activity_disabled": false,
-      "page_out_of_range": false,
-      "list_empty": false,
-      "designated_missing": false,
-      "designated_ambiguous": false,
-      "affection_target_required": false,
-      "admin_set_denied": false,
-      "admin_set_missing": false,
-      "admin_set_ambiguous": false,
-      "admin_set_unavailable": false
-    }
+    "download_concurrency": 4
   },
   "batch_import": {
     "male_keywords": [
@@ -411,98 +664,16 @@
     "male_pool_id": "",
     "female_pool_id": ""
   },
-  "reply_enabled": {
-    "results": {
-      "draw_wife": true,
-      "draw_husband": true,
-      "draw_member": true,
-      "capacity_full": true,
-      "steal_slot_full": true,
-      "relationship_locked": true,
-      "steal_slot_locked": true,
-      "capacity_full_single_wife": true,
-      "capacity_full_single_husband": true,
-      "no_draw_quota": true,
-      "no_candidate": true,
-      "steal_failed": true,
-      "stolen": true,
-      "divorced": true,
-      "gifted": true,
-      "invite_created": true,
-      "gift_accepted": true,
-      "invite_rejected": true,
-      "invite_cancelled": true,
-      "invite_expired": true,
-      "invite_invalidated": true,
-      "invite_not_owned": true,
-      "steal_cooldown": true,
-      "steal_limit": true,
-      "target_protected": true,
-      "divorce_limit": true,
-      "relationship_not_found": true,
-      "invalid_target": true,
-      "no_target_relationship": true,
-      "mode_disabled": true,
-      "invalid_probability": true,
-      "invalid_timeout": true,
-      "invite_already_pending": true,
-      "invite_limit": true,
-      "invite_invalid": true,
-      "unknown_result": true,
-      "designated_wife": true,
-      "designated_husband": true,
-      "designated_disabled": true,
-      "designated_slot_full": true,
-      "no_designated_quota": true,
-      "designated_occupied": true,
-      "designated_drawn": true,
-      "designated_relationship_locked": true,
-      "list_wife": true,
-      "list_husband": true,
-      "list_member": true,
-      "rank_intimacy": true,
-      "rank_activity": true,
-      "query_affection": true,
-      "admin_set_wife": true,
-      "already_held": true
-    },
-    "errors": {
-      "syntax_error": true,
-      "operation_error": true,
-      "mode_closed": true,
-      "command_cooldown": true,
-      "steal_disabled": true,
-      "steal_target_required": true,
-      "steal_relation_ambiguous": true,
-      "gift_disabled": true,
-      "gift_target_required": true,
-      "gift_relation_ambiguous": true,
-      "divorce_ambiguous": true,
-      "divorce_disabled": true,
-      "divorce_relation_missing": true,
-      "invite_multiple": true,
-      "invite_none": true,
-      "invite_invalid_id": true,
-      "rank_intimacy_disabled": true,
-      "rank_activity_disabled": true,
-      "activity_disabled": true,
-      "page_out_of_range": true,
-      "list_empty": true,
-      "designated_missing": true,
-      "designated_ambiguous": true,
-      "affection_target_required": true,
-      "admin_set_denied": true,
-      "admin_set_missing": true,
-      "admin_set_ambiguous": true,
-      "admin_set_unavailable": true
-    },
-    "notifications": {
-      "restart_invalidated": true,
-      "invite_expired": true,
-      "member_reconcile": true,
-      "member_redraw": true,
-      "owner_ineligible": true,
-      "participant_ineligible": true
+  "render": {
+    "mode": "card",
+    "types": {
+      "draw": "inherit",
+      "status": "inherit",
+      "help": "inherit",
+      "list": "inherit",
+      "rank": "inherit",
+      "affection": "inherit",
+      "collection": "inherit"
     }
   }
 }

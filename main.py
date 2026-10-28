@@ -21,7 +21,7 @@ from .game.operations import GameplayService
 from .game.statistics import StatisticsService
 from .services.access import AccessService
 from .services.catalog.core import CatalogService
-from .services.host_config import HostConfigBridge
+from .services.host_config import import_legacy_host_settings
 from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
 from .services.outgoing_images import prepare_outgoing_image
@@ -54,8 +54,8 @@ class DailyBondsPlugin(Star):
         storage = SQLiteStorage(data_dir / "state.sqlite3")
         try:
             await asyncio.to_thread(storage.open)
-            host_config = HostConfigBridge(self.config, storage)
-            settings = await asyncio.to_thread(host_config.reconcile)
+            await asyncio.to_thread(import_legacy_host_settings, self.config, storage)
+            settings, _ = await asyncio.to_thread(storage.get_settings)
             catalog = CatalogService(
                 storage,
                 Path(__file__).parent / "resources",
@@ -63,7 +63,7 @@ class DailyBondsPlugin(Star):
             )
             await asyncio.to_thread(catalog.seed_builtin_catalog, int(time.time()))
             self._storage = storage
-            web_manager = WebManager(self.context, storage, host_config)
+            web_manager = WebManager(self.context, storage)
             web_manager.register()
             self._web_manager = web_manager
             notifications = NotificationService(self.context, storage)

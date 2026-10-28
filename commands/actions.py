@@ -84,7 +84,6 @@ class ActionMixin:
                 cooldown_seconds=mode_config["steal_cooldown_seconds"],
                 target_protection_limit=mode_config["stolen_limit"],
                 relation_id=relation_id,
-                steal_slot_capacity=mode_config["steal_slot_capacity"],
                 event_key=values["event_key"],
                 payload_hash=values["payload_hash"],
                 config_revision=values["revision"],

@@ -277,17 +277,7 @@ class BatchRoutes:
                 request_hash=digest,
             )
             current, revision = self.storage.get_settings()
-            try:
-                self.host_config.mirror(current, revision)
-                synced = True
-            except Exception:  # noqa: BLE001 - 宿主配置同步失败需单独提示，P3 移除同步层
-                logger.exception("今日姻缘：全局检测设置已保存，但宿主同步失败。")
-                synced = False
-        return {
-            "settings": current["batch_import"],
-            "revision": revision,
-            "host_synced": synced,
-        }
+        return {"settings": current["batch_import"], "revision": revision}
 
 
 def _read_batch_upload(path: str) -> bytes:

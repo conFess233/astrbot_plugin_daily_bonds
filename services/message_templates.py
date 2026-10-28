@@ -104,7 +104,6 @@ _REQUIRED = {
     "messages.results.draw_husband": {"name"},
     "messages.results.draw_member": {"name"},
     "messages.results.capacity_full": {"names"},
-    "messages.results.steal_slot_full": {"role"},
     "messages.results.invite_created": {"invite_id", "accept_keyword"},
     "messages.errors.page_out_of_range": {"pages"},
     "messages.notifications.invite_expired": {"invite_ids"},
@@ -125,11 +124,29 @@ def _fields(template: str, path: str) -> set[str]:
     return fields
 
 
+def entry_text(entry: Any) -> str:
+    """标题是纯文本，其余文案是 {text, enabled, quote} 对象。"""
+
+    return str(entry["text"]) if isinstance(entry, Mapping) else str(entry)
+
+
 def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) -> None:
     for section, entries in defaults.items():
-        for key, original in entries.items():
+        for key, original_entry in entries.items():
             path = f"messages.{section}.{key}"
-            template = messages[section][key]
+            entry = messages[section][key]
+            original = entry_text(original_entry)
+            if isinstance(original_entry, Mapping):
+                if not isinstance(entry, Mapping) or set(entry) != set(original_entry):
+                    raise ConfigurationError(
+                        f"{path} 必须包含 {sorted(original_entry)}"
+                    )
+                for flag in set(entry) - {"text"}:
+                    if not isinstance(entry[flag], bool):
+                        raise ConfigurationError(f"{path}.{flag} 必须是布尔值")
+                template = entry["text"]
+            else:
+                template = entry
             if not isinstance(template, str) or len(template) > 1000:
                 raise ConfigurationError(
                     f"{path} 必须是最多 1000 字符的文本，留空则不发送"
@@ -180,7 +197,8 @@ def template_fields() -> dict[str, dict[str, Any]]:
     """向管理页提供同一份模板变量规则，避免前后端重复维护。"""
     result = {}
     for section, entries in _default_messages().items():
-        for key, original in entries.items():
+        for key, original_entry in entries.items():
+            original = entry_text(original_entry)
             path = f"messages.{section}.{key}"
             image = section in {"results", "errors"} and key in IMAGE_KEYS
             allowed = (
@@ -219,9 +237,10 @@ def template_fields() -> dict[str, dict[str, Any]]:
 def render_message(
     config: Mapping[str, Any], section: str, key: str, **values: Any
 ) -> str:
-    if not config.get("reply_enabled", {}).get(section, {}).get(key, True):
+    entry = config["messages"][section][key]
+    if isinstance(entry, Mapping) and not entry.get("enabled", True):
         return MessageText("")
-    template = str(config["messages"][section][key])
+    template = entry_text(entry)
     if not template.strip():
         return MessageText("")
     values = {
@@ -233,7 +252,7 @@ def render_message(
     }
     values["群名"] = values["group_name"]
     text = template.format_map(values)
-    original = _default_messages()[section][key]
+    original = entry_text(_default_messages()[section][key])
     fallback = original.format_map(values).replace(IMAGE_TOKEN, "").strip()
-    quote = config.get("reply_quote", {}).get(section, {}).get(key, False)
+    quote = bool(entry.get("quote", False)) if isinstance(entry, Mapping) else False
     return MessageText(text, quote_source=quote, fallback=fallback)

@@ -14,7 +14,6 @@ from ..services.catalog.admin import CatalogAdminService
 from ..services.catalog.batch_images import BatchImagesService
 from ..services.catalog.importer import CatalogImportService
 from ..services.catalog.sync import CatalogSyncService
-from ..services.host_config import HostConfigBridge
 from ..services.maintenance import MaintenanceService
 from ..services.storage import SQLiteStorage
 
@@ -31,9 +30,7 @@ class WebManager(
 ):
     """Register authenticated, revision-checked management APIs."""
 
-    def __init__(
-        self, context: Any, storage: SQLiteStorage, host_config: HostConfigBridge
-    ) -> None:
+    def __init__(self, context: Any, storage: SQLiteStorage) -> None:
         self.context = context
         self.storage = storage
         self.catalog = CatalogAdminService(
@@ -47,7 +44,6 @@ class WebManager(
         self.catalog_sync = CatalogSyncService(storage)
         self.maintenance = MaintenanceService(storage, storage.database_path.parent)
         self.runtime_reset = None
-        self.host_config = host_config
 
     def register(self) -> None:
         routes = (

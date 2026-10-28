@@ -320,6 +320,8 @@ class ListingMixin:
             source_id = str(row.get("source_owner_id") or "")
             source_name = members.get(source_id, "群友")
             key = {"gift": "gift_slot", "steal": "steal_slot"}.get(kind, "normal_slot")
+            if row.get("slot_kind") == "designated":
+                key = "designated_slot"
             row["source_label"] = (
                 "["
                 + render_message(config, "titles", key, owner_name=source_name)

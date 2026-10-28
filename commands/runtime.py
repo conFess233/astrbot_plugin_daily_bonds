@@ -134,7 +134,6 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         set_message_values(
             actor_name=names.get(raw_event.sender_id, "群友"),
             member_names=names,
-            font_id=global_config["resources"]["font_id"],
         )
         eligible = {
             member.user_id
@@ -380,7 +379,8 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
                             mode=mode,
                             owner_id=raw_event.sender_id,
                             candidates=selected,
-                            capacity=mode_config["designated_capacity"],
+                            capacity=mode_config["capacity"],
+                            limit=mode_config["designated_limit"],
                             unique=mode_config["designated_unique"],
                             pool_ids=mode_config["pool_ids"],
                             event_key=event_key,

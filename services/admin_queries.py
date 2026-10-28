@@ -140,17 +140,16 @@ class AdminQueryService:
             int(row["amount"]) for row in credit_rows if row["state"] == "available"
         )
         capacity = int(settings["capacity"])
-        designated_capacity = int(settings.get("designated_capacity", 0))
+        designated_limit = int(settings.get("designated_limit", 0))
         counter_value.update(
             {
                 "active_relationships": active,
                 "active_steal_relationships": stolen,
                 "active_designated_relationships": designated,
-                "designated_capacity": designated_capacity,
+                "designated_limit": designated_limit,
                 "designated_quota_remaining": max(
-                    0, designated_capacity - int(counter_value["designated_draws"])
+                    0, designated_limit - int(counter_value["designated_draws"])
                 ),
-                "steal_slot_capacity": int(settings["steal_slot_capacity"]),
                 "capacity": capacity,
                 "normal_quota_remaining": max(
                     0, capacity - int(counter_value["normal_draws"])

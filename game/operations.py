@@ -79,7 +79,10 @@ class GameplayService:
             if replay:
                 return replay
             self._current_period(db, scope_id, period_id)
-            active = self._owner_relationships(db, scope_id, period_id, mode, owner_id)
+            # 持有上限由所有来源的关系共用。
+            active = self._owner_relationships(
+                db, scope_id, period_id, mode, owner_id, None
+            )
             if len(active) >= capacity:
                 result = BusinessResult("CAPACITY_FULL", {"relationships": active})
                 self._record(
@@ -351,6 +354,7 @@ class GameplayService:
         owner_id: str,
         candidates: Sequence[Candidate],
         capacity: int,
+        limit: int,
         pool_ids: Sequence[str] = (),
         unique: bool = True,
         operation_id: str | None = None,
@@ -359,13 +363,16 @@ class GameplayService:
         config_revision: str = "",
         now: int,
     ) -> BusinessResult:
-        """指定角色独立占用槽位和成功次数，不消耗普通抽取或补抽资格。"""
+        """指定角色：占用共同持有上限，按独立次数计数，不消耗普通额度或补抽资格。"""
 
         if (
             mode not in {"wife", "husband"}
-            or isinstance(capacity, bool)
-            or not isinstance(capacity, int)
-            or not 0 <= capacity <= 100
+            or any(
+                isinstance(value, bool) or not isinstance(value, int)
+                for value in (capacity, limit)
+            )
+            or not 1 <= capacity <= 100
+            or not 0 <= limit <= 100
             or not isinstance(unique, bool)
         ):
             raise ValueError("指定玩法、容量或独占开关无效。")
@@ -379,18 +386,15 @@ class GameplayService:
             self._current_period(db, scope_id, period_id)
             code, data = "DESIGNATED_DRAWN", {}
             active = self._owner_relationships(
-                db, scope_id, period_id, mode, owner_id, "designated"
+                db, scope_id, period_id, mode, owner_id, None
             )
             counter = self._counter(db, scope_id, period_id, mode, owner_id)
-            if capacity == 0:
+            if limit == 0:
                 code = "DESIGNATED_DISABLED"
             elif len(active) >= capacity:
-                code, data = (
-                    "DESIGNATED_SLOT_FULL",
-                    {"relationships": active, "capacity": capacity},
-                )
-            elif int(counter["designated_draws"]) >= capacity:
-                code, data = "NO_DESIGNATED_QUOTA", {"capacity": capacity}
+                code, data = "CAPACITY_FULL", {"relationships": active}
+            elif int(counter["designated_draws"]) >= limit:
+                code, data = "NO_DESIGNATED_QUOTA", {"capacity": limit}
             else:
                 available = self._valid_candidates(
                     db,
@@ -471,7 +475,6 @@ class GameplayService:
         attempt_limit: int,
         cooldown_seconds: int,
         target_protection_limit: int,
-        steal_slot_capacity: int = 0,
         relation_id: str | None = None,
         subject_id: str | None = None,
         operation_id: str | None = None,
@@ -504,12 +507,11 @@ class GameplayService:
                     event_key,
                     payload_hash,
                 )
-            destination = "steal" if steal_slot_capacity > 0 else "normal"
             actor_relationships = self._owner_relationships(
-                db, scope_id, period_id, mode, actor_id, destination
+                db, scope_id, period_id, mode, actor_id, None
             )
-            if len(actor_relationships) >= (steal_slot_capacity or capacity):
-                code = "STEAL_SLOT_FULL" if steal_slot_capacity > 0 else "CAPACITY_FULL"
+            if len(actor_relationships) >= capacity:
+                code = "CAPACITY_FULL"
                 return self._record_result(
                     db,
                     operation_id,
@@ -685,10 +687,10 @@ class GameplayService:
                 db,
                 target_relation,
                 actor_id,
-                steal_slot_capacity or capacity,
+                capacity,
                 now,
                 "stolen",
-                destination,
+                "steal",
             )
             db.execute(
                 "UPDATE daily_counters SET stolen_successes=stolen_successes+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
@@ -958,7 +960,7 @@ class GameplayService:
                     payload_hash,
                 )
             recipient_relations = self._owner_relationships(
-                db, scope_id, period_id, mode, recipient_id
+                db, scope_id, period_id, mode, recipient_id, None
             )
             if len(recipient_relations) >= capacity:
                 return self._record_result(
@@ -1269,6 +1271,7 @@ class GameplayService:
                                 period_id,
                                 invite["mode"],
                                 invite["recipient_id"],
+                                None,
                             )
                         )
                         >= capacity
@@ -1542,14 +1545,18 @@ class GameplayService:
         period_id: str,
         mode: str,
         owner_id: str,
-        slot_kind: str = "normal",
+        slot_kind: str | None = "normal",
     ) -> list[dict[str, Any]]:
+        """返回持有者的当前关系；`slot_kind=None` 表示全部来源（用于容量判断）。"""
+
+        slot_filter = "" if slot_kind is None else " AND r.slot_kind=?"
         rows = db.execute(
-            """SELECT r.id,r.scope_id,r.period_id,r.mode,r.owner_id,r.subject_id,r.subject_kind,r.snapshot_id,r.version,s.name,s.aliases_json
+            f"""SELECT r.id,r.scope_id,r.period_id,r.mode,r.owner_id,r.subject_id,r.subject_kind,r.snapshot_id,r.version,r.slot_kind,s.name,s.aliases_json
                FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id
-               WHERE r.scope_id=? AND r.period_id=? AND r.mode=? AND r.owner_id=? AND r.slot_kind=? AND r.state='active'
+               WHERE r.scope_id=? AND r.period_id=? AND r.mode=? AND r.owner_id=?{slot_filter} AND r.state='active'
                ORDER BY r.acquired_at,r.id""",
-            (scope_id, period_id, mode, owner_id, slot_kind),
+            (scope_id, period_id, mode, owner_id)
+            + (() if slot_kind is None else (slot_kind,)),
         ).fetchall()
         return [
             dict(row) | {"aliases": json.loads(row["aliases_json"])} for row in rows

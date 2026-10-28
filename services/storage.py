@@ -16,9 +16,16 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..models import Scope, StorageError
-from .settings import default_config, effective_config, merge_sparse, validate_config
+from .config_upgrade import is_legacy, upgrade_config
+from .settings import (
+    SCOPE_OVERRIDABLE,
+    default_config,
+    effective_config,
+    merge_sparse,
+    validate_config,
+)
 
-_SCHEMA_VERSION = 13
+_SCHEMA_VERSION = 14
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -211,21 +218,7 @@ class SQLiteStorage:
                 validate_config(value)
                 saved = dict(value)
             else:
-                allowed = {
-                    "enabled",
-                    "access",
-                    "reset",
-                    "commands",
-                    "modes",
-                    "statistics",
-                    "weights",
-                    "display",
-                    "members",
-                    "messages",
-                    "reply_quote",
-                    "reply_enabled",
-                }
-                if set(value) - allowed:
+                if set(value) - SCOPE_OVERRIDABLE:
                     raise StorageError("群覆盖包含仅允许全局设置的字段。")
                 if "access" in value and set(value["access"]) - {
                     "users",
@@ -436,8 +429,9 @@ class SQLiteStorage:
         ):
             raise StorageError("关系对象与不可变快照不匹配。")
         count = connection.execute(
-            "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND slot_kind=? AND state='active'",
-            (scope_id, period_id, mode, owner_id, slot_kind),
+            # 0.2.0 起所有来源共用持有上限；slot_kind 只表示保护类别。
+            "SELECT COUNT(*) AS amount FROM relationships WHERE scope_id=? AND period_id=? AND mode=? AND owner_id=? AND state='active'",
+            (scope_id, period_id, mode, owner_id),
         ).fetchone()["amount"]
         if int(count) >= capacity and not ignore_capacity:
             raise StorageError("持有名额已满。")
@@ -458,6 +452,14 @@ class SQLiteStorage:
                 slot_kind,
             ),
         )
+        if subject_kind == "character":
+            # 图鉴记录“曾经拥有过”的角色；转移得到的角色同样计入。
+            connection.execute(
+                """INSERT INTO collection_entries(scope_id,owner_id,mode,character_id,times,first_at,last_at)
+                   VALUES(?,?,?,?,1,?,?) ON CONFLICT(scope_id,owner_id,mode,character_id)
+                   DO UPDATE SET times=times+1,last_at=excluded.last_at""",
+                (scope_id, owner_id, mode, subject_id, now, now),
+            )
         return relation_id
 
     def accepts_migration_chain(self, applied: list[dict[str, Any]]) -> bool:
@@ -500,7 +502,10 @@ class SQLiteStorage:
             migration_dir / "011_activity_days.sql",
             migration_dir / "012_message_templates.sql",
             migration_dir / "013_relationship_sources.sql",
+            migration_dir / "014_v2_settings_collection.sql",
         ]
+        # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
+        hooks = {14: _upgrade_settings_v2}
         checksums = [
             hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files
         ]
@@ -573,9 +578,12 @@ class SQLiteStorage:
             for version in range(1, current + 1):
                 if version not in applied or applied[version] != checksums[version - 1]:
                     raise StorageError(f"数据库迁移 {version} 的校验和无效。")
+            if 0 < current < _SCHEMA_VERSION:
+                self._backup_before_migration(current)
             for version in range(current + 1, _SCHEMA_VERSION + 1):
                 migration = migration_files[version - 1].read_text(encoding="utf-8")
                 rebuild = version == 10
+                hook = hooks.get(version)
                 if rebuild:
                     # SQLite 重建被其他表引用的父表，FK 开关必须在 BEGIN 之前设置。
                     connection.execute("PRAGMA foreign_keys=OFF")
@@ -583,8 +591,17 @@ class SQLiteStorage:
                     "BEGIN IMMEDIATE;\n"
                     + migration
                     + f"\nINSERT INTO schema_migrations(version,applied_at,checksum) VALUES({version},unixepoch(),'{checksums[version - 1]}');\n"
-                    + ("" if rebuild else "COMMIT;")
+                    + ("" if rebuild or hook else "COMMIT;")
                 )
+                if hook:
+                    try:
+                        connection.executescript(script)
+                        hook(connection, current)
+                        connection.commit()
+                    finally:
+                        if connection.in_transaction:
+                            connection.rollback()
+                    continue
                 try:
                     connection.executescript(script)
                     if rebuild:
@@ -604,6 +621,19 @@ class SQLiteStorage:
             if isinstance(exc, StorageError):
                 raise
             raise StorageError(f"SQLite 迁移失败：{exc}") from exc
+
+    def _backup_before_migration(self, current: int) -> None:
+        """升级前复制一份完整数据库，迁移失败或需回退时可在管理页恢复。"""
+
+        backup_dir = self.database_path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        target = backup_dir / f"pre-migration-v{current}-{stamp}.sqlite3"
+        destination = sqlite3.connect(target)
+        try:
+            self._connection().backup(destination)
+        finally:
+            destination.close()
 
     def _connection(self) -> sqlite3.Connection:
         if self.connection is None:
@@ -633,3 +663,38 @@ def _next_boundary_after(timestamp: int, reset_at: time, zone: ZoneInfo) -> int:
         local_day += timedelta(days=1)
         candidate = _boundary(local_day, reset_at, zone)
     return int(candidate.timestamp())
+
+
+def _upgrade_settings_v2(connection: sqlite3.Connection, from_version: int) -> None:
+    """迁移 014：把 schema 1 的全局设置与群级覆盖转换为 schema 2 并记录报告。"""
+
+    report: dict[str, list[str]] = {}
+    rows = connection.execute("SELECT scope_key,value_json FROM settings").fetchall()
+    for row in rows:
+        value = json.loads(row["value_json"])
+        if not is_legacy(value):
+            continue
+        sparse = row["scope_key"] != "global"
+        upgraded, notes = upgrade_config(value, sparse=sparse)
+        merged = merge_sparse(default_config(), upgraded)
+        validate_config(merged)
+        connection.execute(
+            "UPDATE settings SET value_json=?,schema_version=? WHERE scope_key=?",
+            (
+                json.dumps(upgraded, ensure_ascii=False, allow_nan=False),
+                _SCHEMA_VERSION,
+                row["scope_key"],
+            ),
+        )
+        report[row["scope_key"]] = notes
+    if from_version:
+        connection.execute(
+            "INSERT INTO migration_reports(id,source,from_version,to_version,report_json,created_at) VALUES(?,?,?,?,?,unixepoch())",
+            (
+                str(uuid.uuid4()),
+                "database",
+                from_version,
+                _SCHEMA_VERSION,
+                json.dumps({"settings": report}, ensure_ascii=False),
+            ),
+        )
