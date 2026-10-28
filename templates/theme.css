@@ -1,0 +1,147 @@
+/* 今日姻缘卡片主题：与管理页共用紫色强调色。由 CardService 嵌入每个模板。 */
+:root {
+  --primary: #7367f0;
+  --primary-soft: #edeafd;
+  --pink: #f06292;
+  --pink-soft: #fde7ef;
+  --page: #f4f2fd;
+  --surface: #ffffff;
+  --text: #2f2b3d;
+  --muted: #6d6b77;
+  --subtle: #a5a3ae;
+  --border: #e6e5e8;
+  --gold: #f5a623;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+}
+
+body {
+  background: linear-gradient(160deg, #f6f3ff 0%, #fdf2f8 100%);
+  color: var(--text);
+  font: 15px/1.5 "Noto Sans SC", "Source Han Sans SC", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  padding: 32px;
+}
+
+.card {
+  margin: 0 auto;
+  max-width: 1180px;
+  background: var(--surface);
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(115, 103, 240, 0.12);
+  overflow: hidden;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 28px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-header h1 {
+  margin: 0;
+  font-size: 26px;
+  line-height: 1.25;
+}
+
+.card-header .sub {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.card-header .range {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.card-body {
+  padding: 20px 28px 26px;
+}
+
+.avatar {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--primary-soft);
+}
+
+.avatar.lg {
+  width: 56px;
+  height: 56px;
+}
+
+.avatar.sm {
+  width: 22px;
+  height: 22px;
+  vertical-align: -5px;
+}
+
+.initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.portrait {
+  flex: none;
+  width: 64px;
+  height: 84px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--primary-soft);
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tag.pink {
+  background: var(--pink-soft);
+  color: var(--pink);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.empty {
+  padding: 36px 0;
+  text-align: center;
+  color: var(--muted);
+}
+
+.footer {
+  padding: 0 28px 20px;
+  color: var(--subtle);
+  font-size: 12px;
+  text-align: right;
+}
+
+.ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}

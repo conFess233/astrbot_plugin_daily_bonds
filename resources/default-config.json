@@ -183,8 +183,7 @@
     "intimacy_rank_mode": "personal",
     "intimacy_rank_enabled": true,
     "activity_rank_enabled": true,
-    "rank_merge_rows": 20,
-    "rank_max_height": 2000
+    "rank_merge_rows": 20
   },
   "members": {
     "cache_ttl_seconds": 300

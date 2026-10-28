@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.card { max-width: 760px; }
+.duo {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 0;
+}
+.person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.person .avatar {
+  width: 96px;
+  height: 96px;
+  font-size: 32px;
+}
+.person .name {
+  font-weight: 700;
+  font-size: 17px;
+  max-width: 100%;
+}
+.arrows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  text-align: center;
+}
+.arrow {
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--pink-soft);
+}
+.arrow .score {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--pink);
+}
+.arrow .label {
+  font-size: 12px;
+  color: var(--muted);
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header"><h1>{{ title | e }}</h1></div>
+  <div class="card-body">
+    <div class="duo">
+      <div class="person">
+        {% if left.avatar %}<img class="avatar" src="{{ left.avatar }}">{% else %}<span class="avatar initial">{{ left.initial | e }}</span>{% endif %}
+        <div class="name ellipsis">{{ left.name | e }}</div>
+      </div>
+      <div class="arrows">
+        {% for item in scores %}
+        <div class="arrow"><div class="score">{{ "→" if loop.first else "←" }} {{ item.score }}</div><div class="label">{{ item.label | e }}</div></div>
+        {% endfor %}
+      </div>
+      <div class="person">
+        {% if right.avatar %}<img class="avatar" src="{{ right.avatar }}">{% else %}<span class="avatar initial">{{ right.initial | e }}</span>{% endif %}
+        <div class="name ellipsis">{{ right.name | e }}</div>
+      </div>
+    </div>
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

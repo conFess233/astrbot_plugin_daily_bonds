@@ -47,8 +47,6 @@ class WebManager(
 
     def register(self) -> None:
         routes = (
-            ("fonts", self.fonts, ["GET"], "List server fonts"),
-            ("fonts/preview", self.preview_font, ["GET"], "Preview image font"),
             ("overview", self.overview, ["GET"], "Today Bonds overview"),
             ("scopes", self.scopes, ["GET"], "Today Bonds scopes"),
             ("config", self.get_config, ["GET"], "Read Today Bonds configuration"),

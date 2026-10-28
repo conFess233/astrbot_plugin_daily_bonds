@@ -13,7 +13,6 @@ from typing import Any
 from astrbot.api.web import json_response, request
 
 from ..models import ConfigurationError, InvalidInputError, StorageError
-from ..services.fonts import available_fonts, font_preview
 from ..services.message_templates import template_fields
 from ..services.settings import SCOPE_OVERRIDABLE, effective_config, validate_config
 
@@ -290,27 +289,6 @@ class ConfigRoutes:
             validate_config(effective)
             affected.append(scope_id)
         return affected
-
-    async def fonts(self):
-        _actor, denied = self._authorize()
-        if denied:
-            return denied
-        fonts = await asyncio.to_thread(available_fonts)
-        return json_response(
-            {"ok": True, "data": [{"id": f["id"], "name": f["name"]} for f in fonts]}
-        )
-
-    async def preview_font(self):
-        _actor, denied = self._authorize()
-        if denied:
-            return denied
-        try:
-            data = await asyncio.to_thread(
-                font_preview, request.query.get("font_id", "auto")
-            )
-            return json_response({"ok": True, "data": data})
-        except (ValueError, OSError) as exc:
-            return self._error("FONT_UNAVAILABLE", f"字体预览失败：{exc}", 400)
 
 
 def _sparse_diff(base: Mapping[str, Any], value: Mapping[str, Any]) -> dict[str, Any]:

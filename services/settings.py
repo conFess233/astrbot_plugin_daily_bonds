@@ -168,7 +168,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "statistics.activity_window_days": (1, 365),
         "display.page_size": (1, 100),
         "display.rank_merge_rows": (1, 100),
-        "display.rank_max_height": (300, 16000),
         "members.cache_ttl_seconds": (0, 86400),
         "history.retention_days": (1, 3650),
     }

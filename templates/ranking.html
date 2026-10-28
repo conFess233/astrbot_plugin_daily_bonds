@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.ranks {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-flow: column;
+  grid-template-rows: repeat({{ rows_per_column }}, auto);
+  gap: 8px 16px;
+}
+.rank {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: #faf9ff;
+}
+.rank.highlight {
+  background: var(--primary-soft);
+  outline: 2px solid var(--primary);
+}
+.rank .no {
+  flex: none;
+  width: 30px;
+  text-align: center;
+  font-weight: 800;
+  color: var(--subtle);
+}
+.rank .no.top1 { color: var(--gold); }
+.rank .no.top2 { color: #9aa4b2; }
+.rank .no.top3 { color: #c47f4a; }
+.rank .who {
+  flex: 1;
+  min-width: 0;
+}
+.rank .name {
+  font-weight: 600;
+}
+.rank .detail {
+  font-size: 12px;
+}
+.rank .score {
+  flex: none;
+  font-weight: 800;
+  color: var(--primary);
+  font-size: 17px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    {% if header_avatar %}<img class="avatar lg" src="{{ header_avatar }}">{% endif %}
+    <div>
+      <h1>{{ title | e }}</h1>
+      {% if subtitle %}<div class="sub">{{ subtitle | e }}</div>{% endif %}
+    </div>
+    {% if range_label %}<div class="range">{{ range_label | e }}</div>{% endif %}
+  </div>
+  <div class="card-body">
+    {% if rows %}
+    <div class="ranks">
+      {% for row in rows %}
+      <div class="rank{% if row.highlight %} highlight{% endif %}">
+        <div class="no{% if row.rank <= 3 %} top{{ row.rank }}{% endif %}">{{ row.rank }}</div>
+        {% if row.avatar %}<img class="avatar" src="{{ row.avatar }}">{% else %}<span class="avatar initial">{{ row.initial | e }}</span>{% endif %}
+        <div class="who">
+          <div class="name ellipsis">{% if row.pair %}{{ row.pair[0] | e }} → {{ row.pair[1] | e }}{% else %}{{ row.name | e }}{% endif %}</div>
+          {% if row.detail or row.badge %}<div class="detail muted ellipsis">{{ row.detail | e }}{% if row.badge %} · {{ row.badge | e }}{% endif %}</div>{% endif %}
+        </div>
+        {% if row.score is not none %}<div class="score">{{ row.score }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">{{ empty_text | e }}</div>
+    {% endif %}
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

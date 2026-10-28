@@ -20,12 +20,12 @@ from ..models import CommandSyntaxError, Scope, StorageError
 from ..services.access import AccessService
 from ..services.admin_permissions import may_set_wife
 from ..services.avatar_cache import AvatarCache
+from ..services.cards import CardService, RenderHtml
 from ..services.message_templates import (
     MESSAGE_CONTEXT,
     render_message,
     set_message_values,
 )
-from ..services.rendering import CardRenderer
 from ..services.storage import SQLiteStorage
 from .actions import ActionMixin
 from .listing import ListingMixin
@@ -45,6 +45,7 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         access: AccessService,
         gameplay: GameplayService,
         statistics: StatisticsService,
+        render_html: RenderHtml | None = None,
     ) -> None:
         self.context = context
         self.storage = storage
@@ -52,7 +53,7 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         self.access = access
         self.gameplay = gameplay
         self.statistics = statistics
-        self.renderer = CardRenderer(storage.database_path.parent / "renders")
+        self.cards = CardService(render_html)
         self.avatar_cache = AvatarCache(storage.database_path.parent / "avatars")
         self._eligibility: dict[int, tuple[str, frozenset[str]]] = {}
         # 作用域编号与会话标识在运行期很少变化，避免每条消息都写库。
@@ -132,6 +133,7 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
             for member in members
         }
         set_message_values(
+            render=config["render"],
             actor_name=names.get(raw_event.sender_id, "群友"),
             member_names=names,
         )

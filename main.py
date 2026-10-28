@@ -82,6 +82,7 @@ class DailyBondsPlugin(Star):
                 access=AccessService(),
                 gameplay=GameplayService(storage),
                 statistics=StatisticsService(storage),
+                render_html=self.html_render,
             )
             web_manager.runtime_reset = self._runtime.reset
             self._maintenance_task = asyncio.create_task(

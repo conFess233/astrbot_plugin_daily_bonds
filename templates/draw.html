@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.card { max-width: 640px; }
+.hero {
+  position: relative;
+  background: linear-gradient(135deg, var(--primary-soft), var(--pink-soft));
+  text-align: center;
+  padding: 28px 24px 20px;
+}
+.hero img.subject {
+  max-width: 100%;
+  max-height: 560px;
+  border-radius: 16px;
+  box-shadow: 0 8px 24px rgba(47, 43, 61, 0.18);
+}
+.hero .avatar.subject {
+  width: 180px;
+  height: 180px;
+  font-size: 64px;
+}
+.headline {
+  padding: 18px 28px 6px;
+  text-align: center;
+}
+.headline .kicker {
+  color: var(--muted);
+  font-size: 14px;
+}
+.headline .name {
+  margin-top: 4px;
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--primary);
+}
+.message {
+  padding: 4px 28px 8px;
+  text-align: center;
+  white-space: pre-wrap;
+}
+.facts {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 28px 18px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hero">
+    {% if image %}<img class="subject" src="{{ image }}">{% elif avatar %}<img class="avatar subject" src="{{ avatar }}">{% else %}<span class="avatar subject initial">{{ initial | e }}</span>{% endif %}
+  </div>
+  <div class="headline">
+    <div class="kicker">{{ kicker | e }}</div>
+    <div class="name">{{ subject_name | e }}</div>
+  </div>
+  {% if message %}<div class="message">{{ message | e }}</div>{% endif %}
+  {% if facts %}
+  <div class="facts">
+    {% for fact in facts %}<span class="tag {{ fact.tone }}">{{ fact.text | e }}</span>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

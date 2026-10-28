@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import random
-import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,6 +11,7 @@ from typing import Any
 
 from astrbot.api import logger
 
+from ..services.cards import CardRow, CardService, data_uri, render_mode
 from ..services.message_templates import (
     IMAGE_TOKEN,
     MESSAGE_CONTEXT,
@@ -19,7 +19,6 @@ from ..services.message_templates import (
     render_message,
     set_message_values,
 )
-from ..services.rendering import CardRenderer, CardRow
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,19 +53,18 @@ class ReplyMixin:
             or text.replace(IMAGE_TOKEN, "")
             or getattr(text, "fallback", "")
         )
-        images = ()
-        if IMAGE_TOKEN in text:
+        if options.get("ranking"):
+            kind = "rank"
+        elif rows and rows[0].pair_scores is not None:
+            kind = "affection"
+        else:
+            kind = "list"
+        images: tuple[Path, ...] = ()
+        if IMAGE_TOKEN in text and render_mode(kind) == "card":
             try:
-                images = await asyncio.to_thread(
-                    self.renderer.render,
-                    title,
-                    rows,
-                    cache_key=str(uuid.uuid4()),
-                    font_id=MESSAGE_CONTEXT.get().get("font_id", "auto"),
-                    **options,
-                )
+                images = await self.cards.render(title, rows, **options)
             except Exception:  # noqa: BLE001 - 渲染降级为文字
-                logger.exception("今日姻缘：卡片渲染失败，降级为文字。")
+                logger.warning("今日姻缘：卡片渲染失败，降级为文字。", exc_info=True)
         visible = text.replace(IMAGE_TOKEN, "")
         if not images and not visible.strip():
             visible = fallback
@@ -79,13 +77,9 @@ class ReplyMixin:
                 fallback=fallback,
             )
         )
-        limit = CardRenderer.page_capacity(
-            max_height=int(options.get("max_height", 2000)),
+        limit = CardService.page_capacity(
             max_rows=int(options.get("max_rows", 20)),
             ranking=bool(options.get("ranking")),
-            has_header_avatar=bool(
-                options.get("header_user_id") or options.get("header_avatar_path")
-            ),
         )
         merged = merge_long and (len(rows) > limit or len(images) > 1)
         chunks: list[str] = []
@@ -209,6 +203,9 @@ class ReplyMixin:
                     if item["subject_kind"] == "member"
                     else self._snapshot_image_path(item["image_paths"])
                 )
+                card = await self._draw_card(text, item, image, code, data)
+                if card is not None:
+                    return card
                 return RuntimeReply(text, (image,) if image else ())
         successful = code in {
             "DRAWN",
@@ -223,6 +220,61 @@ class ReplyMixin:
             "INVITE_CANCELLED",
         }
         return RuntimeReply(text, starts_cooldown=successful)
+
+    async def _draw_card(
+        self,
+        text: str,
+        item: Mapping[str, Any],
+        image: Path | None,
+        code: str,
+        data: Mapping[str, Any],
+    ) -> RuntimeReply | None:
+        """卡片模式下把抽取结果渲染为一张卡片；不可用或失败时返回 None。"""
+
+        if not self.cards.available or render_mode("draw") != "card":
+            return None
+        member = item["subject_kind"] == "member"
+        source = (
+            "管理员设置"
+            if data.get("admin_set")
+            else "指定"
+            if code == "DESIGNATED_DRAWN"
+            else "抽取"
+        )
+        facts = [{"text": source, "tone": ""}]
+        facts.extend({"text": fact, "tone": "pink"} for fact in data.get("facts", ()))
+        message = text.replace(IMAGE_TOKEN, "").strip()
+        subject_name = str(item["name"])
+        portrait = await asyncio.to_thread(data_uri, image, 720 if not member else 360)
+        try:
+            path = await self.cards.render_template(
+                "draw.html",
+                {
+                    "kicker": message.replace(subject_name, "").strip(" ：:，,")
+                    or source,
+                    "subject_name": subject_name,
+                    "message": "",
+                    "image": "" if member else portrait,
+                    "avatar": portrait if member else "",
+                    "initial": subject_name[:1] or "?",
+                    "facts": facts,
+                },
+            )
+        except Exception:  # noqa: BLE001 - 渲染降级为文字和原图
+            logger.warning(
+                "今日姻缘：抽取卡片渲染失败，发送文字和原图。", exc_info=True
+            )
+            return None
+        return RuntimeReply(
+            MessageText(
+                IMAGE_TOKEN,
+                quote_source=getattr(text, "quote_source", False),
+                fallback=message,
+            ),
+            (path,),
+            (path,),
+            fallback_text=message,
+        )
 
     def _relationship_display(self, relationship_id: str) -> dict[str, Any] | None:
         with self.storage._lock:

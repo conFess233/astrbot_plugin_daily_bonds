@@ -100,6 +100,13 @@ def upgrade_config(
                 )
         if not resources:
             result.pop("resources")
+    display = result.get("display")
+    if isinstance(display, dict) and display.pop("rank_max_height", None) is not None:
+        notes.append(
+            "移除 display.rank_max_height：卡片按 display.rank_merge_rows 分图。"
+        )
+        if not display:
+            result.pop("display")
     weights = result.get("weights")
     if isinstance(weights, dict):
         weights.pop("activity_full_messages", None)

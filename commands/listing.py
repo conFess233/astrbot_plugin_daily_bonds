@@ -6,11 +6,11 @@ import asyncio
 from collections.abc import Mapping
 from typing import Any
 
+from ..services.cards import CardRow, render_mode
 from ..services.message_templates import (
     IMAGE_TOKEN,
     render_message,
 )
-from ..services.rendering import CardRow
 from .replies import RuntimeReply
 
 
@@ -180,7 +180,6 @@ class ListingMixin:
             "range_label": f"统计范围：{config['statistics']['activity_window_days']} 天"
             if key == "rank_activity"
             else "统计范围：累计",
-            "max_height": config["display"]["rank_max_height"],
             "max_rows": config["display"]["rank_merge_rows"],
             "empty_text": render_message(config, "titles", "empty"),
         }
@@ -398,7 +397,9 @@ class ListingMixin:
                 ttl_seconds=resources["avatar_cache_ttl_seconds"],
                 max_entries=resources["avatar_cache_max_entries"],
             )
-            if self.renderer.has_cjk_font and IMAGE_TOKEN in text
+            if self.cards.available
+            and render_mode("list") == "card"
+            and IMAGE_TOKEN in text
             else {}
         )
         card_rows = [
@@ -423,7 +424,6 @@ class ListingMixin:
                 )
                 if mode == "member"
                 else None,
-                show_user_ids=False,
             )
             for row in selected_rows
         ]

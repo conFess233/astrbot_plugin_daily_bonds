@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.rows {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 12px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.row .text {
+  min-width: 0;
+  flex: 1;
+}
+.row .primary {
+  font-weight: 600;
+  font-size: 16px;
+}
+.row .secondary {
+  margin-top: 4px;
+  font-size: 13px;
+}
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.pair .heart {
+  color: var(--pink);
+  font-size: 18px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    {% if header and header.avatar %}<img class="avatar lg" src="{{ header.avatar }}">{% endif %}
+    <div>
+      <h1>{{ title | e }}</h1>
+      {% if subtitle %}<div class="sub">{{ subtitle | e }}</div>{% endif %}
+    </div>
+    {% if page_label %}<div class="range">{{ page_label | e }}</div>{% endif %}
+  </div>
+  <div class="card-body">
+    {% if rows %}
+    <div class="rows">
+      {% for row in rows %}
+      <div class="row">
+        <div class="pair">
+          {% if row.avatar %}<img class="avatar" src="{{ row.avatar }}">{% else %}<span class="avatar initial">{{ row.initial | e }}</span>{% endif %}
+          {% if row.image %}
+          <span class="heart">♥</span><img class="portrait" src="{{ row.image }}">
+          {% elif row.other_avatar or row.other_initial %}
+          <span class="heart">♥</span>
+          {% if row.other_avatar %}<img class="avatar" src="{{ row.other_avatar }}">{% else %}<span class="avatar initial">{{ row.other_initial | e }}</span>{% endif %}
+          {% endif %}
+        </div>
+        <div class="text">
+          <div class="primary ellipsis">{{ row.primary | e }}</div>
+          {% if row.source %}
+          <div class="secondary"><span class="tag {{ row.source.tone }}">{{ row.source.before | e }}{% if row.source.avatar %}<img class="avatar sm" src="{{ row.source.avatar }}"> {% endif %}{{ row.source.name | e }}{{ row.source.after | e }}</span></div>
+          {% elif row.secondary %}
+          <div class="secondary"><span class="tag {{ row.tone }}">{{ row.secondary | e }}</span></div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty">{{ empty_text | e }}</div>
+    {% endif %}
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>
