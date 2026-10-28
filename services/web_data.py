@@ -8,7 +8,7 @@ import uuid
 
 from astrbot.api.web import json_response, request
 
-from ..models import StorageError
+from ..models.errors import StorageError
 
 
 class DataRoutes:

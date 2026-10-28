@@ -12,8 +12,8 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ..services.cards import CardRow, CardService, data_uri, render_mode
-from ..services.message_templates import (
+from .cards import CardRow, CardService, data_uri, render_mode
+from .message_templates import (
     IMAGE_TOKEN,
     MESSAGE_CONTEXT,
     MessageText,

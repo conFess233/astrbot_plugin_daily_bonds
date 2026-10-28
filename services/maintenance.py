@@ -17,7 +17,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-from ..models import InvalidInputError, StorageError
+from ..models.errors import InvalidInputError, StorageError
 from .storage import SQLiteStorage
 
 _BACKUP_FORMAT = "astrbot-daily-bonds-backup"

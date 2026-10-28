@@ -11,7 +11,7 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any
 
-from ..models import ConfigurationError
+from ..models.errors import ConfigurationError
 
 _FORMATTER = string.Formatter()
 NAME_FIELDS = {
@@ -200,7 +200,12 @@ class MessageText(str):
 
 @lru_cache(maxsize=1)
 def _default_messages() -> dict[str, Any]:
-    path = Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
+    path = (
+        Path(__file__).resolve().parents[1]
+        / "resources"
+        / "defaults"
+        / "default-config.json"
+    )
     return json.loads(path.read_text(encoding="utf-8"))["messages"]
 
 

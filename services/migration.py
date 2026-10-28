@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from ..models import InvalidInputError, StorageError
+from ..models.errors import InvalidInputError, StorageError
 from .config_upgrade import is_legacy, upgrade_config
 from .storage import SQLiteStorage
 

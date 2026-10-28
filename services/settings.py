@@ -11,11 +11,14 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..models import ConfigurationError
+from ..models.errors import ConfigurationError
 from .message_templates import validate_messages
 
 _DEFAULTS_PATH = (
-    Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
+    Path(__file__).resolve().parents[1]
+    / "resources"
+    / "defaults"
+    / "default-config.json"
 )
 
 _MODES = ("wife", "husband", "member")

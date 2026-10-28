@@ -6,8 +6,8 @@ import json
 import uuid
 from collections.abc import Set as AbstractSet
 
-from ..services.message_templates import render_message
-from ..services.storage import SQLiteStorage
+from .message_templates import render_message
+from .storage import SQLiteStorage
 
 
 def reconcile_member_eligibility(

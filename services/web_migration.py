@@ -12,9 +12,9 @@ from typing import Any
 from astrbot.api import logger
 from astrbot.api.web import json_response, request
 
-from ..game.status import StatusService
-from ..models import StorageError
-from ..services.message_templates import MESSAGE_CONTEXT, set_message_values
+from ..models.errors import StorageError
+from .game_status import StatusService
+from .message_templates import MESSAGE_CONTEXT, set_message_values
 
 
 class MigrationRoutes:

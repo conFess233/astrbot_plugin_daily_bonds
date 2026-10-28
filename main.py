@@ -10,24 +10,28 @@ from pathlib import Path
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.event.filter import EventMessageType
-from astrbot.api.star import Context, Star, StarTools
+from astrbot.api.star import Context, Star
+from astrbot.core.utils.astrbot_path import get_astrbot_data_path
 from PIL import Image as PILImage
 
-from .adapters.onebot import OneBotAdapter
-from .commands.message_chain import reply_chain
-from .commands.replies import RuntimeReply
-from .commands.runtime import CommandRuntime
-from .game.operations import GameplayService
-from .game.statistics import StatisticsService
 from .services.access import AccessService
 from .services.catalog.core import CatalogService
+from .services.command_replies import RuntimeReply
+from .services.command_runtime import CommandRuntime
+from .services.gameplay import GameplayService
 from .services.host_config import import_legacy_host_settings
+from .services.message_chain import reply_chain
 from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
+from .services.onebot import OneBotAdapter
 from .services.outgoing_images import prepare_outgoing_image
 from .services.retention import RetentionService
+from .services.statistics import StatisticsService
 from .services.storage import SQLiteStorage
-from .web.manager import WebManager
+from .services.web_api import WebManager
+
+PLUGIN_NAME = "astrbot_plugin_daily_bonds"
+RESOURCES_DIR = Path(__file__).resolve().parent / "resources"
 
 
 class DailyBondsPlugin(Star):
@@ -50,7 +54,8 @@ class DailyBondsPlugin(Star):
         if not self.config.get("enabled", True):
             logger.info("今日姻缘：宿主总开关关闭，跳过初始化。")
             return
-        data_dir = Path(StarTools.get_data_dir("astrbot_plugin_daily_bonds"))
+        data_dir = Path(get_astrbot_data_path()) / "plugin_data" / PLUGIN_NAME
+        data_dir.mkdir(parents=True, exist_ok=True)
         storage = SQLiteStorage(data_dir / "state.sqlite3")
         try:
             await asyncio.to_thread(storage.open)
@@ -58,7 +63,7 @@ class DailyBondsPlugin(Star):
             settings, _ = await asyncio.to_thread(storage.get_settings)
             catalog = CatalogService(
                 storage,
-                Path(__file__).parent / "resources",
+                RESOURCES_DIR / "defaults",
                 data_dir / "media",
             )
             await asyncio.to_thread(catalog.seed_builtin_catalog, int(time.time()))

@@ -7,7 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from ..models import CommandSyntaxError, ParsedCommand
+from ..models.command import ParsedCommand
+from ..models.errors import CommandSyntaxError
 
 _AT_TOKEN = re.compile(r"<@([0-9]+)>")
 _INVITE_ID = re.compile(r"[0-9]{1,20}")

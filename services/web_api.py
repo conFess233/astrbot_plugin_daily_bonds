@@ -8,23 +8,23 @@ from typing import Any
 
 from astrbot.api.web import error_response, request
 
-from ..services.admin_corrections import AdminCorrectionService
-from ..services.admin_queries import AdminQueryService
-from ..services.catalog.admin import CatalogAdminService
-from ..services.catalog.batch_images import BatchImagesService
-from ..services.catalog.importer import CatalogImportService
-from ..services.catalog.sync import CatalogSyncService
-from ..services.maintenance import MaintenanceService
-from ..services.migration import MigrationService
-from ..services.storage import SQLiteStorage
+from .admin_corrections import AdminCorrectionService
+from .admin_queries import AdminQueryService
+from .catalog.admin import CatalogAdminService
+from .catalog.batch_images import BatchImagesService
+from .catalog.importer import CatalogImportService
+from .catalog.sync import CatalogSyncService
+from .maintenance import MaintenanceService
+from .migration import MigrationService
+from .storage import SQLiteStorage
 
 PLUGIN_NAME = "astrbot_plugin_daily_bonds"
-from .batch_routes import BatchRoutes
-from .catalog_routes import CatalogRoutes
-from .config_routes import ConfigRoutes
-from .data_routes import DataRoutes
-from .maintenance_routes import MaintenanceRoutes
-from .migration_routes import MigrationRoutes
+from .web_batch import BatchRoutes
+from .web_catalog import CatalogRoutes
+from .web_config import ConfigRoutes
+from .web_data import DataRoutes
+from .web_maintenance import MaintenanceRoutes
+from .web_migration import MigrationRoutes
 
 
 class WebManager(

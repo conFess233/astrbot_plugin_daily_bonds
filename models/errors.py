@@ -1,31 +1,6 @@
-"""今日姻缘插件共享的类型与领域异常。"""
+"""领域异常。"""
 
 from __future__ import annotations
-
-from dataclasses import dataclass
-from typing import Literal
-
-Mode = Literal["wife", "husband", "member"]
-SubjectKind = Literal["character", "member"]
-
-
-@dataclass(frozen=True, slots=True)
-class Scope:
-    """由平台实例、机器人账号和群号共同组成的独立作用域。"""
-
-    platform_id: str
-    self_id: str
-    group_id: str
-
-
-@dataclass(frozen=True, slots=True)
-class ParsedCommand:
-    """完整语法解析后的命令，不包含任何数据库状态。"""
-
-    action: str
-    argument: str | None = None
-    target_user_id: str | None = None
-    page: int | None = None
 
 
 class DomainError(Exception):

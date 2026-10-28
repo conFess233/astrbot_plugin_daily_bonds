@@ -6,8 +6,8 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from ..services.storage import SQLiteStorage
-from . import rules
+from . import game_rules as rules
+from .storage import SQLiteStorage
 
 MODES = ("wife", "husband", "member")
 

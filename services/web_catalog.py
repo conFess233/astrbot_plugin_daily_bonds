@@ -15,8 +15,8 @@ from astrbot.api import logger
 from astrbot.api.web import json_response, request
 from PIL import Image, ImageOps
 
-from ..models import StorageError
-from ..services.catalog.admin import CatalogAdminService
+from ..models.errors import StorageError
+from .catalog.admin import CatalogAdminService
 
 
 class CatalogRoutes:

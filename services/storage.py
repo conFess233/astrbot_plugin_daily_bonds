@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ..models import Scope, StorageError
+from ..models.errors import StorageError
+from ..models.scope import Scope
 from .config_upgrade import is_legacy, upgrade_config
 from .settings import (
     SCOPE_OVERRIDABLE,
@@ -39,7 +40,10 @@ class SQLiteStorage:
 
     def __init__(self, database_path: Path, schema_path: Path | None = None) -> None:
         self.database_path = database_path
-        self.schema_path = schema_path or Path(__file__).with_name("migrations")
+        self.schema_path = (
+            schema_path
+            or Path(__file__).resolve().parents[1] / "resources" / "migrations"
+        )
         self.connection: sqlite3.Connection | None = None
         self._lock = threading.RLock()
         # 每条群消息都要读取设置；按两级修订号缓存校验后的结果，

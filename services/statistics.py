@@ -10,8 +10,8 @@ from datetime import datetime, time, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ..models import StorageError
-from ..services.storage import SQLiteStorage
+from ..models.errors import StorageError
+from .storage import SQLiteStorage
 
 
 class StatisticsService:

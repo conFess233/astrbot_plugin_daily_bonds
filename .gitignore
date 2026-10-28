@@ -1,4 +1,8 @@
-.temp/
 __pycache__/
 *.py[cod]
-/data/
+.ruff_cache/
+.pytest_cache/
+.venv/
+.temp/
+data/
+*.zip

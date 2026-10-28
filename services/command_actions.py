@@ -7,15 +7,15 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from ..game import rules
-from ..models import ParsedCommand
-from ..services.message_templates import (
+from ..models.command import ParsedCommand
+from . import game_rules as rules
+from .command_replies import RuntimeReply
+from .message_templates import (
     MESSAGE_CONTEXT,
     MessageText,
     render_message,
     set_message_values,
 )
-from .replies import RuntimeReply
 
 
 class ActionMixin:

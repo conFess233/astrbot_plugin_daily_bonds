@@ -6,7 +6,7 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from ..models import Scope
+from ..models.scope import Scope
 
 
 class AccessService:

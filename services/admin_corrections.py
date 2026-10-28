@@ -9,7 +9,7 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
-from ..models import StorageError
+from ..models.errors import StorageError
 from .storage import SQLiteStorage
 
 _COUNTERS = {

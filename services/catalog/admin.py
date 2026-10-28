@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ...models import StorageError
+from ...models.errors import StorageError
 from ..storage import SQLiteStorage
 from .core import _atomic_content_write, _inspect_image
 

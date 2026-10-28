@@ -12,28 +12,30 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
-from ..game import rules
-from ..game.members import reconcile_member_eligibility
-from ..game.operations import Candidate, GameplayService
-from ..game.statistics import StatisticsService
-from ..game.status import StatusService
-from ..models import CommandSyntaxError, Scope, StorageError
-from ..services.access import AccessService
-from ..services.admin_permissions import may_set_wife
-from ..services.avatar_cache import AvatarCache
-from ..services.cards import CardService, RenderHtml
-from ..services.message_templates import (
+from ..models.errors import CommandSyntaxError, StorageError
+from ..models.gameplay import Candidate
+from ..models.scope import Scope
+from . import game_rules as rules
+from .access import AccessService
+from .admin_permissions import may_set_wife
+from .avatar_cache import AvatarCache
+from .cards import CardService, RenderHtml
+from .command_actions import ActionMixin
+from .command_features import FeatureMixin
+from .command_listing import ListingMixin
+from .command_parser import parse_command
+from .command_replies import ReplyMixin, RuntimeReply
+from .game_status import StatusService
+from .gameplay import GameplayService
+from .members import reconcile_member_eligibility
+from .message_templates import (
     MESSAGE_CONTEXT,
     render_message,
     set_message_values,
 )
-from ..services.storage import SQLiteStorage
-from .actions import ActionMixin
-from .features import FeatureMixin
-from .listing import ListingMixin
-from .parser import parse_command
-from .replies import ReplyMixin, RuntimeReply
+from .onebot import OneBotAdapter, mentioned_user_ids
+from .statistics import StatisticsService
+from .storage import SQLiteStorage
 
 # 不属于单一玩法的查询指令：不受玩法开关限制。
 GENERAL_ACTIONS = frozenset({"my_status", "help", "my_collection"})

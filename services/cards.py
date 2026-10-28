@@ -19,7 +19,7 @@ from PIL import Image, ImageOps
 
 from .message_templates import MESSAGE_CONTEXT
 
-TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "templates"
+TEMPLATE_DIR = Path(__file__).resolve().parents[1] / "resources" / "templates"
 RenderHtml = Callable[..., Awaitable[str]]
 # 截图使用 JPEG：PNG 不接受宿主默认附带的 quality 参数。
 _RENDER_OPTIONS = {"full_page": True, "type": "jpeg", "quality": 90}

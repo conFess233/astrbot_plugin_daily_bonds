@@ -12,9 +12,9 @@ from typing import Any
 
 from astrbot.api.web import json_response, request
 
-from ..models import ConfigurationError, InvalidInputError, StorageError
-from ..services.message_templates import template_fields
-from ..services.settings import SCOPE_OVERRIDABLE, effective_config, validate_config
+from ..models.errors import ConfigurationError, InvalidInputError, StorageError
+from .message_templates import template_fields
+from .settings import SCOPE_OVERRIDABLE, effective_config, validate_config
 
 
 class ConfigRoutes:

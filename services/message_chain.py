@@ -6,8 +6,8 @@ from typing import Any
 
 from astrbot.api.message_components import Image, Node, Nodes, Plain, Reply
 
-from ..services.message_templates import IMAGE_TOKEN
-from .replies import RuntimeReply
+from .command_replies import RuntimeReply
+from .message_templates import IMAGE_TOKEN
 
 
 def reply_chain(response: str | RuntimeReply, event: Any) -> list[Any]:

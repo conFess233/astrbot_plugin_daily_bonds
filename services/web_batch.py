@@ -16,8 +16,8 @@ from astrbot.api import logger
 from astrbot.api.web import json_response, request
 from PIL import Image, ImageOps
 
-from ..models import ConfigurationError, InvalidInputError, StorageError
-from ..services.settings import validate_config
+from ..models.errors import ConfigurationError, InvalidInputError, StorageError
+from .settings import validate_config
 
 
 class BatchRoutes:

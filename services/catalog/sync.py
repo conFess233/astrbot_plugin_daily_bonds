@@ -16,7 +16,7 @@ try:
 except ModuleNotFoundError:
     aiohttp = None  # type: ignore[assignment]
 
-from ...models import InvalidInputError, StorageError
+from ...models.errors import InvalidInputError, StorageError
 from ..storage import SQLiteStorage
 from .core import (
     _atomic_content_write,
@@ -25,7 +25,7 @@ from .core import (
     _validate_image_url,
     catalog_source_json,
 )
-from .importer import _PublicResolver
+from .safe_fetch import _PublicResolver
 
 _REPOSITORY = "conFess233/astrbot_plugin_daily_bonds"
 _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")

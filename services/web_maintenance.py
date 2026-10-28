@@ -11,7 +11,7 @@ from pathlib import Path
 from astrbot.api import logger
 from astrbot.api.web import json_response, request
 
-from ..models import StorageError
+from ..models.errors import StorageError
 
 
 class MaintenanceRoutes:

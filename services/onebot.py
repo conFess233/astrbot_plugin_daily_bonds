@@ -10,8 +10,9 @@ from typing import Any
 
 from astrbot.api import logger
 
-from ..models import Scope, StorageError
-from ..services.storage import SQLiteStorage
+from ..models.errors import StorageError
+from ..models.scope import Scope
+from .storage import SQLiteStorage
 
 
 @dataclass(frozen=True, slots=True)

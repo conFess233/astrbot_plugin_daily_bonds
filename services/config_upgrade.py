@@ -14,7 +14,10 @@ from typing import Any
 
 SCHEMA_VERSION = 2
 _DEFAULTS_PATH = (
-    Path(__file__).resolve().parents[1] / "resources" / "default-config.json"
+    Path(__file__).resolve().parents[1]
+    / "resources"
+    / "defaults"
+    / "default-config.json"
 )
 
 # 0.1.x 曾经的默认文案；升级时若仍是旧默认值，替换为当前默认值，自定义文案保留。

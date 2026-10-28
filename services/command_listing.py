@@ -6,12 +6,12 @@ import asyncio
 from collections.abc import Mapping
 from typing import Any
 
-from ..services.cards import CardRow, render_mode
-from ..services.message_templates import (
+from .cards import CardRow, render_mode
+from .command_replies import RuntimeReply
+from .message_templates import (
     IMAGE_TOKEN,
     render_message,
 )
-from .replies import RuntimeReply
 
 
 class ListingMixin:
