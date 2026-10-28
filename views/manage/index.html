@@ -3,265 +3,322 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="light dark" />
     <title>今日姻缘 · 管理</title>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body>
     <div id="loading-progress" class="loading-progress" role="progressbar" aria-label="正在加载管理数据" hidden><span></span></div>
     <main class="shell">
-      <header class="page-header">
-        <div class="page-title-group">
-          <span class="brand-mark" aria-hidden="true">✦</span>
+      <header class="titlebar">
+        <div class="brand">
+          <div class="brand-mark" data-i="heart" aria-hidden="true"></div>
           <div>
-            <p class="eyebrow">今日姻缘 · <span id="breadcrumb-page">概览</span></p>
-            <h1 id="page-title">今日姻缘 · 插件概览</h1>
-            <p id="page-description" class="muted">查看实际数据状态与常用操作。</p>
+            <h1>今日姻缘</h1>
+            <p><span id="connection-dot" class="dot pending"></span><span id="connection-text">正在连接…</span></p>
           </div>
         </div>
-        <div class="toolbar-controls">
-          <label class="toolbar-search"><span class="sr-only">搜索配置项</span><input id="config-search" type="search" placeholder="搜索配置项" list="config-search-options" /><datalist id="config-search-options"></datalist></label>
-          <label class="scope-toolbar"><span>配置范围</span><select id="scope-select"><option value="global">全局配置</option></select></label>
-          <button id="refresh" class="button secondary" type="button">刷新数据</button>
-        </div>
+        <nav class="island" aria-label="管理模块">
+          <button type="button" data-tab="overview" data-i="grid" aria-current="page">概览</button>
+          <button type="button" data-tab="config" data-i="settings">配置<span id="nav-config-badge" class="badge" hidden></span></button>
+          <button type="button" data-tab="catalog" data-i="users">角色</button>
+          <button type="button" data-tab="data" data-i="chart">数据</button>
+          <button type="button" data-tab="maintenance" data-i="backup">备份与迁移</button>
+        </nav>
+        <div class="title-actions"><button id="refresh" class="icon-btn" type="button" aria-label="刷新数据" title="刷新数据" data-i="refresh"></button></div>
       </header>
-      <nav class="tabs" role="tablist" aria-orientation="horizontal" aria-label="管理页面">
-        <button class="tab active" type="button" data-tab="overview" id="tab-overview" role="tab" aria-controls="overview-panel" aria-selected="true" tabindex="0"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z"/></svg><span>概览</span></button>
-        <button class="tab" type="button" data-tab="settings" id="tab-settings" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6"/></svg><span>玩法设置</span></button>
-        <button class="tab" type="button" data-tab="catalog" id="tab-catalog" role="tab" aria-controls="catalog-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M2 21v-3a7 7 0 0 1 14 0v3 M17 4a4 4 0 0 1 0 8 M19 15a5 5 0 0 1 3 5"/></svg><span>角色与角色池</span></button>
-        <button class="tab" type="button" data-tab="replies" id="tab-replies" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h18v13H9l-6 4z M7 8h10 M7 12h7"/></svg><span>消息与回复词</span></button>
-        <button class="tab" type="button" data-tab="data" id="tab-data" role="tab" aria-controls="data-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20V9h4v11 M10 20V4h4v16 M16 20V12h4v8"/></svg><span>数据查询</span></button>
-        <button class="tab" type="button" data-tab="advanced" id="tab-advanced" role="tab" aria-controls="settings-panel" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v3 M12 18v3 M3 12h3 M18 12h3 M6 6l2 2 M16 16l2 2 M6 18l2-2 M16 8l2-2 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0"/></svg><span>高级设置</span></button>
-      </nav>
       <div id="notice" class="notification-stack" popover="manual" aria-live="polite" aria-atomic="false"></div>
 
-      <section id="overview-panel" class="panel" role="tabpanel" aria-labelledby="tab-overview">
-        <div class="section-heading">
-          <div>
-            <h2>数据状态</h2>
-            <p class="muted">按统计范围查看；角色资产与维护任务始终为全局口径。</p>
+      <section id="overview-panel" class="panel" aria-labelledby="overview-title">
+        <div class="section-head">
+          <h2 id="overview-title">数据状态</h2>
+          <div class="head-actions">
+            <label class="inline-field"><span>统计范围</span><select id="overview-scope"><option value="">全部群</option></select></label>
+            <button id="overview-refresh" class="btn btn-ghost" type="button" data-i="refresh">刷新统计</button>
           </div>
         </div>
-        <div class="overview-toolbar"><label class="scope-toolbar"><span>统计范围</span><select id="overview-scope"><option value="">全部作用域</option></select></label><button id="overview-refresh" class="button secondary" type="button">刷新统计</button><span id="overview-updated" class="muted" role="status"></span></div>
-        <div id="overview-cards" class="metric-grid" aria-live="polite"></div>
-        <p id="period-summary" class="muted period-summary"></p>
-        <section class="card quick-start"><h3>常用操作</h3><div class="quick-grid">
-          <button type="button" data-open="settings"><strong>玩法设置 →</strong><span>调整三种玩法的开关与数值</span></button>
-          <button type="button" data-open="catalog"><strong>角色与角色池 →</strong><span>编辑角色、图片和角色池</span></button>
-          <button type="button" data-open="replies"><strong>消息与回复词 →</strong><span>编辑文案、变量和引用</span></button>
-          <button type="button" data-open="data"><strong>数据查询 →</strong><span>关系、配额、邀请与统计</span></button>
-          <button type="button" data-open="settings" data-scope-focus="true"><strong>群级覆盖 →</strong><span>选择群后编辑独立规则</span></button>
-          <button type="button" data-open="catalog" data-import-focus="true"><strong>导入与备份 →</strong><span>保留预检和恢复保护流程</span></button>
-        </div></section>
-        <div class="overview-bottom"><section class="card"><h3>当前配置摘要</h3><p class="muted">对应顶部配置范围；未保存内容标为草稿。</p><div id="config-summary"></div></section><section class="card"><h3>待处理事项</h3><div id="overview-tasks"></div></section></div>
-        <section class="card scope-card">
-          <h3>已记录的机器人与群</h3>
-          <label class="field"><span>搜索已记录群或机器人</span><input id="scope-search" type="search" /></label><div id="scope-list" class="scope-list" aria-live="polite"></div>
-        </section>
+        <div class="ruler"></div>
+        <div id="overview-cards" class="stats" aria-live="polite"></div>
+        <div class="layout">
+          <div class="main">
+            <section class="card card-pad">
+              <div class="card-title"><div><h3>当前周期</h3><p id="overview-updated" role="status"></p></div></div>
+              <p id="period-summary" class="period-summary"></p>
+            </section>
+            <section class="card card-pad">
+              <div class="card-title"><div><h3>待处理事项</h3><p>赠送邀请、通知与维护任务</p></div></div>
+              <div id="overview-tasks" class="task-lines"></div>
+            </section>
+            <section class="card card-pad">
+              <div class="card-title"><div><h3>当前配置摘要</h3><p id="mode-summary"></p></div></div>
+              <div id="config-summary" class="task-lines"></div>
+            </section>
+          </div>
+          <aside class="side">
+            <section class="card side-card">
+              <h3>已记录的群</h3>
+              <label class="field"><span>搜索群号或机器人</span><input id="scope-search" type="search" /></label>
+              <div id="scope-list" class="scope-list" aria-live="polite"></div>
+            </section>
+          </aside>
+        </div>
       </section>
 
-      <section id="catalog-panel" class="panel" role="tabpanel" aria-labelledby="tab-catalog" hidden>
+      <section id="settings-panel" class="panel" aria-labelledby="config-title" hidden>
+        <div class="section-head">
+          <h2 id="config-title">插件配置</h2>
+          <div class="segmented" role="group" aria-label="配置分类">
+            <button type="button" data-config-view="settings" aria-pressed="true">玩法<span class="mod" hidden></span></button>
+            <button type="button" data-config-view="replies" aria-pressed="false">消息与关键词<span class="mod" hidden></span></button>
+            <button type="button" data-config-view="advanced" aria-pressed="false">高级<span class="mod" hidden></span></button>
+          </div>
+        </div>
+        <div class="ruler"></div>
+        <div class="config-toolbar">
+          <label class="inline-field"><span>配置范围</span><select id="scope-select"><option value="global">全局配置</option></select></label>
+          <label class="inline-field grow"><span>搜索配置项</span><input id="config-search" type="search" placeholder="输入名称后回车" list="config-search-options" /><datalist id="config-search-options"></datalist></label>
+          <p class="toolbar-note"><span id="editor-title">全局配置</span> · <span id="revision">正在读取版本…</span></p>
+        </div>
+        <div id="config-tabs" class="anchors" role="tablist" aria-label="高级配置分组"></div>
+        <div class="layout">
+          <fieldset id="config-controls" class="control-group main">
+            <div id="config-fields" class="config-sections"></div>
+          </fieldset>
+          <aside class="side">
+            <section class="card side-card">
+              <h3 id="draft-title">没有未保存的改动</h3>
+              <ul id="draft-diff" class="diff"></ul>
+              <p id="draft-empty" class="side-note">修改先进入草稿，切换分类和模块不会丢失；用右下角按钮保存。</p>
+              <button id="preview" class="btn btn-tonal btn-block" type="button" data-i="shield">校验草稿</button>
+              <div class="divider"></div>
+              <div id="side-context"></div>
+            </section>
+          </aside>
+        </div>
+      </section>
+
+      <section id="catalog-panel" class="panel" aria-labelledby="catalog-title" hidden>
+        <div class="section-head">
+          <h2 id="catalog-title">角色与角色池</h2>
+          <div class="head-actions"><button id="batch-images-open" class="btn btn-primary" type="button" data-i="image">批量导入角色图</button><button id="catalog-refresh" class="btn btn-ghost" type="button" data-i="refresh">刷新目录</button></div>
+        </div>
+        <div class="ruler"></div>
         <fieldset id="catalog-controls" class="control-group">
-        <div class="section-heading">
-          <div>
-            <h2>角色与角色池</h2>
-            <p class="muted">编辑不会改写既有关系快照。删除会先显示影响并要求确认。</p>
-          </div>
-          <div class="actions"><button id="batch-images-open" class="button primary" type="button">批量导入角色图</button><button id="catalog-refresh" class="button secondary" type="button">刷新目录</button></div>
-        </div>
-        <div class="editor-card catalog-sync-card">
-          <div class="editor-meta"><h3>同步仓库角色配置</h3><button id="catalog-sync-check" class="button secondary" type="button">重新检查仓库</button></div>
-          <p class="hint">从仓库默认分支读取全部角色与角色池配置。预览后选择要同步的项目；本地图片与仓库已移除的内容会保留。</p>
-          <p id="catalog-sync-banner" class="sync-banner" aria-live="polite">正在检查仓库更新…</p>
-          <div id="catalog-sync-controls" class="actions" hidden>
-            <button id="catalog-sync-safe" class="button secondary" type="button">选择安全项</button>
-            <button id="catalog-sync-all" class="button secondary" type="button">全选可同步项</button>
-            <button id="catalog-sync-characters" class="button secondary" type="button">只选角色</button>
-            <button id="catalog-sync-pools" class="button secondary" type="button">只选角色池</button>
-            <button id="catalog-sync-none" class="button secondary" type="button">清空选择</button>
-          </div>
-          <div id="catalog-sync-items" class="sync-items" aria-live="polite"></div>
-          <div class="actions action-end"><button id="catalog-sync-commit" class="button primary" type="button" disabled>同步所选项目</button></div>
-        </div>
-        <div class="catalog-layout">
-          <section class="card catalog-list-card">
-            <label class="field" for="character-search"><span>搜索角色</span><input id="character-search" type="search" /></label>
-            <div id="character-list" class="catalog-list" aria-live="polite"></div>
-            <div class="list-pagination" aria-label="角色列表分页">
-              <button id="character-prev" class="button secondary" type="button" disabled>上一页</button>
-              <span id="character-page" class="muted" aria-live="polite">尚未加载</span>
-              <button id="character-next" class="button secondary" type="button" disabled>下一页</button>
+          <div class="layout">
+            <div class="main">
+              <section class="card card-pad catalog-sync-card">
+                <div class="card-title"><div><h3>同步仓库角色配置</h3><p>预览后选择要同步的项目；本地图片与仓库已移除的内容会保留。</p></div><button id="catalog-sync-check" class="btn btn-ghost btn-sm" type="button">重新检查</button></div>
+                <p id="catalog-sync-banner" class="sync-banner" aria-live="polite">正在检查仓库更新…</p>
+                <div id="catalog-sync-controls" class="actions" hidden>
+                  <button id="catalog-sync-safe" class="btn btn-ghost btn-sm" type="button">选择安全项</button>
+                  <button id="catalog-sync-all" class="btn btn-ghost btn-sm" type="button">全选可同步项</button>
+                  <button id="catalog-sync-characters" class="btn btn-ghost btn-sm" type="button">只选角色</button>
+                  <button id="catalog-sync-pools" class="btn btn-ghost btn-sm" type="button">只选角色池</button>
+                  <button id="catalog-sync-none" class="btn btn-ghost btn-sm" type="button">清空选择</button>
+                </div>
+                <div id="catalog-sync-items" class="sync-items" aria-live="polite"></div>
+                <div class="actions end"><button id="catalog-sync-commit" class="btn btn-primary" type="button" disabled>同步所选项目</button></div>
+              </section>
+              <section class="card card-pad catalog-list-card">
+                <div class="card-title"><div><h3>角色</h3><p>点击角色在右侧编辑；编辑不会改写既有关系快照。</p></div></div>
+                <label class="field" for="character-search"><span>搜索角色</span><input id="character-search" type="search" /></label>
+                <div id="character-list" class="catalog-list" aria-live="polite"></div>
+                <div class="list-pagination" aria-label="角色列表分页">
+                  <button id="character-prev" class="btn btn-ghost btn-sm" type="button" disabled>上一页</button>
+                  <span id="character-page" class="muted" aria-live="polite">尚未加载</span>
+                  <button id="character-next" class="btn btn-ghost btn-sm" type="button" disabled>下一页</button>
+                </div>
+              </section>
+              <section class="card card-pad pool-editor">
+                <div class="card-title"><div><h3>角色池</h3><p id="pool-revision">新建角色池后，需在玩法配置的“角色池与候选”中选择。</p></div><button id="new-pool" class="btn btn-ghost btn-sm" type="button">新建角色池</button></div>
+                <div id="pool-list" class="catalog-list pool-list" aria-live="polite"></div>
+                <div class="form-grid">
+                  <label class="field"><span>ID</span><input id="pool-id" maxlength="64" /></label>
+                  <label class="field"><span>名称</span><input id="pool-name" maxlength="120" /></label>
+                  <label class="field"><span>抽取类型</span><select id="pool-mode"><option value="wife">女角色</option><option value="husband">男角色</option></select></label>
+                </div>
+                <div class="actions end"><button id="delete-pool" class="btn btn-danger" type="button" disabled>删除角色池</button><button id="save-pool" class="btn btn-primary" type="button">保存角色池</button></div>
+              </section>
+              <section class="card card-pad import-card">
+                <div class="card-title"><div><h3>导入角色包</h3><p>JSON（图片为公网 URL）或 ZIP（根目录 manifest.json 与 images/）。同 ID 默认跳过。</p></div></div>
+                <div class="steps" aria-hidden="true"><div class="now"><i></i>上传</div><div><i></i>预检</div><div><i></i>确认影响</div><div><i></i>写入</div></div>
+                <div class="form-grid">
+                  <label class="field"><span>JSON 或 ZIP 文件</span><input id="import-file" type="file" accept=".json,.zip,application/json,application/zip" /></label>
+                  <label class="field"><span>同 ID 角色图片</span><select id="import-image-strategy"><option value="append">追加并按哈希去重</option><option value="replace">替换图片组</option></select></label>
+                </div>
+                <div class="actions end">
+                  <button id="import-preview" class="btn btn-ghost" type="button" data-i="upload">上传并预检</button>
+                  <button id="import-commit" class="btn btn-primary" type="button" disabled>确认导入</button>
+                </div>
+                <div id="import-report" class="import-report" aria-live="polite">选择角色包后开始预检。</div>
+              </section>
             </div>
-            <h3>角色池</h3>
-            <div id="pool-list" class="catalog-list" aria-live="polite"></div>
-          </section>
-          <section class="editor-card catalog-editor">
-            <h3 id="character-form-title">新建角色</h3>
-            <div class="form-grid">
-              <label class="field"><span>ID（新建后固定）</span><input id="character-id" maxlength="64" /></label>
-              <label class="field"><span>名称</span><input id="character-name" maxlength="120" /></label>
-              <label class="field"><span>性别</span><select id="character-gender"><option value="female">女</option><option value="male">男</option><option value="unspecified">未指定</option></select></label>
-              <label class="field"><span>别名（逗号分隔）</span><input id="character-aliases" /></label>
-            </div>
-            <label class="check-field"><input id="character-enabled" type="checkbox" checked /> 启用抽取</label>
-            <label class="field"><span>头像与立绘图片（可多选，每张独立校验）</span><input id="character-image" type="file" accept="image/*" multiple /></label>
-            <div class="form-grid">
-              <label class="field"><span>上传目标大小（MiB）</span><input data-upload-setting="target" type="number" min="0.000001" max="12" step="any" value="6" /></label>
-              <label class="field"><span>压缩图片质量（%）</span><input data-upload-setting="quality" type="number" min="0" max="100" step="any" value="80" /></label>
-            </div>
-            <p class="hint">超出目标时在本地压缩为 WebP，必要时缩小尺寸，保留透明背景与原文件名；不修改原文件。两处上传区共用设置，刷新后恢复默认值。</p>
-            <div id="character-images" class="image-gallery" aria-live="polite"></div>
-            <fieldset class="pool-membership"><legend>角色池</legend><div id="character-pools" class="check-list"></div></fieldset>
-            <div class="actions">
-              <button id="new-character" class="button secondary" type="button">新建</button>
-              <div class="action-end">
-                <button id="delete-character" class="button danger" type="button" disabled>软删除</button>
-                <button id="save-character" class="button primary" type="button">保存角色</button>
-              </div>
-            </div>
-          </section>
-        </div>
-        <div class="editor-card pool-editor">
-          <div class="editor-meta"><h3>角色池编辑</h3><button id="new-pool" class="button secondary" type="button">新建角色池</button></div>
-          <div class="form-grid">
-            <label class="field"><span>ID</span><input id="pool-id" maxlength="64" /></label>
-            <label class="field"><span>名称</span><input id="pool-name" maxlength="120" /></label>
-            <label class="field"><span>抽取类型</span><select id="pool-mode"><option value="wife">女角色</option><option value="husband">男角色</option></select></label>
+            <aside class="side">
+              <section class="card side-card catalog-editor">
+                <h3 id="character-form-title">新建角色</h3>
+                <div class="form-grid single">
+                  <label class="field"><span>ID（新建后固定）</span><input id="character-id" maxlength="64" /></label>
+                  <label class="field"><span>名称</span><input id="character-name" maxlength="120" /></label>
+                  <label class="field"><span>性别</span><select id="character-gender"><option value="female">女</option><option value="male">男</option><option value="unspecified">未指定</option></select></label>
+                  <label class="field"><span>别名（逗号分隔）</span><input id="character-aliases" /></label>
+                </div>
+                <label class="check-field"><input id="character-enabled" type="checkbox" checked /> 启用抽取</label>
+                <label class="field"><span>头像与立绘图片（可多选）</span><input id="character-image" type="file" accept="image/*" multiple /></label>
+                <div class="form-grid">
+                  <label class="field"><span>上传目标大小（MiB）</span><input data-upload-setting="target" type="number" min="0.000001" max="12" step="any" value="6" /></label>
+                  <label class="field"><span>压缩质量（%）</span><input data-upload-setting="quality" type="number" min="0" max="100" step="any" value="80" /></label>
+                </div>
+                <p class="side-note">超出目标时在本地压缩为 WebP，保留透明背景与原文件名；两处上传区共用设置。</p>
+                <div id="character-images" class="image-gallery" aria-live="polite"></div>
+                <fieldset class="pool-membership"><legend>角色池</legend><div id="character-pools" class="check-list"></div></fieldset>
+                <div class="actions split">
+                  <button id="new-character" class="btn btn-ghost" type="button">新建</button>
+                  <div class="actions end">
+                    <button id="delete-character" class="btn btn-danger" type="button" disabled>删除角色</button>
+                    <button id="save-character" class="btn btn-primary" type="button">保存角色</button>
+                  </div>
+                </div>
+              </section>
+            </aside>
           </div>
-          <p id="pool-revision" class="hint">新建角色池后，需在玩法设置的“角色池与候选”中选择。</p>
-          <div class="actions"><button id="delete-pool" class="button danger" type="button" disabled>软删除角色池</button><button id="save-pool" class="button primary" type="button">保存角色池</button></div>
-        </div>
-        <div class="editor-card import-card">
-          <h3>导入角色包</h3>
-          <p class="hint">支持 JSON（图片使用公网 HTTP/HTTPS URL）或 ZIP（根 manifest.json 与 images/ 原图）。预检会检查图片、大小、路径与冲突；同 ID 默认跳过。</p>
-          <div class="form-grid">
-            <label class="field"><span>JSON 或 ZIP 文件</span><input id="import-file" type="file" accept=".json,.zip,application/json,application/zip" /></label>
-            <label class="field"><span>同 ID 角色图片</span><select id="import-image-strategy"><option value="append">追加并按哈希去重</option><option value="replace">替换图片组</option></select></label>
-          </div>
-          <div class="actions">
-            <button id="import-preview" class="button secondary" type="button">上传并预检</button>
-            <button id="import-commit" class="button primary" type="button" disabled>确认导入</button>
-          </div>
-          <div id="import-report" class="import-report" aria-live="polite">选择角色包后开始预检。</div>
-        </div>
-        <details class="editor-card maintenance-card">
-          <summary>导出、备份与恢复</summary>
-          <p class="hint">角色包只包含选中角色池及其素材。完整备份包含一致性数据库快照和插件素材；恢复会先自动备份当前数据，并覆盖当前插件数据。</p>
-          <div class="form-grid">
-            <label class="field"><span>导出角色池（可多选）</span><select id="export-pools" multiple size="5"></select></label>
-            <label class="field"><span>完整备份文件</span><input id="restore-file" type="file" accept=".zip,application/zip" /></label>
-          </div>
-          <div class="actions">
-            <button id="export-create" class="button secondary" type="button">生成角色包</button>
-            <button id="backup-create" class="button secondary" type="button">立即完整备份</button>
-            <button id="restore-preview" class="button secondary" type="button">上传并预检恢复</button>
-            <button id="restore-commit" class="button danger" type="button" disabled>确认恢复并覆盖</button>
-          </div>
-          <div id="maintenance-report" class="import-report" aria-live="polite">导出或备份完成后会显示作业与下载信息。恢复必须先上传并预检。</div>
-          <div id="restore-scope-mappings" class="form-grid" hidden></div>
-        </details>
-        <details class="editor-card maintenance-card" id="migration-card">
-          <summary>版本迁移</summary>
-          <p class="hint">升级到 0.2.0 时会自动备份并迁移数据。这里可以查看迁移报告、从升级前备份恢复，或导入旧版本的 <code>state.sqlite3</code>。导入会先备份当前数据库，再替换并迁移；失败时自动还原。角色图片不随数据库导入。</p>
-          <div id="migration-reports" class="import-report" aria-live="polite">正在读取迁移记录…</div>
-          <div class="form-grid">
-            <label class="field"><span>升级前备份</span><select id="migration-backup"><option value="">（无可用备份）</option></select></label>
-            <label class="field"><span>或上传数据库文件</span><input id="migration-file" type="file" accept=".sqlite3,.db,application/vnd.sqlite3,application/octet-stream" /></label>
-          </div>
-          <div class="actions">
-            <button id="migration-preview" class="button secondary" type="button">预检</button>
-            <button id="migration-commit" class="button danger" type="button" disabled>备份当前数据并迁移</button>
-          </div>
-          <div id="migration-plan" class="import-report" aria-live="polite">选择备份或上传文件后预检。</div>
-        </details>
         </fieldset>
       </section>
 
-      <section id="data-panel" class="panel" role="tabpanel" aria-labelledby="tab-data" hidden>
-        <div class="section-heading">
-          <div><h2>关系、配额与统计查询</h2><p class="muted">所有查询限定在选定的机器人与群作用域。</p></div>
-        </div>
-        <div class="editor-card">
-          <div class="form-grid">
-            <label class="field"><span>作用域</span><select id="data-scope"></select></label>
+      <section id="data-panel" class="panel" aria-labelledby="data-title" hidden>
+        <div class="section-head"><h2 id="data-title">关系、配额与统计</h2></div>
+        <div class="ruler"></div>
+        <section class="card card-pad filter-card">
+          <div class="filters">
+            <label class="field"><span>群</span><select id="data-scope"></select></label>
             <label class="field"><span>用户 ID（可选）</span><input id="data-user" inputmode="numeric" /></label>
             <label class="field"><span>玩法</span><select id="data-mode"><option value="wife">今日老婆</option><option value="husband">今日老公</option><option value="member">娶群友</option></select></label>
             <label class="field"><span>活跃度窗口（天）</span><input id="data-window" type="number" min="1" max="365" value="7" /></label>
           </div>
-          <div class="query-actions">
-            <button class="button secondary" data-query="relationships" type="button">今日关系</button>
-            <button class="button secondary" data-query="quota" type="button">用户配额</button>
-            <button class="button secondary" data-query="intimacy" type="button">亲密度</button>
-            <button class="button secondary" data-query="activity" type="button">活跃度</button>
-            <button class="button secondary" data-query="invites" type="button">赠送邀请</button>
-            <button class="button secondary" data-query="history" type="button">操作历史</button>
+        </section>
+        <div class="layout">
+          <div class="main">
+            <section class="card query-card">
+              <div class="table-tools">
+                <div class="query-actions" role="group" aria-label="查询内容">
+                  <button class="btn btn-ghost btn-sm" data-query="relationships" type="button">今日关系</button>
+                  <button class="btn btn-ghost btn-sm" data-query="quota" type="button">用户配额</button>
+                  <button class="btn btn-ghost btn-sm" data-query="intimacy" type="button">亲密度</button>
+                  <button class="btn btn-ghost btn-sm" data-query="activity" type="button">活跃度</button>
+                  <button class="btn btn-ghost btn-sm" data-query="invites" type="button">赠送邀请</button>
+                  <button class="btn btn-ghost btn-sm" data-query="history" type="button">操作历史</button>
+                </div>
+              </div>
+              <div id="query-table" class="query-table" aria-live="polite">选择群后点击查询。</div>
+              <div class="table-foot"><span id="query-page"></span><div class="pager"><button id="query-prev" class="btn btn-ghost btn-sm" type="button" disabled>上一页</button><button id="query-next" class="btn btn-ghost btn-sm" type="button" disabled>下一页</button></div></div>
+              <details class="raw-json"><summary>查看原始 JSON</summary><pre id="query-result" class="query-result"></pre></details>
+            </section>
+            <section class="card card-pad" id="render-preview-card">
+              <div class="card-title"><div><h3>回复形式预览</h3><p>用所选群已保存的配置渲染“姻缘帮助”，对比卡片与纯文本；卡片由 AstrBot t2i 服务渲染。</p></div><button id="render-preview" class="btn btn-ghost btn-sm" type="button">生成预览</button></div>
+              <div class="render-preview-grid">
+                <figure><figcaption>卡片</figcaption><div id="render-preview-card-output" class="muted">尚未生成。</div></figure>
+                <figure><figcaption>纯文本</figcaption><pre id="render-preview-text" class="query-result">尚未生成。</pre></figure>
+              </div>
+            </section>
+            <section class="card card-pad correction-card">
+              <div class="card-title"><div><h3>管理员纠错</h3><p>先预览差异再提交；会检查目标、理由及配置版本。</p></div></div>
+              <div class="form-grid">
+                <label class="field"><span>操作类型</span><select id="correction-action">
+                  <option value="relationship_end">解除指定关系</option><option value="credit_grant">补发抽取资格</option>
+                  <option value="intimacy_set">设置有向亲密度</option><option value="activity_set">设置活跃度时间桶</option>
+                  <option value="counter_reset">重置指定日计数</option>
+                </select></label>
+                <label class="field"><span>理由</span><input id="correction-reason" maxlength="500" /></label>
+              </div>
+              <label class="field"><span>目标参数（JSON）</span><textarea id="correction-spec" spellcheck="false"></textarea></label>
+              <div class="actions end">
+                <button id="correction-preview" class="btn btn-ghost" type="button">预览差异</button>
+                <button id="correction-commit" class="btn btn-danger" type="button" disabled>确认提交</button>
+              </div>
+              <pre id="correction-result" class="query-result" aria-live="polite">尚未预览。</pre>
+            </section>
+            <section class="card card-pad correction-card">
+              <div class="card-title"><div><h3>重置当前周期数据</h3><p>作用于所选群；历史、统计、补抽资格和待处理赠送均保留。点击后先显示影响范围。</p></div></div>
+              <div class="actions">
+                <label class="inline-field"><span>玩法</span><select id="period-reset-mode"><option value="wife">老婆</option><option value="husband">老公</option><option value="member">娶群友</option><option value="all">全部玩法</option></select></label>
+                <div class="actions end">
+                  <button id="period-reset-relations-preview" class="btn btn-danger" type="button">重置关系…</button>
+                  <button id="period-reset-counters-preview" class="btn btn-danger" type="button">重置每日数据…</button>
+                </div>
+              </div>
+            </section>
           </div>
-          <div id="query-table" class="query-table" aria-live="polite">选择作用域后点击查询。</div>
-          <div class="list-pagination"><button id="query-prev" class="button secondary" type="button" disabled>上一页</button><span id="query-page" class="muted"></span><button id="query-next" class="button secondary" type="button" disabled>下一页</button></div>
-          <details><summary>查看原始 JSON</summary><pre id="query-result" class="query-result"></pre></details>
-        </div>
-        <div class="editor-card" id="status-card">
-          <h3>用户今日状态</h3>
-          <p class="hint">与群内“我的姻缘”相同：使用上方选定的群和用户 ID。</p>
-          <div class="actions"><button id="status-load" class="button secondary" type="button">查询今日状态</button></div>
-          <div id="status-result" class="status-result" aria-live="polite">填写用户 ID 后查询。</div>
-        </div>
-        <div class="editor-card" id="render-preview-card">
-          <h3>回复形式预览</h3>
-          <p class="hint">用上方选定群的已保存配置渲染“姻缘帮助”，对比卡片与纯文本。卡片由 AstrBot 的 t2i 服务渲染。</p>
-          <div class="actions"><button id="render-preview" class="button secondary" type="button">生成预览</button></div>
-          <div class="render-preview-grid">
-            <figure><figcaption>卡片</figcaption><div id="render-preview-card-output" class="muted">尚未生成。</div></figure>
-            <figure><figcaption>纯文本</figcaption><pre id="render-preview-text" class="query-result">尚未生成。</pre></figure>
-          </div>
-        </div>
-        <div class="editor-card correction-card">
-          <h3>管理员纠错（预检后提交）</h3>
-          <div class="form-grid">
-            <label class="field"><span>操作类型</span><select id="correction-action">
-              <option value="relationship_end">解除指定关系</option><option value="credit_grant">补发抽取资格</option>
-              <option value="intimacy_set">设置有向亲密度</option><option value="activity_set">设置活跃度时间桶</option>
-              <option value="counter_reset">重置指定日计数</option>
-            </select></label>
-            <label class="field"><span>理由</span><input id="correction-reason" maxlength="500" /></label>
-          </div>
-          <label class="field"><span>目标参数（JSON）</span><textarea id="correction-spec" spellcheck="false"></textarea></label>
-          <div class="actions correction-actions">
-            <button id="correction-preview" class="button secondary" type="button">预览差异</button>
-            <button id="correction-commit" class="button danger" type="button" disabled>确认提交</button>
-          </div>
-          <pre id="correction-result" class="query-result" aria-live="polite">修改前会检查目标、理由及配置版本。</pre>
-        </div>
-        <div class="editor-card correction-card">
-          <h3>重置当前周期数据</h3>
-          <p class="hint">作用于上方选定的群。两个操作互不附带对方的修改；历史、统计、补抽资格和待处理赠送均保留。关系结束后，绑定它的赠送若被接受才会提示失效。</p>
-          <label class="field scope-field"><span>玩法</span><select id="period-reset-mode"><option value="wife">老婆</option><option value="husband">老公</option><option value="member">娶群友</option><option value="all">全部玩法</option></select></label>
-          <div class="actions correction-actions">
-            <button id="period-reset-relations-preview" class="button secondary" type="button">重置关系…</button>
-            <button id="period-reset-counters-preview" class="button secondary" type="button">重置每日数据…</button>
-          </div>
-          <p class="hint">点击操作后将展示影响范围，再决定是否执行。</p>
+          <aside class="side">
+            <section class="card side-card" id="status-card">
+              <h3>用户今日状态</h3>
+              <p class="side-note">与群内“我的姻缘”相同，使用上方的群与用户 ID。</p>
+              <button id="status-load" class="btn btn-tonal btn-block" type="button" data-i="search">查询今日状态</button>
+              <div id="status-result" class="status-result" aria-live="polite">填写用户 ID 后查询。</div>
+            </section>
+          </aside>
         </div>
       </section>
 
-      <section id="settings-panel" class="panel" role="tabpanel" aria-labelledby="tab-settings" hidden>
-        <div class="editor-meta"><div><h2 id="editor-title">全局配置</h2><p id="revision" class="muted">正在读取版本…</p></div><span id="mode-summary" class="muted"></span></div>
-        <fieldset id="config-controls" class="control-group">
-          <div id="config-tabs" class="config-tabs" role="tablist" aria-label="高级配置主题"></div>
-          <div id="config-fields" class="config-sections" aria-describedby="editor-help"></div>
-          <p id="editor-help" class="hint">修改先进入共享草稿，保存后生效；群字段编辑即创建覆盖，恢复继承仅删除该字段覆盖。</p>
-        </fieldset>
+      <section id="maintenance-panel" class="panel" aria-labelledby="maintenance-title" hidden>
+        <div class="section-head"><h2 id="maintenance-title">备份与迁移</h2></div>
+        <div class="ruler"></div>
+        <div class="layout">
+          <div class="main tasks">
+            <section class="card task">
+              <div class="head"><span class="ico" data-i="download"></span><div><h3>导出角色包</h3><p>只包含选中角色池及其素材，可在其他实例导入。</p></div></div>
+              <label class="field"><span>角色池（可多选）</span><select id="export-pools" multiple size="5"></select></label>
+              <div class="foot"><span></span><button id="export-create" class="btn btn-ghost" type="button">生成角色包</button></div>
+            </section>
+            <section class="card task">
+              <div class="head"><span class="ico" data-i="backup"></span><div><h3>完整备份</h3><p>一致性数据库快照加插件素材，可下载保存。</p></div></div>
+              <div class="foot"><span></span><button id="backup-create" class="btn btn-primary" type="button">立即完整备份</button></div>
+            </section>
+            <section class="card task danger">
+              <div class="head"><span class="ico" data-i="history"></span><div><h3>从备份恢复</h3><p>先预检，恢复前自动备份当前数据，再覆盖插件数据库和素材。</p></div></div>
+              <label class="field"><span>完整备份 ZIP</span><input id="restore-file" type="file" accept=".zip,application/zip" /></label>
+              <div id="restore-scope-mappings" class="form-grid" hidden></div>
+              <div class="foot"><button id="restore-preview" class="btn btn-ghost" type="button">上传并预检</button><button id="restore-commit" class="btn btn-danger" type="button" disabled>确认恢复并覆盖</button></div>
+            </section>
+            <section class="card task danger" id="migration-card">
+              <div class="head"><span class="ico" data-i="upload"></span><div><h3>版本迁移</h3><p>从升级前备份或旧版 state.sqlite3 迁移；先备份当前数据库，失败自动还原，角色图片不随数据库导入。</p></div></div>
+              <div class="form-grid">
+                <label class="field"><span>升级前备份</span><select id="migration-backup"><option value="">（无可用备份）</option></select></label>
+                <label class="field"><span>或上传数据库文件</span><input id="migration-file" type="file" accept=".sqlite3,.db,application/vnd.sqlite3,application/octet-stream" /></label>
+              </div>
+              <div id="migration-plan" class="import-report" aria-live="polite">选择备份或上传文件后预检。</div>
+              <div class="foot"><button id="migration-preview" class="btn btn-ghost" type="button">预检</button><button id="migration-commit" class="btn btn-danger" type="button" disabled>备份当前数据并迁移</button></div>
+            </section>
+          </div>
+          <aside class="side">
+            <section class="card side-card">
+              <h3>最近结果</h3>
+              <div id="maintenance-report" class="import-report" aria-live="polite">导出、备份或恢复完成后在这里显示作业与下载信息。</div>
+              <div class="divider"></div>
+              <h4>迁移记录</h4>
+              <div id="migration-reports" class="import-report" aria-live="polite">正在读取迁移记录…</div>
+            </section>
+          </aside>
+        </div>
       </section>
-      <div id="save-bar" class="save-bar" hidden>
-        <div><span id="dirty-indicator" class="status-pill" role="status">正在读取配置</span><small id="save-scope" class="muted">当前范围：全局配置</small></div>
-        <button id="save-bar-toggle" class="button secondary" type="button" aria-expanded="true" aria-controls="save-bar-actions save-bar-note">收起</button>
-        <div id="save-bar-actions" class="action-end"><button id="discard" class="button secondary" type="button" disabled>放弃配置更改</button><button id="preview" class="button secondary" type="button">校验草稿</button><button id="save" class="button primary" type="button">保存配置</button></div>
-        <small id="save-bar-note" class="save-note">仅保存配置；角色、角色池和图片使用各自提交。</small>
-      </div>
     </main>
-    <dialog id="draft-dialog" class="confirm-dialog" aria-labelledby="draft-dialog-title"><h3 id="draft-dialog-title">当前配置尚未保存</h3><p>先处理当前草稿，再切换范围或刷新配置。</p><div class="actions"><button id="draft-cancel" class="button secondary" type="button">取消</button><button id="draft-discard" class="button secondary" type="button">放弃并继续</button><button id="draft-save" class="button primary" type="button">保存并继续</button></div></dialog>
+
+    <div class="fab-wrap">
+      <p id="save-error" class="fab-error" role="alert" hidden></p>
+      <div id="fab-menu" class="fab-menu" role="menu" aria-label="快捷操作" hidden>
+        <button type="button" role="menuitem" data-fab="refresh" data-i="refresh">刷新数据</button>
+        <button type="button" role="menuitem" data-fab="search" data-i="search">搜索配置项<kbd>/</kbd></button>
+        <button type="button" role="menuitem" data-fab="batch" data-i="image">批量导入角色图</button>
+        <button type="button" role="menuitem" data-fab="backup" data-i="backup">立即完整备份</button>
+      </div>
+      <div id="save-bar" class="fab-pill" hidden>
+        <button id="discard" class="discard" type="button">放弃</button>
+        <span id="dirty-indicator" role="status"></span>
+        <button id="save" class="save" type="button" data-i="check">保存</button>
+      </div>
+      <button id="fab" class="fab" type="button" aria-label="快捷操作" aria-haspopup="menu" aria-expanded="false" aria-controls="fab-menu" data-i="bolt"></button>
+    </div>
+
+    <dialog id="draft-dialog" class="confirm-dialog" aria-labelledby="draft-dialog-title"><h3 id="draft-dialog-title">当前配置尚未保存</h3><p class="muted">先处理当前草稿，再切换范围或刷新配置。</p><div class="actions end"><button id="draft-cancel" class="btn btn-ghost" type="button">取消</button><button id="draft-discard" class="btn btn-danger" type="button">放弃并继续</button><button id="draft-save" class="btn btn-primary" type="button">保存并继续</button></div></dialog>
     <dialog id="image-preview" class="image-preview" aria-label="角色图预览">
-      <button id="image-preview-close" class="button secondary" type="button">关闭预览</button>
+      <button id="image-preview-close" class="btn btn-ghost" type="button">关闭预览</button>
       <img id="image-preview-content" alt="" />
       <p id="image-preview-caption" class="muted"></p>
     </dialog>
@@ -269,13 +326,13 @@
       <h3 id="period-reset-dialog-title">确认重置</h3>
       <p class="muted">请核对当前群、玩法和受影响数量。</p>
       <pre id="period-reset-summary" class="query-result"></pre>
-      <div class="actions correction-actions">
-        <button id="period-reset-cancel" class="button secondary" type="button">取消</button>
-        <button id="period-reset-confirm" class="button danger" type="button">确认执行</button>
+      <div class="actions end">
+        <button id="period-reset-cancel" class="btn btn-ghost" type="button">取消</button>
+        <button id="period-reset-confirm" class="btn btn-danger" type="button">确认执行</button>
       </div>
     </dialog>
     <dialog id="batch-images-dialog" class="batch-dialog" aria-labelledby="batch-images-title">
-      <header class="section-heading"><div><h2 id="batch-images-title">批量导入角色图</h2><p class="muted">上传只暂存，确认后按角色追加；未完成批次保留 24 小时。</p></div><button id="batch-images-close" class="button secondary" type="button">关闭并保留</button></header>
+      <header class="section-head"><div><h2 id="batch-images-title">批量导入角色图</h2><p class="muted">上传只暂存，确认后按角色追加；未完成批次保留 24 小时。</p></div><button id="batch-images-close" class="btn btn-ghost" type="button">关闭并保留</button></header>
       <fieldset id="batch-images-controls" class="control-group">
         <div class="form-grid">
           <label class="field"><span>女类关键词（逗号分隔）</span><input id="batch-female-keywords" maxlength="5000" /></label>
@@ -283,39 +340,39 @@
           <label class="field"><span>默认女卡池</span><select id="batch-female-pool"></select></label>
           <label class="field"><span>默认男卡池</span><select id="batch-male-pool"></select></label>
         </div>
-        <div class="actions"><button id="batch-defaults-save" class="button secondary" type="button">保存为全局默认</button><button id="batch-settings-apply" class="button secondary" type="button">应用检测并重新匹配</button></div>
+        <div class="actions"><button id="batch-defaults-save" class="btn btn-ghost" type="button">保存为全局默认</button><button id="batch-settings-apply" class="btn btn-ghost" type="button">应用检测并重新匹配</button></div>
         <p class="hint">已有角色采用原档案。新角色未识别性别时暂按男标注；男女冲突、名称歧义或其他校验错误都须人工确认。</p>
-        <div class="form-grid"><label class="field"><span>恢复未完成批次</span><select id="batch-resume-job"></select></label><div class="actions"><button id="batch-resume" class="button secondary" type="button">恢复选中批次</button><button id="batch-new" class="button secondary" type="button">开始新批次</button></div></div>
-        <label id="batch-drop-zone" class="batch-drop" tabindex="0"><span>点击选择图片，或拖入此区域</span><small>PNG / JPEG / WebP，每张最多 12 MiB；相同图片按角色去重；图片数量不限。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
+        <div class="form-grid"><label class="field"><span>恢复未完成批次</span><select id="batch-resume-job"></select></label><div class="actions"><button id="batch-resume" class="btn btn-ghost" type="button">恢复选中批次</button><button id="batch-new" class="btn btn-ghost" type="button">开始新批次</button></div></div>
+        <label id="batch-drop-zone" class="batch-drop" tabindex="0"><strong>点击选择图片，或拖入此区域</strong><small>PNG / JPEG / WebP，每张最多 12 MiB；相同图片按角色去重；图片数量不限。</small><input id="batch-images-files" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" /></label>
         <div class="form-grid">
           <label class="field"><span>上传目标大小（MiB）</span><input data-upload-setting="target" type="number" min="0.000001" max="12" step="any" value="6" /></label>
           <label class="field"><span>压缩图片质量（%）</span><input data-upload-setting="quality" type="number" min="0" max="100" step="any" value="80" /></label>
         </div>
-        <p class="hint">超过目标大小会先在本地压缩，必要时缩小尺寸；原文件不改动。图片质量越低，文件通常越小，两处上传区共用设置。</p>
+        <p class="hint">超过目标大小会先在本地压缩，必要时缩小尺寸；原文件不改动。两处上传区共用设置。</p>
         <label class="field"><span>添加文件夹（可多次添加）</span><input id="batch-images-folders" type="file" webkitdirectory multiple /></label>
-        <div class="batch-bulk editor-card"><h3>批量关联与卡池追加</h3><div class="form-grid">
+        <section class="batch-bulk card card-pad"><h3>批量关联与卡池追加</h3><div class="form-grid">
           <label class="field"><span>搜索已有角色</span><input id="batch-character-search" type="search" placeholder="输入名称、别名或 ID" maxlength="100" aria-describedby="batch-character-search-status" /></label>
           <label class="field"><span>选择已有角色</span><select id="batch-bulk-target"><option value="">请选择已有角色</option></select><small id="batch-character-search-status" class="muted" role="status"></small></label>
           <label class="field"><span>或新建角色名称</span><input id="batch-bulk-name" maxlength="120" /></label>
           <label class="field"><span>新角色性别</span><select id="batch-bulk-gender"><option value="female">女</option><option value="male">男</option><option value="unspecified">未指定</option></select></label>
           <label class="field"><span>追加卡池</span><select id="batch-bulk-pool"><option value="">不追加</option></select></label>
-        </div><div class="actions"><button id="batch-select-all" type="button" class="button secondary">全选筛选结果</button><button id="batch-select-none" type="button" class="button secondary">清空选择</button><button id="batch-bulk-apply" type="button" class="button secondary">应用到选中图片</button><button id="batch-bulk-approve" type="button" class="button secondary">审核确认选中项</button><button id="batch-bulk-skip" type="button" class="button secondary">排除选中图片</button></div><p id="batch-selected-count" class="hint" role="status"></p></div>
+        </div><div class="actions"><button id="batch-select-all" type="button" class="btn btn-ghost btn-sm">全选筛选结果</button><button id="batch-select-none" type="button" class="btn btn-ghost btn-sm">清空选择</button><button id="batch-bulk-apply" type="button" class="btn btn-ghost btn-sm">应用到选中图片</button><button id="batch-bulk-approve" type="button" class="btn btn-ghost btn-sm">审核确认选中项</button><button id="batch-bulk-skip" type="button" class="btn btn-ghost btn-sm">排除选中图片</button></div><p id="batch-selected-count" class="hint" role="status"></p></section>
         <div class="form-grid"><label class="field"><span>显示条目</span><select id="batch-filter"><option value="pending">未完成</option><option value="ready">可靠项</option><option value="manual">待人工 / 失败</option><option value="duplicate">重复图片</option><option value="all">全部</option></select></label></div>
         <datalist id="batch-character-options"></datalist>
         <div id="batch-image-rows" class="batch-rows"></div>
-        <div class="list-pagination"><button id="batch-prev" class="button secondary" type="button">上一页</button><span id="batch-page" class="muted"></span><button id="batch-next" class="button secondary" type="button">下一页</button></div>
-        <div class="actions"><button id="batch-draft-save" class="button secondary" type="button">保存修正草稿</button><button id="batch-import-ready" class="button primary" type="button">确认导入可靠项</button><button id="batch-import-manual" class="button primary" type="button">确认导入已审核项</button></div>
+        <div class="list-pagination"><button id="batch-prev" class="btn btn-ghost btn-sm" type="button">上一页</button><span id="batch-page" class="muted"></span><button id="batch-next" class="btn btn-ghost btn-sm" type="button">下一页</button></div>
+        <div class="actions end"><button id="batch-draft-save" class="btn btn-ghost" type="button">保存修正草稿</button><button id="batch-import-ready" class="btn btn-primary" type="button">确认导入可靠项</button><button id="batch-import-manual" class="btn btn-primary" type="button">确认导入已审核项</button></div>
       </fieldset>
       <progress id="batch-upload-progress" max="1" value="0" aria-label="批量图片上传进度" hidden></progress>
       <p id="batch-status" class="hint" role="status" aria-live="polite"></p>
-      <section id="batch-import-result" class="card" hidden><h3>本次导入结果</h3><ul id="batch-success-list"></ul><ul id="batch-failure-list"></ul><button id="batch-result-confirm" class="button primary" type="button">确认结果，进入待人工处理</button></section>
+      <section id="batch-import-result" class="card card-pad" hidden><h3>本次导入结果</h3><ul id="batch-success-list"></ul><ul id="batch-failure-list"></ul><button id="batch-result-confirm" class="btn btn-primary" type="button">确认结果，进入待人工处理</button></section>
     </dialog>
     <dialog id="action-confirm-dialog" class="confirm-dialog" aria-labelledby="action-confirm-title">
-      <h2 id="action-confirm-title">确认操作</h2>
+      <h3 id="action-confirm-title">确认操作</h3>
       <p id="action-confirm-message" class="query-result"></p>
-      <form method="dialog" class="actions">
-        <button class="button secondary" value="cancel" autofocus>取消</button>
-        <button id="action-confirm-continue" class="button primary" value="confirm">确认并继续</button>
+      <form method="dialog" class="actions end">
+        <button class="btn btn-ghost" value="cancel" autofocus>取消</button>
+        <button id="action-confirm-continue" class="btn btn-primary" value="confirm">确认并继续</button>
       </form>
     </dialog>
     <script type="module" src="./app.js"></script>

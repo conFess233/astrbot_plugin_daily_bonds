@@ -101,7 +101,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
     if (messages.length) body.append(node("p", messages.join("；"), "batch-row-note"));
     if (row.status === "imported") { body.append(node("p", `已导入 ${row.name} · ${row.target_id}`)); return card; }
     if (row.upload_error) {
-      const skip = node("button", row.status === "skipped" ? "已跳过失败文件" : "跳过失败文件", "button secondary"); skip.type = "button"; skip.disabled = row.status === "skipped";
+      const skip = node("button", row.status === "skipped" ? "已跳过失败文件" : "跳过失败文件", "btn btn-ghost"); skip.type = "button"; skip.disabled = row.status === "skipped";
       skip.addEventListener("click", () => { changed(row, "status", "skipped"); render(); }); body.append(skip); return card;
     }
     checkbox(body, "跳过此图片（不删除已导入内容）", row.status === "skipped", (value) => { changed(row, "status", value ? "skipped" : "pending"); render(); });
@@ -167,7 +167,7 @@ export function initBatchImages({ apiGet, apiPost, apiUpload, showNotice, onImpo
         }
         render();
       });
-      const remove = node("button", "排除此文件夹", "button secondary"); remove.type = "button";
+      const remove = node("button", "排除此文件夹", "btn btn-ghost"); remove.type = "button";
       remove.addEventListener("click", (event) => {
         event.preventDefault();
         for (const row of job.items) {

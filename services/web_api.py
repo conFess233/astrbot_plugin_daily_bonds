@@ -1,4 +1,4 @@
-"""Authenticated AstrBot Plugin Pages APIs for configuration and overview."""
+"""管理页（插件可视化视图）的接口注册与鉴权。"""
 
 from __future__ import annotations
 

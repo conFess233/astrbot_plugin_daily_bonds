@@ -3,12 +3,14 @@ import { initBatchImages } from "./batch-images.js";
 import { confirmAction } from "./confirm-dialog.js";
 import { initUploadCompression, prepareUploadImage } from "./upload-images.js";
 import { initStatusAndMigration } from "./status-migration.js";
+import { applyIcons } from "./icons.js";
 
 import { configAt, configLeaves, displayValue, draftValues, changedPaths, serializeDraft, templateParts, toUiConfig, fromUiConfig } from "./config-model.js";
 
 initUploadCompression();
+applyIcons();
 
-const bridge = window.AstrBotPluginPage;
+const bridge = window.AstrBotPluginView;
 const $ = (selector) => document.querySelector(selector);
 let activeRequests = 0;
 let progressTimer;
@@ -39,6 +41,7 @@ const state = {
   draftValues: {},
   overridePaths: new Set(),
   view: "overview",
+  configView: "settings",
   scrollPositions: {},
   selectedTemplate: "",
   selectedReplies: new Set(),
@@ -177,15 +180,19 @@ function updateDirtyState() {
   const paths = dirtyPaths();
   const dirty = paths.length > 0;
   const visible = dirty || !!state.pendingSubmission || state.saveNeedsReload;
+  // 有草稿时悬浮按钮变形为“放弃 / N 项未保存 / 保存”胶囊，是唯一保存入口。
   $("#save-bar").hidden = !visible;
-  document.body.classList.toggle("has-save-bar", visible);
-  $("#dirty-indicator").textContent = state.pendingSubmission ? "提交结果待确认，请重试" : state.saveNeedsReload ? "已保存，等待重新读取" : !state.savedConfig ? "尚未读取配置" : dirty ? `${paths.length} 项未保存` : "已保存";
-  $("#dirty-indicator").classList.toggle("dirty", dirty || !!state.pendingSubmission);
-  $("#save").textContent = state.pendingSubmission ? "重试本次提交" : state.saveNeedsReload ? "重新读取配置" : "保存配置";
+  $("#fab").hidden = visible;
+  if (visible) closeFabMenu(false);
+  if (!visible) $("#save-error").hidden = true;
+  $("#dirty-indicator").textContent = state.pendingSubmission ? "提交结果待确认" : state.saveNeedsReload ? "已保存，待重新读取" : `${paths.length} 项未保存`;
+  $("#save").lastChild.textContent = state.pendingSubmission ? "重试提交" : state.saveNeedsReload ? "重新读取" : "保存";
+  $("#discard").hidden = !!state.saveNeedsReload;
+  renderDraftDiff(paths);
   for (const [path, card] of fieldCards) {
     card.classList.toggle("modified", paths.includes(path));
     const badge = card.querySelector(".field-source");
-    if (badge) badge.textContent = state.scopeId === "global" ? "全局值" : configIsGlobalOnly(path) ? "仅全局设置" : state.overridePaths.has(path) ? "本群覆盖" : "继承全局 · 编辑即覆盖";
+    if (badge) badge.textContent = state.scopeId === "global" ? "" : configIsGlobalOnly(path) ? "仅全局设置" : state.overridePaths.has(path) ? "本群覆盖" : "继承全局，编辑即覆盖";
     const input = card.querySelector("[data-config-path]");
     const toggleText = card.querySelector(".toggle-state");
     if (toggleText) toggleText.textContent = input.checked ? "已启用" : "已关闭";
@@ -219,21 +226,72 @@ function setScopeLabel() {
   const scope = state.scopes.find((item) => String(item.id) === state.scopeId);
   const label = scope ? `群 ${scope.group_id} · 机器人 ${scope.self_id}` : "全局配置";
   $("#editor-title").textContent = label;
-  $("#save-scope").textContent = `当前范围：${label}`;
 }
 
+// 保存失败的原因同时显示在胶囊上方，靠近唯一的保存入口。
 function configFeedback(message, kind = "error") {
-  if (message) return showNotice(message, kind);
+  const error = $("#save-error");
+  if (!message) { error.hidden = true; return undefined; }
+  if (kind === "error" && !$("#save-bar").hidden) { error.textContent = message; error.hidden = false; }
+  else if (kind !== "error") error.hidden = true;
+  return showNotice(message, kind);
 }
 
-$("#save-bar-toggle").addEventListener("click", () => {
-  const collapsed = $("#save-bar").classList.toggle("collapsed");
-  $("#save-bar-toggle").setAttribute("aria-expanded", String(!collapsed));
-  $("#save-bar-toggle").textContent = collapsed ? "展开" : "收起";
-  $("#save-bar-actions").hidden = collapsed;
-  $("#save-bar-note").hidden = collapsed;
-  document.body.classList.toggle("save-bar-collapsed", collapsed);
-});
+// 配置项所在的配置分类：玩法、消息与关键词或高级。
+function viewOfPath(path) {
+  if (path.startsWith("modes.")) return "settings";
+  if (/^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.")) return "replies";
+  return "advanced";
+}
+
+function diffText(path, value) {
+  if (value === undefined || value === null) return "继承全局";
+  if (typeof value === "boolean") return value ? "开启" : "关闭";
+  const choices = CONFIG_OPTIONS[path] || (path.endsWith(".gift_mode") ? [["direct", "直接赠送"], ["confirm", "等待确认"]] : null);
+  const choice = choices?.find(([key]) => key === value);
+  if (choice) return choice[1];
+  if (isPoolConfig(path)) {
+    const ids = String(value).split("\n").filter(Boolean);
+    return ids.map((id) => state.pools.find((pool) => pool.id === id)?.name || id).join("、") || "（未选择）";
+  }
+  const text = Array.isArray(value) ? value.join("、") : String(value).replaceAll("\n", "、");
+  if (!text.trim()) return "（空）";
+  return Array.from(text).length > 36 ? `${Array.from(text).slice(0, 36).join("")}…` : text;
+}
+
+function savedValue(path) {
+  const value = configAt(state.savedConfig, path);
+  return value === undefined ? undefined : displayValue(path, value);
+}
+
+// 右侧卡片列出全部改动：中文字段名、原值（删除线）、新值；点击跳到对应配置项。
+function renderDraftDiff(paths) {
+  const list = $("#draft-diff");
+  list.replaceChildren();
+  $("#draft-title").textContent = state.pendingSubmission ? "提交结果待确认" : paths.length ? `${paths.length} 项改动待保存` : "没有未保存的改动";
+  $("#draft-empty").hidden = paths.length > 0;
+  for (const path of paths) {
+    const item = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    const mode = path.startsWith("modes.") ? MODE_NAMES[path.split(".")[1]] : "";
+    const name = document.createElement("span"); name.className = "name"; name.textContent = mode ? `${mode} · ${configLabel(path)}` : configLabel(path);
+    const from = document.createElement("span"); from.className = "from"; from.textContent = diffText(path, savedValue(path));
+    const inherited = state.scopeId !== "global" && !configIsGlobalOnly(path) && !state.overridePaths.has(path);
+    const to = document.createElement("span"); to.className = "to"; to.textContent = inherited ? "继承全局" : diffText(path, state.draftValues[path]);
+    button.append(name, from, to);
+    button.addEventListener("click", () => revealField(path));
+    item.append(button);
+    list.append(item);
+  }
+  const badge = $("#nav-config-badge");
+  badge.textContent = String(paths.length);
+  badge.hidden = !paths.length;
+  const views = new Set(paths.map(viewOfPath));
+  for (const button of document.querySelectorAll(".segmented [data-config-view]")) button.querySelector(".mod").hidden = !views.has(button.dataset.configView);
+  const groups = new Set(paths.filter((path) => viewOfPath(path) === "advanced").map(configGroup));
+  for (const tab of configTabs.querySelectorAll("[data-config-group]")) tab.classList.toggle("modified", groups.has(tab.dataset.configGroup));
+}
 
 function updateConfigSummary() {
   const host = $("#config-summary");
@@ -246,7 +304,7 @@ function updateConfigSummary() {
     if (on) enabled += 1;
     const line = document.createElement("p");
     const source = state.scopeId === "global" ? "全局" : state.overridePaths.has(path) ? "本群覆盖" : "继承全局";
-    line.textContent = `${name} · ${on ? "已启用" : "已关闭"}（${source}）· 容量 ${state.draftValues[`modes.${mode}.capacity`]} · ${dirtyPaths().some((item) => item.startsWith(`modes.${mode}.`)) ? "含草稿" : "已保存"}`;
+    line.textContent = `${name} · ${on ? "已启用" : "已关闭"}（${source}）· 持有上限 ${state.draftValues[`modes.${mode}.capacity`]} · ${dirtyPaths().some((item) => item.startsWith(`modes.${mode}.`)) ? "含草稿" : "已保存"}`;
     host.append(line);
   }
   $("#mode-summary").textContent = `已启用玩法 ${enabled}/3 · ${dirtyPaths().length} 项未保存`;
@@ -277,7 +335,7 @@ function renderScopes() {
   const overviewScope = $("#overview-scope");
   const previousOverview = overviewScope.value;
   dataScope.replaceChildren();
-  overviewScope.replaceChildren(new Option("全部作用域", ""));
+  overviewScope.replaceChildren(new Option("全部群", ""));
   state.periodResetPlan = null;
   if ($("#period-reset-dialog").open) $("#period-reset-dialog").close();
   for (const scope of state.scopes) {
@@ -300,10 +358,10 @@ function renderScopeList() {
     const item = document.createElement("div");
     item.className = "scope-item";
     const label = document.createElement("span");
-    label.textContent = `群 ${scope.group_id} · ${scope.platform_id} · 机器人 ${scope.self_id}`;
+    label.textContent = `群 ${scope.group_id} · 机器人 ${scope.self_id}`;
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "button secondary";
+    button.className = "btn btn-ghost btn-sm";
     button.textContent = "编辑规则";
     button.addEventListener("click", async () => { if (await changeScope(String(scope.id))) openView("settings"); });
     item.append(label, button);
@@ -387,7 +445,7 @@ const CONFIG_LABELS = {
   extra_bot_ids: "补充机器人 QQ 号", extra_admin_ids: "额外命令管理员 QQ 号", timezone: "时区", time: "重置时间",
   allow_bare: "允许裸关键词", allow_leading_bot_mention: "允许开头 @机器人",
   allow_host_prefix: "允许宿主命令前缀", extra_prefixes: "额外命令前缀",
-  cooldown_seconds: "通用冷却（秒）", capacity: "每日容量", steal_enabled: "允许抢夺",
+  cooldown_seconds: "通用冷却（秒）", capacity: "持有上限", steal_enabled: "允许抢夺",
   designated_limit: "每周期指定次数", designated_unique: "指定角色只能拥有一段关系",
   rank_merge_rows: "每张卡片最多行数",
   steal_intimacy_bonus: "每点亲密度增加成功率", steal_probability_max: "亲密度加成后的成功率上限",
@@ -567,12 +625,15 @@ function writeInputValue(input, value) {
 }
 
 function createConfigField(path, value) {
+  // 两列配置项：左侧名称与“已修改”标记，右侧控件、来源与帮助；不显示配置键名。
   const card = document.createElement("div");
   card.className = "config-field";
-  const label = document.createElement("label");
-  label.className = "field";
-  const title = document.createElement("span");
+  const labelColumn = document.createElement("div");
+  labelColumn.className = "lbl";
+  const title = document.createElement("label");
   title.textContent = configLabel(path);
+  const controls = document.createElement("div");
+  controls.className = "ctl";
   const globalOnly = configIsGlobalOnly(path);
   const overridden = state.scopeId !== "global" && state.overridePaths.has(path);
   let input;
@@ -613,12 +674,16 @@ function createConfigField(path, value) {
   input.dataset.configPath = path;
   input.id = `field-${path.replaceAll(".", "-")}`;
   input.setAttribute("aria-label", configLabel(path));
+  title.htmlFor = input.id;
   const control = document.createElement("span");
   control.className = input.type === "checkbox" ? "toggle-control" : "input-control";
   control.append(input);
   if (input.type === "checkbox") { const status = document.createElement("span"); status.className = "toggle-state"; control.append(status); }
-  label.append(title, control);
-  card.append(label);
+  const source = document.createElement("small");
+  source.className = "field-source";
+  labelColumn.append(title, source);
+  controls.append(control);
+  card.append(labelColumn, controls);
   if (isPoolConfig(path)) {
     const picker = document.createElement("div");
     picker.className = "pool-picker";
@@ -630,7 +695,7 @@ function createConfigField(path, value) {
       input.value = selected.join("\n");
       input.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    card.append(picker);
+    controls.append(picker);
   }
   if (state.scopeId !== "global" && !globalOnly) {
     const override = document.createElement("label");
@@ -654,20 +719,17 @@ function createConfigField(path, value) {
       if (/^(messages|reply_quote|reply_enabled)\./.test(path)) renderTemplatePreview();
     });
     override.append(toggle, document.createTextNode("本群覆盖（关闭恢复继承）"));
-    card.append(override);
+    controls.append(override);
     card.classList.toggle("inherited", !overridden);
   } else if (state.scopeId !== "global" || path === "schema_version") {
     input.disabled = true;
     const badge = document.createElement("small");
     badge.className = "config-note";
     badge.textContent = path === "schema_version" ? "只读" : "仅全局设置";
-    card.append(badge);
+    controls.append(badge);
   }
   writeInputValue(input, state.draftValues[path]);
   if (isPoolConfig(path)) renderPoolPicker(card, input);
-  const source = document.createElement("small");
-  source.className = "field-source";
-  card.append(source);
   const hint = CONFIG_HINTS[path] ||
     (path.startsWith("messages.") ? templateHint(path) :
     path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
@@ -677,14 +739,14 @@ function createConfigField(path, value) {
     help.className = "config-note";
     help.textContent = hint;
     help.id = `${input.id}-help`;
-    card.append(help);
+    controls.append(help);
   }
   const error = document.createElement("small");
   error.className = "config-error";
   error.hidden = true;
   error.id = `${input.id}-error`;
   input.setAttribute("aria-describedby", `${hint ? input.id + "-help " : ""}${error.id}`);
-  card.append(error);
+  controls.append(error);
   fieldCards.set(path, card);
   return card;
 }
@@ -696,12 +758,12 @@ function renderConfigFields() {
     expanded: [...configFields.querySelectorAll(".mode-details[open]")].map((item) => item.dataset.modeGroup),
     search: $("#template-search")?.value || "", category: $("#template-category")?.value || "全部",
     listScroll: $("#template-list")?.scrollTop || 0,
-    pane: $(".reply-edit-area")?.dataset.pane || "edit",
     selection: previousEditor ? [previousEditor.selectionStart, previousEditor.selectionEnd] : null,
   };
   fieldCards.clear();
   configFields.replaceChildren();
   configTabs.replaceChildren();
+  $("#side-context").replaceChildren();
   if (!state.savedConfig) return;
   for (const [path, value] of configLeaves(state.savedConfig)) createConfigField(path, value);
   renderModesWorkspace();
@@ -715,46 +777,45 @@ function renderConfigFields() {
   // 旧版分类名已经不存在时回到“全部”，避免目录为空。
   if (!$("#template-category").value) $("#template-category").value = "全部";
   filterTemplates(); $("#template-list").scrollTop = ui.listScroll;
-  $(".reply-edit-area").dataset.pane = ui.pane;
-  for (const pane of ["edit", "preview"]) $("#reply-" + pane + "-tab").setAttribute("aria-pressed", String(pane === ui.pane));
   if (ui.selection && state.selectedTemplate) fieldCards.get(state.selectedTemplate).querySelector("textarea").setSelectionRange(...ui.selection);
   openView(state.view);
   updateDirtyState();
 }
 
-const VIEW_INFO = {
-  overview: ["概览", "今日姻缘 · 插件概览", "查看实际数据状态与常用操作。"],
-  settings: ["玩法设置", "玩法设置", "调整三种玩法的开关与数值，保存后生效。"],
-  catalog: ["角色与角色池", "角色与角色池", "维护角色、图片与角色池，保留独立提交和导入预检。"],
-  replies: ["消息与回复词", "消息与回复词", "编辑模板、变量与引用；模拟预览不会实际发送。"],
-  data: ["数据查询", "数据查询", "按机器人与群查询关系、配额、邀请及统计。"],
-  advanced: ["高级设置", "高级设置", "调整准入、周期、统计、显示和资源限制。"],
-};
+// 悬浮岛模块；配置模块内再分玩法、消息与关键词、高级三类。
+const MODULE_PANELS = { overview: "overview-panel", config: "settings-panel", catalog: "catalog-panel", data: "data-panel", maintenance: "maintenance-panel" };
+const CONFIG_VIEWS = ["settings", "replies", "advanced"];
+const VIEW_TITLES = { overview: "概览", config: "配置", catalog: "角色", data: "数据", maintenance: "备份与迁移" };
 
 function openView(view) {
-  if (!VIEW_INFO[view]) return;
+  if (view === "config") view = state.configView || "settings";
+  const module = CONFIG_VIEWS.includes(view) ? "config" : view;
+  if (!MODULE_PANELS[module]) return;
   const previousView = state.view;
   if (view !== previousView) state.scrollPositions[previousView] = window.scrollY;
   state.view = view;
+  if (module === "config") state.configView = view;
   document.body.dataset.view = view;
-  const [name, title, description] = VIEW_INFO[view];
-  $("#breadcrumb-page").textContent = name;
-  $("#page-title").textContent = title;
-  $("#page-description").textContent = description;
-  for (const button of document.querySelectorAll(".tab[data-tab]")) {
-    const active = button.dataset.tab === view;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", String(active));
-    button.tabIndex = active ? 0 : -1;
+  for (const button of document.querySelectorAll(".island [data-tab]")) {
+    if (button.dataset.tab === module) button.setAttribute("aria-current", "page");
+    else button.removeAttribute("aria-current");
   }
-  for (const id of ["overview", "catalog", "data"]) $(`#${id}-panel`).hidden = id !== view;
-  const isConfig = ["settings", "replies", "advanced"].includes(view);
-  $("#settings-panel").hidden = !isConfig;
-  $("#settings-panel").setAttribute("aria-labelledby", `tab-${view}`);
+  for (const [name, id] of Object.entries(MODULE_PANELS)) $(`#${id}`).hidden = name !== module;
+  for (const button of document.querySelectorAll(".segmented [data-config-view]")) button.setAttribute("aria-pressed", String(button.dataset.configView === view));
   configTabs.hidden = view !== "advanced";
   for (const section of configFields.querySelectorAll("[data-config-view]")) section.hidden = section.dataset.configView !== view;
+  for (const section of $("#side-context").querySelectorAll("[data-side-view]")) section.hidden = section.dataset.sideView !== view;
   if (view === "advanced") selectConfigGroup(state.configGroup);
+  document.title = `今日姻缘 · ${VIEW_TITLES[module]}`;
   if (view !== previousView) window.scrollTo({ top: state.scrollPositions[view] || 0, behavior: "instant" });
+}
+
+// 右侧卡片在每个配置分类下显示对应的上下文（规则预览、消息预览或说明）。
+function sideSection(view) {
+  const section = document.createElement("div");
+  section.dataset.sideView = view;
+  $("#side-context").append(section);
+  return section;
 }
 
 function configView(view, className = "") {
@@ -821,16 +882,15 @@ function renderModesWorkspace() {
   const view = configView("settings", "modes-workspace");
   const main = document.createElement("div"); main.className = "mode-main";
   view.dataset.mode = "wife";
-  const switcher = document.createElement("div"); switcher.className = "mode-switcher"; switcher.setAttribute("aria-label", "窄屏玩法切换");
-  for (const [key, name] of [...Object.entries(MODE_NAMES), ["all", "三玩法对照"]]) {
-    const button = document.createElement("button"); button.type = "button"; button.className = "button secondary"; button.textContent = name; button.dataset.modeChoice = key; button.setAttribute("aria-pressed", String(key === "wife"));
+  const switcher = document.createElement("div"); switcher.className = "mode-switcher segmented"; switcher.setAttribute("role", "group"); switcher.setAttribute("aria-label", "窄屏玩法切换");
+  for (const [key, name] of [...Object.entries(MODE_NAMES), ["all", "对照"]]) {
+    const button = document.createElement("button"); button.type = "button"; button.textContent = name; button.dataset.modeChoice = key; button.setAttribute("aria-pressed", String(key === "wife"));
     button.addEventListener("click", () => { view.dataset.mode = key; for (const other of switcher.children) other.setAttribute("aria-pressed", String(other === button)); }); switcher.append(button);
   }
-  main.append(switcher);
-  const common = document.createElement("section"); common.className = "card common-modes";
-  const title = document.createElement("h3"); title.textContent = "常用参数";
-  const note = document.createElement("p"); note.className = "muted"; note.textContent = "修改先进入草稿，保存后生效。";
-  common.append(title, note, modeMatrix(COMMON_MODE_KEYS)); main.append(common);
+  const common = document.createElement("section"); common.className = "card card-pad common-modes";
+  const head = document.createElement("div"); head.className = "card-title";
+  head.innerHTML = "<div><h3>常用参数</h3><p>三种玩法并排对照，修改先进入草稿。</p></div>";
+  common.append(head, modeMatrix(COMMON_MODE_KEYS)); main.prepend(common); main.prepend(switcher);
   const allKeys = [...new Set(Object.values(state.savedConfig.modes).flatMap((mode) => Object.keys(mode)))].filter((key) => !COMMON_MODE_KEYS.includes(key));
   const groups = [
     ["抢夺进阶", (key) => key.startsWith("steal_") || key === "stolen_limit"],
@@ -847,15 +907,15 @@ function renderModesWorkspace() {
     const summary = document.createElement("summary"); summary.textContent = name;
     details.append(summary, modeMatrix(keys));
     if (name === "角色池与候选") {
-      const link = document.createElement("button"); link.type = "button"; link.className = "button secondary"; link.textContent = "查看候选资格与统计权重";
+      const link = document.createElement("button"); link.type = "button"; link.className = "btn btn-ghost btn-sm"; link.textContent = "查看候选资格与统计权重";
       link.addEventListener("click", () => { openView("advanced"); selectConfigGroup("weights"); }); details.append(link);
     }
     main.append(details);
   }
-  const help = document.createElement("aside"); help.className = "card mode-help";
-  help.innerHTML = '<h3>规则说明</h3><div><strong>当前配置范围</strong><p>全局配置只影响继承该字段的群；群级覆盖仅作用于所选群。</p></div><div><strong>开关与数值</strong><p>关闭玩法不会清空已配置数值。</p></div><div><strong>持有上限</strong><p>抽取、指定、抢夺和赠送得到的关系共用一个上限；抢来的和指定的关系当天受保护。</p></div><div><strong>次数为 0</strong><p>抢夺、被抢和离婚次数为 0 表示不限；指定次数为 0 表示关闭指定。</p></div><div><strong>提交范围</strong><p>仅保存配置，角色、角色池和图片单独提交。</p></div>';
+  const help = sideSection("settings");
+  help.innerHTML = '<h4>规则说明</h4><ul class="rule-help"><li>抽取、指定、抢夺和赠送得到的关系共用一个持有上限；抢来的和指定的关系当天受保护。</li><li>抢夺、被抢和离婚次数为 0 表示不限；指定次数为 0 表示关闭指定。</li><li>关闭玩法不会清空已配置的数值。</li></ul><div class="divider"></div>';
   const copy = document.createElement("details"); copy.className = "card mode-copy";
-  copy.innerHTML = '<summary>同步本次修改的玩法参数</summary><p class="hint">只同步来源玩法本次修改的参数，专属字段仅同步到支持的玩法。</p><label class="field"><span>来源玩法</span><select id="copy-source"></select></label><div id="copy-targets" class="actions"></div><button id="copy-parameters" type="button" class="button secondary">同步参数改动</button>';
+  copy.innerHTML = '<summary>同步本次修改的玩法参数</summary><p class="hint">只同步来源玩法本次修改的参数，专属字段仅同步到支持的玩法。</p><label class="field"><span>来源玩法</span><select id="copy-source"></select></label><div id="copy-targets" class="actions"></div><button id="copy-parameters" type="button" class="btn btn-ghost">同步参数改动</button>';
   for (const [mode, name] of Object.entries(MODE_NAMES)) {
     copy.querySelector("select").add(new Option(name, mode));
     const label = document.createElement("label"); label.className = "check-field";
@@ -874,10 +934,10 @@ function renderModesWorkspace() {
       showNotice(count ? `已同步 ${count} 项参数到草稿。` : "请先修改来源玩法的参数，并勾选目标玩法。", count ? "success" : "error");
     } catch (error) { showConfigError(error.message); showNotice(error.message, "error"); }
   });
-  const preview = document.createElement("section"); preview.className = "card rule-preview"; preview.id = "rule-preview";
+  const preview = document.createElement("section"); preview.className = "rule-preview"; preview.id = "rule-preview";
   preview.setAttribute("aria-live", "polite");
   help.append(preview);
-  main.append(copy); view.append(main, help);
+  main.append(copy); view.append(main);
   renderRulePreview();
 }
 
@@ -886,7 +946,7 @@ function renderRulePreview() {
   const host = document.getElementById("rule-preview");
   if (!host || !state.savedConfig) return;
   const value = (path) => state.draftValues[path];
-  const heading = document.createElement("h3"); heading.textContent = "规则预览（按当前草稿）";
+  const heading = document.createElement("h4"); heading.textContent = "规则预览（使用草稿）";
   const list = document.createElement("ul");
   for (const [mode, name] of Object.entries(MODE_NAMES)) {
     const item = document.createElement("li");
@@ -928,21 +988,20 @@ function templateOrder(path) {
 
 function renderRepliesWorkspace() {
   const view = configView("replies");
-  view.innerHTML = '<div class="reply-tabs"><button type="button" class="button secondary" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" class="button secondary" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><h3>模板目录 <small id="template-total"></small></h3><button type="button" class="button secondary reply-directory-back" id="reply-directory-back">返回编辑</button><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称、路径或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><div class="reply-pane-tabs"><button type="button" class="button secondary reply-directory-toggle" id="reply-directory-toggle">模板目录</button><button type="button" class="button secondary" id="reply-edit-tab" aria-pressed="true">编辑</button><button type="button" class="button secondary" id="reply-preview-tab" aria-pressed="false">预览</button></div><section id="reply-editor-panel" class="card"><h3 id="template-name"></h3><p id="template-path" class="muted template-path"></p><div id="reply-editor"></div><small id="template-count" class="muted"></small><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section><aside id="reply-preview-panel" class="card"><h3>消息预览</h3><p class="preview-label">模拟预览 · 不会实际发送</p><div class="chat-preview"><div class="chat-user">示例用户消息</div><div id="template-preview" class="chat-bubble"></div></div><p class="hint">演示数据；实际图片、引用和消息样式以 QQ 客户端为准。</p></aside></div></div><section id="reply-keywords" class="card" hidden><h3>指令关键词</h3><p class="hint">每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p><div class="config-grid"></div></section><div id="reply-field-store" hidden></div>';
+  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
+  const side = sideSection("replies");
+  side.innerHTML = '<div id="reply-preview-panel"><h4>消息预览</h4><p class="preview-label">使用草稿 · 模拟预览，不会实际发送</p><div class="chat-preview"><div class="chat-user">示例用户消息</div><div id="template-preview" class="chat-bubble"></div></div><p class="side-note">演示数据；实际图片、引用和消息样式以 QQ 客户端为准。</p></div>';
+  sideSection("advanced").innerHTML = '<div class="notice"><p>群级覆盖只保存改动的字段；“仅全局设置”的项需切到全局配置修改。保存后立即生效，无需重载插件。</p></div>';
   const store = $("#reply-field-store");
   for (const [path, card] of fieldCards) {
     if (/^(messages|reply_quote|reply_enabled)\./.test(path)) store.append(card);
-    if (path.startsWith("commands.keywords.")) $("#reply-keywords .config-grid").append(card);
+    if (path.startsWith("commands.keywords.")) $("#reply-keywords .config-rows").append(card);
   }
   const categories = ["全部", ...TEMPLATE_CATEGORIES];
   for (const category of categories) $("#template-category").add(new Option(category, category));
   $("#template-search").addEventListener("input", filterTemplates);
   $("#template-category").addEventListener("change", filterTemplates);
   for (const kind of ["templates", "keywords"]) $(`#reply-${kind}-tab`).addEventListener("click", () => showReplySection(kind));
-  for (const pane of ["edit", "preview"]) $(`#reply-${pane}-tab`).addEventListener("click", () => {
-    $(".reply-edit-area").dataset.pane = pane;
-    for (const key of ["edit", "preview"]) $(`#reply-${key}-tab`).setAttribute("aria-pressed", String(key === pane));
-  });
   $("#reply-directory-toggle").addEventListener("click", () => { $(".replies-workspace").dataset.directory = "true"; });
   $("#reply-directory-back").addEventListener("click", () => { $(".replies-workspace").dataset.directory = "false"; });
   initReplyBulk();
@@ -968,7 +1027,7 @@ function updateReplySelection() {
 
 function initReplyBulk() {
   const bulk = document.createElement("details"); bulk.className = "reply-bulk";
-  bulk.innerHTML = '<summary>批量调整回复</summary><div class="actions"><button type="button" class="button secondary" data-select-replies="visible">全选当前分类</button><button type="button" class="button secondary" data-select-replies="all">全选所有回复</button><button type="button" class="button secondary" data-select-replies="none">清空选择</button></div><div class="actions"><button type="button" class="button secondary" data-reply-bulk="enable">开启回复</button><button type="button" class="button secondary" data-reply-bulk="disable">关闭回复</button><button type="button" class="button secondary" data-reply-bulk="quote">开启引用</button><button type="button" class="button secondary" data-reply-bulk="unquote">关闭引用</button><button type="button" class="button secondary" data-reply-bulk="inherit">选中回复恢复继承</button></div><p id="reply-selection-count" class="hint" role="status"></p>';
+  bulk.innerHTML = '<summary>批量调整回复</summary><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-select-replies="visible">全选当前分类</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="all">全选所有回复</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="none">清空选择</button></div><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="enable">开启回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="disable">关闭回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote">开启引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="unquote">关闭引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="inherit">选中回复恢复继承</button></div><p id="reply-selection-count" class="hint" role="status"></p>';
   $(".template-directory").insertBefore(bulk, $("#template-list"));
   bulk.addEventListener("click", (event) => {
     const button = event.target.closest("button"); if (!button) return;
@@ -1000,7 +1059,7 @@ function filterTemplates() {
   const paths = [...fieldCards.keys()].filter((path) => path.startsWith("messages."));
   const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]}`.toLowerCase().includes(search))
     .sort((left, right) => templateOrder(left) - templateOrder(right));
-  $("#template-total").textContent = `${visible.length} / ${paths.length}`;
+  $("#template-total").textContent = `显示 ${visible.length} / 共 ${paths.length} 条`;
   for (const path of visible) {
     const button = document.createElement("button"); button.type = "button"; button.dataset.templatePath = path;
     button.className = "template-item";
@@ -1008,7 +1067,7 @@ function filterTemplates() {
     button.setAttribute("aria-pressed", String(path === state.selectedTemplate));
     const name = document.createElement("strong"); name.textContent = configLabel(path);
     const kind = { results: "结果", errors: "错误", notifications: "通知", titles: "标签" }[path.split(".")[1]] || "";
-    const group = document.createElement("small"); group.textContent = `${templateCategory(path)} · ${kind} · ${path.split(".").at(-1)}`;
+    const group = document.createElement("small"); group.textContent = `${templateCategory(path)} · ${kind}`;
     button.append(name, group); button.addEventListener("click", () => selectTemplate(path));
     const row = document.createElement("div"); row.className = "template-row";
     if (fieldCards.has(path.replace("messages.", "reply_enabled."))) {
@@ -1032,7 +1091,6 @@ function selectTemplate(path) {
     if (fieldCards.has(optionPath)) $("#reply-quote").append(fieldCards.get(optionPath));
   }
   $("#template-name").textContent = configLabel(path);
-  $("#template-path").textContent = path;
   const variables = $("#template-variables"); variables.replaceChildren();
   const textarea = fieldCards.get(path).querySelector("textarea");
   for (const variable of state.templateFields[path]?.allowed || []) {
@@ -1044,8 +1102,6 @@ function selectTemplate(path) {
   }
   if (!variables.children.length) variables.textContent = "本条没有可插入变量。";
   for (const button of document.querySelectorAll("[data-template-path]")) button.setAttribute("aria-pressed", String(button.dataset.templatePath === path));
-  $(".reply-edit-area").dataset.pane = "edit";
-  $("#reply-edit-tab").setAttribute("aria-pressed", "true"); $("#reply-preview-tab").setAttribute("aria-pressed", "false");
   renderTemplatePreview();
 }
 
@@ -1068,7 +1124,7 @@ function renderTemplatePreview() {
     for (const part of parts) {
       if (part.variable === "image") {
         const image = document.createElement("div"); image.className = "preview-image"; image.textContent = "图片占位 · 演示素材"; host.append(image);
-      } else host.append(document.createTextNode(part.text ?? ({ name: "示例角色", names: "示例角色", target_name: "示例群友", group_name: "示例群", 群名: "示例群", days: "7", accept_keyword: "接受赠送", invite_id: "示例邀请" }[part.variable] || `示例${part.variable}`)));
+      } else host.append(document.createTextNode(part.text ?? ({ name: "示例角色", names: "示例角色", subject_name: "示例角色", actor_name: "小明", owner_name: "小红", sender_name: "小明", recipient_name: "小红", reset_at: "明天 00:00", target_name: "示例群友", group_name: "示例群", 群名: "示例群", days: "7", accept_keyword: "接受赠送", invite_id: "示例邀请" }[part.variable] || `示例${part.variable}`)));
     }
   } catch { host.textContent = "请校验并修改模板后查看预览。"; }
 }
@@ -1077,15 +1133,17 @@ function renderAdvancedWorkspace() {
   const view = configView("advanced");
   const groups = new Map();
   for (const [path, card] of fieldCards) {
-    if (path.startsWith("modes.") || /^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.")) continue;
+    if (path === "schema_version" || path.startsWith("modes.") || /^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.")) continue;
     const group = configGroup(path);
     if (!groups.has(group)) {
-      const section = document.createElement("section"); section.className = "config-group card"; section.dataset.group = group;
+      const section = document.createElement("section"); section.className = "config-group card card-pad"; section.dataset.group = group;
       section.id = `config-group-${group.replaceAll(".", "-")}`;
+      const head = document.createElement("div"); head.className = "card-title";
       const heading = document.createElement("h3"); heading.textContent = CONFIG_GROUPS[group] || group;
-      const grid = document.createElement("div"); grid.className = "config-grid";
-      section.append(heading, grid); view.append(section); groups.set(group, grid);
-      const button = document.createElement("button"); button.type = "button"; button.className = "config-tab"; button.dataset.configGroup = group;
+      head.append(heading);
+      const grid = document.createElement("div"); grid.className = "config-rows";
+      section.append(head, grid); view.append(section); groups.set(group, grid);
+      const button = document.createElement("button"); button.type = "button"; button.dataset.configGroup = group;
       button.id = `config-tab-${group.replaceAll(".", "-")}`; button.setAttribute("role", "tab"); button.setAttribute("aria-controls", section.id); button.textContent = CONFIG_GROUPS[group] || group;
       section.setAttribute("role", "tabpanel"); section.setAttribute("aria-labelledby", button.id); configTabs.append(button);
     }
@@ -1098,7 +1156,8 @@ function renderAdvancedWorkspace() {
 function renderConfigSearch() {
   const options = $("#config-search-options"); options.replaceChildren();
   for (const path of fieldCards.keys()) {
-    const option = document.createElement("option"); option.value = `${configLabel(path)} · ${path}`; options.append(option);
+    const mode = path.startsWith("modes.") ? MODE_NAMES[path.split(".")[1]] : "";
+    const option = document.createElement("option"); option.value = mode ? `${mode} · ${configLabel(path)}` : configLabel(path); options.append(option);
   }
 }
 
@@ -1181,23 +1240,27 @@ async function loadOverview() {
     if (sequence !== overviewLoadSequence) return;
     const data = result.data;
     const scope = state.scopes.find((item) => String(item.id) === scopeId);
-    const range = scopeId ? `群 ${scope?.group_id || scopeId}` : "全部作用域";
+    const range = scopeId ? `群 ${scope?.group_id || scopeId}` : "全部群";
+    // 统计卡：标签 + 数值；范围写在标签右侧，故障数大于 0 时用危险色。
     const metrics = [
-      ["管理接口", "本次读取成功", "本次请求"],
-      ...(!scopeId ? [["已记录作用域", data.scopes, "全部记录；不等于在线群"]] : []),
-      ["当前有效关系", data.active_relationships, range],
-      ["待处理赠送邀请", data.pending_invites, range],
-      ["已录入角色", data.catalog?.characters, "全局资产"],
-      ...(scopeId ? [["配置引用角色池数", data.enabled_pool_count, "所选群；不代表池可用性"]] : []),
-      ["通知故障", data.failed_notifications, range],
+      ...(!scopeId ? [["已记录群", data.scopes, "个"]] : []),
+      ["当前有效关系", data.active_relationships, "段"],
+      ["待处理赠送", data.pending_invites, "条"],
+      ["已录入角色", data.catalog?.characters, "个"],
+      ...(scopeId ? [["引用角色池", data.enabled_pool_count, "个"]] : []),
+      ["通知故障", data.failed_notifications, "条"],
     ];
     grid.replaceChildren();
-    for (const [label, value, source] of metrics) {
-      const card = document.createElement("article"); card.className = "metric";
-      const title = document.createElement("p"); title.className = "metric-label"; title.textContent = label;
-      const number = document.createElement("p"); number.className = "metric-value"; number.textContent = value ?? "—"; number.classList.toggle("metric-text", typeof value === "string");
-      const note = document.createElement("small"); note.textContent = source;
-      card.append(title, number, note); grid.append(card);
+    for (const [label, value, unit] of metrics) {
+      const card = document.createElement("article"); card.className = "stat";
+      card.classList.toggle("bad", label === "通知故障" && value > 0);
+      const title = document.createElement("div"); title.className = "label";
+      const name = document.createElement("span"); name.textContent = label;
+      const where = document.createElement("span"); where.textContent = label === "已录入角色" ? "全局" : range;
+      title.append(name, where);
+      const number = document.createElement("div"); number.className = "value"; number.textContent = value ?? "—";
+      if (value !== undefined && value !== null) { const small = document.createElement("small"); small.textContent = unit; number.append(small); }
+      card.append(title, number); grid.append(card);
     }
     const period = data.current_period;
     const time = (value) => new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium", timeStyle: "short", timeZone: period.timezone }).format(new Date(value * 1000));
@@ -1207,7 +1270,7 @@ async function loadOverview() {
       const line = document.createElement("p"); line.textContent = `${label}：${count ?? "未获取"}`; tasks.append(line);
     }
     if (data.pending_invites > 0) {
-      const button = document.createElement("button"); button.type = "button"; button.className = "button secondary"; button.textContent = "查询赠送邀请";
+      const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-ghost"; button.textContent = "查询赠送邀请";
       button.addEventListener("click", () => {
         openView("data");
         if (scopeId) { $("#data-scope").value = scopeId; $("#data-scope").dispatchEvent(new Event("change")); document.querySelector('[data-query="invites"]').click(); }
@@ -1251,11 +1314,17 @@ async function loadConfig(scopeId = state.scopeId) {
   updateDirtyState();
 }
 
+// 标题下的连接状态：最近一次读取是否成功，以及已记录的群数。
+function setConnection(ok) {
+  $("#connection-dot").className = `dot${ok ? "" : " bad"}`;
+  $("#connection-text").textContent = ok ? `已连接 · ${state.scopes.length} 个群` : "读取失败，可点击右上角刷新重试";
+}
+
 async function refreshAll() {
   if (state.busy || state.pendingSubmission) return;
   setBusy(true);
   try {
-    try { await loadScopes(); } catch (error) { showNotice(error.message || "作用域读取失败。", "error"); }
+    try { await loadScopes(); setConnection(true); } catch (error) { setConnection(false); showNotice(error.message || "群列表读取失败。", "error"); }
     await loadOverview();
     try { state.pools = (await apiGet("pools")).data; renderPools(); } catch (error) { showNotice(error.message || "角色池读取失败。", "error"); }
     await loadConfig();
@@ -1341,16 +1410,56 @@ async function changeScope(nextScope) {
   finally { setBusy(false); updateDirtyState(); }
 }
 
-$(".tabs").addEventListener("click", (event) => {
-  const tab = event.target.closest("button[data-tab]"); if (!tab) return;
-  openView(tab.dataset.tab);
-  if (tab.dataset.tab === "catalog") loadCatalog().catch((error) => showNotice(error.message, "error"));
+function openModule(module) {
+  openView(module);
+  if (module === "catalog") loadCatalog().catch((error) => showNotice(error.message, "error"));
+}
+$(".island").addEventListener("click", (event) => {
+  const tab = event.target.closest("button[data-tab]"); if (tab) openModule(tab.dataset.tab);
 });
-$(".tabs").addEventListener("keydown", (event) => {
-  if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-  const tabs = [...document.querySelectorAll(".tab")]; const current = tabs.indexOf(event.target);
-  const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (["ArrowRight", "ArrowDown"].includes(event.key) ? 1 : -1) + tabs.length) % tabs.length;
-  event.preventDefault(); tabs[next].click(); tabs[next].focus();
+for (const button of document.querySelectorAll(".segmented [data-config-view]")) button.addEventListener("click", () => openView(button.dataset.configView));
+
+// 悬浮按钮的快捷菜单：Enter/空格打开，上下键切换，Esc 关闭并把焦点还给按钮。
+const fab = $("#fab");
+const fabMenu = $("#fab-menu");
+function fabItems() { return [...fabMenu.querySelectorAll("[role=menuitem]")]; }
+function openFabMenu() {
+  fabMenu.hidden = false;
+  fab.setAttribute("aria-expanded", "true");
+  fabItems()[0].focus();
+}
+function closeFabMenu(restoreFocus = true) {
+  if (fabMenu.hidden) return;
+  fabMenu.hidden = true;
+  fab.setAttribute("aria-expanded", "false");
+  if (restoreFocus && !fab.hidden) fab.focus();
+}
+fab.addEventListener("click", () => (fabMenu.hidden ? openFabMenu() : closeFabMenu()));
+fabMenu.addEventListener("keydown", (event) => {
+  const items = fabItems(); const current = items.indexOf(document.activeElement);
+  if (event.key === "Escape") { event.preventDefault(); closeFabMenu(); return; }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (current + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+  items[next].focus();
+});
+document.addEventListener("click", (event) => { if (!event.target.closest(".fab-wrap")) closeFabMenu(false); });
+function focusConfigSearch() {
+  openView("config");
+  $("#config-search").focus();
+}
+fabMenu.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-fab]"); if (!item) return;
+  closeFabMenu(false);
+  const action = item.dataset.fab;
+  if (action === "refresh") $("#refresh").click();
+  else if (action === "search") focusConfigSearch();
+  else if (action === "batch") { openModule("catalog"); $("#batch-images-open").click(); }
+  else if (action === "backup") { openModule("maintenance"); $("#backup-create").click(); }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "/" || event.target.closest("input, textarea, select, [contenteditable]") || document.querySelector("dialog[open]")) return;
+  event.preventDefault(); focusConfigSearch();
 });
 
 configTabs.addEventListener("click", (event) => {
@@ -1396,15 +1505,10 @@ configFields.addEventListener("input", (event) => {
 });
 configFields.addEventListener("change", updateDirtyState);
 scopeSelect.addEventListener("change", () => changeScope(scopeSelect.value));
-document.addEventListener("click", (event) => {
-  const button = event.target.closest("[data-open]"); if (!button) return;
-  $("#tab-" + button.dataset.open).click();
-  if (button.dataset.scopeFocus) scopeSelect.focus();
-  if (button.dataset.importFocus) { const details = document.querySelector(".maintenance-card"); details.open = true; details.scrollIntoView({ block: "start" }); }
-});
 function searchConfig() {
   const search = $("#config-search").value.trim(); if (!search) return;
-  const path = [...fieldCards.keys()].find((key) => search === `${configLabel(key)} · ${key}` || search === key) || [...fieldCards.keys()].find((key) => `${configLabel(key)} ${key}`.includes(search));
+  const label = (key) => (key.startsWith("modes.") ? `${MODE_NAMES[key.split(".")[1]]} · ` : "") + configLabel(key);
+  const path = [...fieldCards.keys()].find((key) => search === label(key)) || [...fieldCards.keys()].find((key) => label(key).includes(search));
   if (path) revealField(path); else showNotice("没有找到匹配配置项。", "error");
 }
 $("#config-search").addEventListener("change", searchConfig);
@@ -1526,8 +1630,14 @@ function renderCharacters() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "catalog-item";
-    button.textContent = `${item.name} · ${item.id}${item.enabled ? "" : "（停用）"}`;
-    button.addEventListener("click", () => loadCharacter(item.id).catch((error) => showNotice(error.message, "error")));
+    const name = document.createElement("strong"); name.textContent = item.name;
+    const meta = document.createElement("small"); meta.className = "mono"; meta.textContent = item.enabled ? item.id : `${item.id} · 已停用`;
+    button.append(name, meta);
+    button.setAttribute("aria-pressed", String($("#character-id").value === item.id && $("#character-id").readOnly));
+    button.addEventListener("click", () => {
+      for (const other of characters.querySelectorAll(".catalog-item")) other.setAttribute("aria-pressed", String(other === button));
+      loadCharacter(item.id).catch((error) => showNotice(error.message, "error"));
+    });
     characters.append(button);
   }
   if (!state.characters.length) {
@@ -1553,7 +1663,9 @@ function renderPools() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "catalog-item";
-    button.textContent = `${pool.name} · ${pool.mode} · ${pool.character_count}`;
+    const name = document.createElement("strong"); name.textContent = pool.name;
+    const meta = document.createElement("small"); meta.textContent = `${pool.mode === "husband" ? "男角色" : "女角色"} · ${pool.character_count} 个角色`;
+    button.append(name, meta);
     button.addEventListener("click", () => editPool(pool));
     pools.append(button);
     exportPools.add(new Option(`${pool.name} · ${pool.mode} · ${pool.character_count}`, pool.id, false, selectedExport.has(pool.id)));
@@ -2173,7 +2285,7 @@ function renderMaintenanceJob(data, title) {
   if (data.download) {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "button secondary";
+    button.className = "btn btn-ghost";
     button.textContent = "下载 ZIP";
     button.addEventListener("click", () => bridge.download(data.download, {}, `${title}-${data.job_id}.zip`)
       .catch((error) => showNotice(error.message || "文件下载失败。", "error")));
@@ -2293,9 +2405,6 @@ initBatchImages({ apiGet, apiPost, apiUpload, showNotice,
 initStatusAndMigration({ apiGet, apiPost, apiUpload, confirmAction, showNotice });
 
 await bridge.ready();
-bridge.onContext(() => {
-  document.title = bridge.t("pages.manage.title", "今日姻缘 · 管理");
-});
 await refreshAll();
 checkCatalogSync(false).catch((error) => {
   $("#catalog-sync-banner").textContent = "尚无仓库对比数据";

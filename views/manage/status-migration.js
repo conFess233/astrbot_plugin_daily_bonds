@@ -151,5 +151,6 @@ export function initStatusAndMigration({ apiGet, apiPost, apiUpload, confirmActi
     await loadMigration();
   }).finally(() => { commitButton.disabled = !plan; }));
 
-  $("#migration-card")?.addEventListener("toggle", (event) => { if (event.currentTarget.open) loadMigration(); });
+  // 打开“备份与迁移”模块时读取迁移记录。
+  document.querySelector('.island [data-tab="maintenance"]')?.addEventListener("click", () => { loadMigration(); });
 }
