@@ -466,10 +466,7 @@ class SQLiteStorage:
         """识别远端或已发布本地分支的完整迁移链，用于恢复预检。"""
         files = sorted(self.schema_path.glob("[0-9][0-9][0-9]_*.sql"))
         expected = [
-            {
-                "version": version,
-                "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-            }
+            {"version": version, "sha256": set(_checksum_variants(path))}
             for version, path in enumerate(files, 1)
         ]
         if not 8 <= len(applied) <= _SCHEMA_VERSION:
@@ -480,10 +477,13 @@ class SQLiteStorage:
             and applied[8]["sha256"] == _LOCAL_MIGRATION_CHECKSUMS[0]
         ):
             expected = expected[:8] + [
-                {"version": version, "sha256": checksum}
+                {"version": version, "sha256": {checksum}}
                 for version, checksum in enumerate(_LOCAL_MIGRATION_CHECKSUMS, 9)
             ]
-        return applied == expected[: len(applied)]
+        return len(applied) <= len(expected) and all(
+            item["version"] == want["version"] and item["sha256"] in want["sha256"]
+            for item, want in zip(applied, expected, strict=False)
+        )
 
     def _migrate(self) -> None:
         connection = self._connection()
@@ -506,9 +506,9 @@ class SQLiteStorage:
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
         hooks = {14: _upgrade_settings_v2}
-        checksums = [
-            hashlib.sha256(path.read_bytes()).hexdigest() for path in migration_files
-        ]
+        variants = [_checksum_variants(path) for path in migration_files]
+        # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
+        checksums = [lf for lf, _crlf in variants]
         try:
             has_migrations = connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='schema_migrations'"
@@ -539,7 +539,7 @@ class SQLiteStorage:
                 if (
                     current > 11
                     or any(
-                        applied.get(version) != checksums[version - 1]
+                        applied.get(version) not in variants[version - 1]
                         for version in range(1, 9)
                     )
                     or any(
@@ -576,7 +576,10 @@ class SQLiteStorage:
                     )
                 }
             for version in range(1, current + 1):
-                if version not in applied or applied[version] != checksums[version - 1]:
+                if (
+                    version not in applied
+                    or applied[version] not in variants[version - 1]
+                ):
                     raise StorageError(f"数据库迁移 {version} 的校验和无效。")
             if 0 < current < _SCHEMA_VERSION:
                 self._backup_before_migration(current)
@@ -663,6 +666,19 @@ def _next_boundary_after(timestamp: int, reset_at: time, zone: ZoneInfo) -> int:
         local_day += timedelta(days=1)
         candidate = _boundary(local_day, reset_at, zone)
     return int(candidate.timestamp())
+
+
+def _checksum_variants(path: Path) -> tuple[str, str]:
+    """迁移文件按 LF 与 CRLF 两种换行计算的校验和。
+
+    Windows 检出可能把换行改成 CRLF，已发布实例记录的是 LF 版本。
+    """
+
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return (
+        hashlib.sha256(data).hexdigest(),
+        hashlib.sha256(data.replace(b"\n", b"\r\n")).hexdigest(),
+    )
 
 
 def _upgrade_settings_v2(connection: sqlite3.Connection, from_version: int) -> None:
