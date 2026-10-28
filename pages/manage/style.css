@@ -70,8 +70,7 @@ body {
 button, select, textarea, input { font: inherit; }
 button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-visible { outline: 2px solid var(--primary-text); outline-offset: 2px; }
 .shell { width: min(1480px, calc(100% - 40px)); margin: 0 auto; padding: 28px 0 96px; min-width: 0; }
-.topbar, .section-heading, .editor-meta, .actions, .action-end { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.topbar { align-items: flex-start; margin-bottom: 26px; }
+.section-heading, .editor-meta, .actions, .action-end { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .eyebrow { margin: 0 0 8px; color: var(--primary-text); font-size: 12px; font-weight: 750; letter-spacing: .14em; }
 h1, h2, h3, p { margin-top: 0; }
 h1 { margin-bottom: 8px; font-size: 25px; }
@@ -228,8 +227,6 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 @media (max-width: 780px) { .catalog-layout { grid-template-columns: 1fr; } .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .config-grid { grid-template-columns: 1fr; } }
 @media (max-width: 560px) {
   .shell { width: min(100% - 24px, 1120px); padding-top: 18px; }
-  .topbar { align-items: flex-start; }
-  .topbar .button { padding-inline: 10px; }
   .metric-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
   .metric { padding: 13px; }
   .metric-value { font-size: 24px; }
@@ -256,11 +253,10 @@ textarea { min-height: 420px; padding: 14px; font: 13px/1.55 ui-monospace, Conso
 .maintenance-card > summary:focus-visible { outline: 2px solid var(--primary-text); outline-offset: 3px; }
 .maintenance-card[open] > summary { margin-bottom: 14px; }
 #maintenance-report { overflow-wrap: anywhere; }
-.section-heading > div, .topbar > div, .editor-meta > div { min-width: 0; }
+.section-heading > div, .editor-meta > div { min-width: 0; }
 @media (max-width: 560px) {
   .actions > .button, .action-end .button { min-width: 0; overflow-wrap: anywhere; }
   .query-actions .button { flex: 1 1 120px; }
-  .topbar .button { width: 100%; }
   .section-heading > .button { width: 100%; }
   .metric-value { overflow-wrap: anywhere; }
 }
