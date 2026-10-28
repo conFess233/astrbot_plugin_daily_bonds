@@ -108,29 +108,45 @@ class SQLiteStorage:
 
     def get_scope_id(self, scope: Scope) -> int | None:
         with self._lock:
-            row = self._connection().execute(
-                "SELECT id FROM scopes WHERE platform_id=? AND self_id=? AND group_id=?",
-                (scope.platform_id, scope.self_id, scope.group_id),
-            ).fetchone()
+            row = (
+                self._connection()
+                .execute(
+                    "SELECT id FROM scopes WHERE platform_id=? AND self_id=? AND group_id=?",
+                    (scope.platform_id, scope.self_id, scope.group_id),
+                )
+                .fetchone()
+            )
         return int(row["id"]) if row else None
 
     def get_settings(self, scope_id: int | None = None) -> tuple[dict[str, Any], int]:
         """返回全局值或指定群的全局合成快照与对应修订号。"""
 
         with self._lock:
-            rows = self._connection().execute(
-                "SELECT scope_key,revision,value_json FROM settings WHERE scope_key IN (?, 'global')",
-                (f"scope:{scope_id}" if scope_id is not None else "global",),
-            ).fetchall()
+            rows = (
+                self._connection()
+                .execute(
+                    "SELECT scope_key,revision,value_json FROM settings WHERE scope_key IN (?, 'global')",
+                    (f"scope:{scope_id}" if scope_id is not None else "global",),
+                )
+                .fetchall()
+            )
         global_row = next((row for row in rows if row["scope_key"] == "global"), None)
         defaults = default_config()
-        global_value = merge_sparse(defaults, json.loads(global_row["value_json"])) if global_row else defaults
+        global_value = (
+            merge_sparse(defaults, json.loads(global_row["value_json"]))
+            if global_row
+            else defaults
+        )
         if scope_id is None:
             validate_config(global_value)
             return global_value, int(global_row["revision"]) if global_row else 0
-        scope_row = next((row for row in rows if row["scope_key"] == f"scope:{scope_id}"), None)
+        scope_row = next(
+            (row for row in rows if row["scope_key"] == f"scope:{scope_id}"), None
+        )
         override = json.loads(scope_row["value_json"]) if scope_row else {}
-        return effective_config(global_value, override), int(scope_row["revision"]) if scope_row else 0
+        return effective_config(global_value, override), int(
+            scope_row["revision"]
+        ) if scope_row else 0
 
     def save_settings(
         self,
@@ -159,10 +175,14 @@ class SQLiteStorage:
                     if previous["request_hash"] != request_hash:
                         raise StorageError("request_id 已被用于不同的请求内容。")
                     return int(json.loads(previous["response_json"])["revision"])
-            row = db.execute("SELECT revision FROM settings WHERE scope_key=?", (key,)).fetchone()
+            row = db.execute(
+                "SELECT revision FROM settings WHERE scope_key=?", (key,)
+            ).fetchone()
             current_revision = int(row["revision"]) if row else 0
             if current_revision != expected_revision:
-                raise StorageError(f"配置版本冲突：期望 {expected_revision}，当前 {current_revision}。")
+                raise StorageError(
+                    f"配置版本冲突：期望 {expected_revision}，当前 {current_revision}。"
+                )
             if scope_id is None:
                 validate_config(value)
                 saved = dict(value)
@@ -183,7 +203,10 @@ class SQLiteStorage:
                 }
                 if set(value) - allowed:
                     raise StorageError("群覆盖包含仅允许全局设置的字段。")
-                if "access" in value and set(value["access"]) - {"users", "extra_bot_ids"}:
+                if "access" in value and set(value["access"]) - {
+                    "users",
+                    "extra_bot_ids",
+                }:
                     raise StorageError("群覆盖只能设置用户规则和补充机器人名单。")
                 defaults = default_config()
                 merged = merge_sparse(defaults, value)
@@ -195,21 +218,38 @@ class SQLiteStorage:
                    VALUES(?,?,?,?,?,?) ON CONFLICT(scope_key) DO UPDATE SET
                    revision=excluded.revision,schema_version=excluded.schema_version,
                    value_json=excluded.value_json,updated_at=excluded.updated_at,updated_by=excluded.updated_by""",
-                (key, revision, _SCHEMA_VERSION, json.dumps(saved, ensure_ascii=False, allow_nan=False), now, updated_by),
+                (
+                    key,
+                    revision,
+                    _SCHEMA_VERSION,
+                    json.dumps(saved, ensure_ascii=False, allow_nan=False),
+                    now,
+                    updated_by,
+                ),
             )
             if request_id is not None and request_hash is not None:
                 global_revision = revision
                 if scope_id is not None:
-                    global_row = db.execute("SELECT revision FROM settings WHERE scope_key='global'").fetchone()
+                    global_row = db.execute(
+                        "SELECT revision FROM settings WHERE scope_key='global'"
+                    ).fetchone()
                     global_revision = int(global_row["revision"]) if global_row else 0
                 db.execute(
                     """INSERT INTO web_request_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at)
                        VALUES(?,?,?,?,?,?)""",
-                    (updated_by, endpoint, request_id, request_hash,
-                     json.dumps({
-                         "revision": revision,
-                         "global_revision": global_revision,
-                     }), now),
+                    (
+                        updated_by,
+                        endpoint,
+                        request_id,
+                        request_hash,
+                        json.dumps(
+                            {
+                                "revision": revision,
+                                "global_revision": global_revision,
+                            }
+                        ),
+                        now,
+                    ),
                 )
             return revision
 
@@ -221,16 +261,23 @@ class SQLiteStorage:
         key = "global" if scope_id is None else f"scope:{scope_id}"
         endpoint = f"settings:{key}"
         with self._lock:
-            row = self._connection().execute(
-                "SELECT request_hash,response_json FROM web_request_dedup WHERE actor_username=? AND endpoint=? AND request_id=?",
-                (actor, endpoint, request_id),
-            ).fetchone()
+            row = (
+                self._connection()
+                .execute(
+                    "SELECT request_hash,response_json FROM web_request_dedup WHERE actor_username=? AND endpoint=? AND request_id=?",
+                    (actor, endpoint, request_id),
+                )
+                .fetchone()
+            )
         if row is None:
             return None
         if row["request_hash"] != request_hash:
             raise StorageError("request_id 已被用于不同的请求内容。")
         result = json.loads(row["response_json"])
-        return {"revision": int(result["revision"]), "global_revision": int(result["global_revision"])}
+        return {
+            "revision": int(result["revision"]),
+            "global_revision": int(result["global_revision"]),
+        }
 
     def ensure_current_period(
         self,
@@ -259,30 +306,59 @@ class SQLiteStorage:
         end_timestamp = int(end.timestamp())
         with self.transaction() as db:
             current = db.execute(
-                "SELECT * FROM periods WHERE scope_id=? AND state='current'", (scope_id,)
+                "SELECT * FROM periods WHERE scope_id=? AND state='current'",
+                (scope_id,),
             ).fetchone()
             if current and now < int(current["ends_at"]):
                 return current
             if current:
                 old_boundary = int(current["ends_at"])
-                next_new_boundary = _next_boundary_after(old_boundary, time(hour, minute), zone)
+                next_new_boundary = _next_boundary_after(
+                    old_boundary, time(hour, minute), zone
+                )
                 if now < next_new_boundary:
                     start_timestamp = old_boundary
                     end_timestamp = next_new_boundary
                 sequence = int(current["sequence"]) + 1
-                db.execute("UPDATE periods SET state='closed' WHERE id=?", (current["id"],))
-                db.execute("UPDATE relationships SET state='ended',ended_at=?,end_reason='period_end' WHERE scope_id=? AND period_id=? AND state='active'", (int(current["ends_at"]), scope_id, current["id"]))
-                db.execute("UPDATE redraw_credits SET state='expired' WHERE scope_id=? AND period_id=? AND state='available'", (scope_id, current["id"]))
-                db.execute("UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='period_end' WHERE scope_id=? AND period_id=? AND state='pending'", (now, scope_id, current["id"]))
+                db.execute(
+                    "UPDATE periods SET state='closed' WHERE id=?", (current["id"],)
+                )
+                db.execute(
+                    "UPDATE relationships SET state='ended',ended_at=?,end_reason='period_end' WHERE scope_id=? AND period_id=? AND state='active'",
+                    (int(current["ends_at"]), scope_id, current["id"]),
+                )
+                db.execute(
+                    "UPDATE redraw_credits SET state='expired' WHERE scope_id=? AND period_id=? AND state='available'",
+                    (scope_id, current["id"]),
+                )
+                db.execute(
+                    "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='period_end' WHERE scope_id=? AND period_id=? AND state='pending'",
+                    (now, scope_id, current["id"]),
+                )
             else:
-                sequence_row = db.execute("SELECT COALESCE(MAX(sequence),0)+1 AS next FROM periods WHERE scope_id=?", (scope_id,)).fetchone()
+                sequence_row = db.execute(
+                    "SELECT COALESCE(MAX(sequence),0)+1 AS next FROM periods WHERE scope_id=?",
+                    (scope_id,),
+                ).fetchone()
                 sequence = int(sequence_row["next"])
-            period_id = str(uuid.uuid5(_NAMESPACE, f"{scope_id}:{sequence}:{start_timestamp}"))
+            period_id = str(
+                uuid.uuid5(_NAMESPACE, f"{scope_id}:{sequence}:{start_timestamp}")
+            )
             db.execute(
                 "INSERT INTO periods(id,scope_id,sequence,starts_at,ends_at,timezone,reset_time,state) VALUES(?,?,?,?,?,?,?,'current')",
-                (period_id, scope_id, sequence, start_timestamp, end_timestamp, timezone, reset_time),
+                (
+                    period_id,
+                    scope_id,
+                    sequence,
+                    start_timestamp,
+                    end_timestamp,
+                    timezone,
+                    reset_time,
+                ),
             )
-            return db.execute("SELECT * FROM periods WHERE id=?", (period_id,)).fetchone()
+            return db.execute(
+                "SELECT * FROM periods WHERE id=?", (period_id,)
+            ).fetchone()
 
     def create_relationship(
         self,

@@ -35,10 +35,27 @@ def load_catalog_directory(root: Path) -> dict[str, Any]:
     """Read the packaged one-file-per-entity catalog."""
 
     metadata = json.loads((root / "catalog.json").read_text(encoding="utf-8"))
-    packs = [metadata, *(json.loads(path.read_text(encoding="utf-8")) for path in sorted(root.glob("*-catalog.json")))]
-    characters = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((root / "characters").glob("*.json"))]
-    pools = [json.loads(path.read_text(encoding="utf-8")) for path in sorted((root / "pools").glob("*.json"))]
-    if not characters or not pools or len({item.get("id") for item in characters}) != len(characters) or len({item.get("id") for item in pools}) != len(pools):
+    packs = [
+        metadata,
+        *(
+            json.loads(path.read_text(encoding="utf-8"))
+            for path in sorted(root.glob("*-catalog.json"))
+        ),
+    ]
+    characters = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((root / "characters").glob("*.json"))
+    ]
+    pools = [
+        json.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((root / "pools").glob("*.json"))
+    ]
+    if (
+        not characters
+        or not pools
+        or len({item.get("id") for item in characters}) != len(characters)
+        or len({item.get("id") for item in pools}) != len(pools)
+    ):
         raise StorageError("内置角色目录为空或包含重复 ID。")
     memberships: dict[str, list[str]] = {item["id"]: [] for item in characters}
     for pool in pools:
@@ -46,11 +63,23 @@ def load_catalog_directory(root: Path) -> dict[str, Any]:
             if character_id not in memberships:
                 raise StorageError(f"角色池引用了不存在的角色：{character_id}")
             memberships[character_id].append(pool["id"])
-    return {**metadata, "packs": packs, "characters": [dict(item, pool_ids=memberships[item["id"]]) for item in characters], "pools": pools}
+    return {
+        **metadata,
+        "packs": packs,
+        "characters": [
+            dict(item, pool_ids=memberships[item["id"]]) for item in characters
+        ],
+        "pools": pools,
+    }
 
 
 def catalog_source_json(item: dict[str, Any], kind: str) -> str:
-    return json.dumps({key: value for key, value in item.items() if key != "pool_ids"}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return json.dumps(
+        {key: value for key, value in item.items() if key != "pool_ids"},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,7 +94,9 @@ class DownloadReport:
 class CatalogService:
     """将静态角色身份与按内容寻址的本地图像写入插件数据目录。"""
 
-    def __init__(self, storage: SQLiteStorage, manifest_path: Path, media_root: Path) -> None:
+    def __init__(
+        self, storage: SQLiteStorage, manifest_path: Path, media_root: Path
+    ) -> None:
         self.storage = storage
         self.manifest_path = manifest_path
         self.media_root = media_root
@@ -78,7 +109,18 @@ class CatalogService:
         pools = manifest.get("pools")
         characters = manifest.get("characters")
         packs = manifest.get("packs", [])
-        if not isinstance(pools, list) or not isinstance(characters, list) or not isinstance(packs, list) or not packs or any(not isinstance(pack, dict) or not isinstance(pack.get("pack_id"), str) or not isinstance(pack.get("pack_version"), str) for pack in packs):
+        if (
+            not isinstance(pools, list)
+            or not isinstance(characters, list)
+            or not isinstance(packs, list)
+            or not packs
+            or any(
+                not isinstance(pack, dict)
+                or not isinstance(pack.get("pack_id"), str)
+                or not isinstance(pack.get("pack_version"), str)
+                for pack in packs
+            )
+        ):
             raise StorageError("内置角色清单格式无效。")
         added_characters = 0
         added_pools = 0
@@ -99,30 +141,62 @@ class CatalogService:
                 self._validate_character(character)
                 provenance = {
                     key: character.get(key)
-                    for key in ("game", "gender_basis", "source_role_ids", "release_status", "material_status", "source_url", "verified_on")
+                    for key in (
+                        "game",
+                        "gender_basis",
+                        "source_role_ids",
+                        "release_status",
+                        "material_status",
+                        "source_url",
+                        "verified_on",
+                    )
                 }
                 result = db.execute(
                     """INSERT OR IGNORE INTO characters(id,name,aliases_json,gender,enabled,revision,provenance_json)
                        VALUES(?,?,?,?,?,1,?)""",
                     (
-                        character["id"], character["name"],
+                        character["id"],
+                        character["name"],
                         json.dumps(character.get("aliases", []), ensure_ascii=False),
-                        character["gender"], int(character["enabled"]),
+                        character["gender"],
+                        int(character["enabled"]),
                         json.dumps(provenance, ensure_ascii=False),
                     ),
                 )
                 added_characters += max(result.rowcount, 0)
                 self._insert_baseline(db, "character", character, now)
                 for pool_id in character.get("pool_ids", []):
-                    existing_pool = db.execute("SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)).fetchone()
-                    expected_mode = "wife" if character["gender"] == "female" else "husband" if character["gender"] == "male" else None
-                    if (result.rowcount or pool_id in inserted_pools) and existing_pool and existing_pool["deleted_at"] is None and (expected_mode is None or existing_pool["mode"] == expected_mode):
-                        db.execute("INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)", (pool_id, character["id"]))
+                    existing_pool = db.execute(
+                        "SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)
+                    ).fetchone()
+                    expected_mode = (
+                        "wife"
+                        if character["gender"] == "female"
+                        else "husband"
+                        if character["gender"] == "male"
+                        else None
+                    )
+                    if (
+                        (result.rowcount or pool_id in inserted_pools)
+                        and existing_pool
+                        and existing_pool["deleted_at"] is None
+                        and (
+                            expected_mode is None
+                            or existing_pool["mode"] == expected_mode
+                        )
+                    ):
+                        db.execute(
+                            "INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)",
+                            (pool_id, character["id"]),
+                        )
             for pack in packs:
                 pack_id, version = pack["pack_id"], pack["pack_version"]
-                db.execute("""INSERT INTO catalog_packs(pack_id,pack_version,installed_at) VALUES(?,?,?)
+                db.execute(
+                    """INSERT INTO catalog_packs(pack_id,pack_version,installed_at) VALUES(?,?,?)
                               ON CONFLICT(pack_id) DO UPDATE SET pack_version=excluded.pack_version,installed_at=excluded.installed_at
-                              WHERE catalog_packs.pack_version<>excluded.pack_version""", (pack_id, version, now))
+                              WHERE catalog_packs.pack_version<>excluded.pack_version""",
+                    (pack_id, version, now),
+                )
         return added_characters, added_pools
 
     async def download_builtin_images(
@@ -202,7 +276,14 @@ class CatalogService:
         source = catalog_source_json(item, kind)
         db.execute(
             "INSERT OR IGNORE INTO catalog_sync_baselines(entity_kind,entity_id,source_json,source_sha,commit_sha,updated_at) VALUES(?,?,?,?,?,?)",
-            (kind, item["id"], source, hashlib.sha256(source.encode()).hexdigest(), "bundled", now),
+            (
+                kind,
+                item["id"],
+                source,
+                hashlib.sha256(source.encode()).hexdigest(),
+                "bundled",
+                now,
+            ),
         )
 
     @staticmethod
@@ -212,11 +293,17 @@ class CatalogService:
             raise StorageError("内置角色清单缺少必要字段。")
         if character["gender"] not in {"female", "male", "unspecified"}:
             raise StorageError(f"角色性别字段无效：{character['id']}")
-        if not isinstance(character["enabled"], bool) or not isinstance(character["pool_ids"], list) or not isinstance(character["images"], list):
+        if (
+            not isinstance(character["enabled"], bool)
+            or not isinstance(character["pool_ids"], list)
+            or not isinstance(character["images"], list)
+        ):
             raise StorageError(f"角色字段类型无效：{character['id']}")
         for image in character["images"]:
             digest = image.get("sha256", "")
-            if len(digest) != 64 or any(char not in "0123456789abcdef" for char in digest):
+            if len(digest) != 64 or any(
+                char not in "0123456789abcdef" for char in digest
+            ):
                 raise StorageError(f"角色图片摘要无效：{character['id']}")
 
     def _image_is_available(self, digest: str) -> bool:
@@ -307,7 +394,9 @@ class CatalogService:
         return True
 
 
-async def _fetch_limited(session: aiohttp.ClientSession, initial_url: str, max_bytes: int) -> tuple[bytes, str]:
+async def _fetch_limited(
+    session: aiohttp.ClientSession, initial_url: str, max_bytes: int
+) -> tuple[bytes, str]:
     current = initial_url
     for _ in range(5):
         try:
@@ -366,7 +455,9 @@ def _atomic_content_write(target: Path, payload: bytes) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         return
-    file_descriptor, temporary_name = tempfile.mkstemp(prefix=".media-", dir=target.parent)
+    file_descriptor, temporary_name = tempfile.mkstemp(
+        prefix=".media-", dir=target.parent
+    )
     try:
         with os.fdopen(file_descriptor, "wb") as stream:
             stream.write(payload)

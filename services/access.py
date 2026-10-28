@@ -16,7 +16,11 @@ class AccessService:
     def group_key(scope: Scope) -> str:
         """使用无歧义的 JSON 三元组标识完整群作用域。"""
 
-        return json.dumps([scope.platform_id, scope.self_id, scope.group_id], ensure_ascii=False, separators=(",", ":"))
+        return json.dumps(
+            [scope.platform_id, scope.self_id, scope.group_id],
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
 
     def group_allowed(self, config: Mapping[str, Any], scope: Scope) -> bool:
         if not config["enabled"]:
@@ -36,5 +40,7 @@ class AccessService:
         return listed if users["mode"] == "whitelist" else not listed
 
     @staticmethod
-    def bot_ids(config: Mapping[str, Any], self_id: str, host_bot_ids: set[str] | None = None) -> set[str]:
+    def bot_ids(
+        config: Mapping[str, Any], self_id: str, host_bot_ids: set[str] | None = None
+    ) -> set[str]:
         return {self_id, *config["access"]["extra_bot_ids"], *(host_bot_ids or set())}

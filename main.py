@@ -178,7 +178,9 @@ class DailyBondsPlugin(Star):
         except Exception:
             logger.exception("今日姻缘：内置素材下载任务失败，可在后续启动时重试。")
 
-    async def _maintenance_loop(self, notifications: NotificationService, retention: RetentionService) -> None:
+    async def _maintenance_loop(
+        self, notifications: NotificationService, retention: RetentionService
+    ) -> None:
         last_cleanup_day: int | None = None
         cleanup_retry_at = 0
         while True:

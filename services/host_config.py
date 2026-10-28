@@ -12,7 +12,9 @@ from .storage import SQLiteStorage
 
 
 class HostConfigBridge:
-    def __init__(self, config: MutableMapping[str, Any], storage: SQLiteStorage) -> None:
+    def __init__(
+        self, config: MutableMapping[str, Any], storage: SQLiteStorage
+    ) -> None:
         self.config = config
         self.storage = storage
 
@@ -20,7 +22,9 @@ class HostConfigBridge:
         """Apply a native edit, or import an existing Web UI configuration."""
 
         stored, revision = self.storage.get_settings()
-        native = merge_sparse(default_config(), deepcopy(self.config.get("settings", default_config())))
+        native = merge_sparse(
+            default_config(), deepcopy(self.config.get("settings", default_config()))
+        )
         validate_config(native)
         marker = self.config.get("_settings_revision", 0)
         if isinstance(marker, bool) or not isinstance(marker, int) or marker < 0:
@@ -47,7 +51,10 @@ class HostConfigBridge:
     def mirror(self, value: dict[str, Any], revision: int) -> None:
         """Publish a committed global revision to AstrBot's configuration page."""
 
-        if self.config.get("settings") == value and self.config.get("_settings_revision") == revision:
+        if (
+            self.config.get("settings") == value
+            and self.config.get("_settings_revision") == revision
+        ):
             return
         previous_settings = self.config.get("settings")
         previous_revision = self.config.get("_settings_revision")

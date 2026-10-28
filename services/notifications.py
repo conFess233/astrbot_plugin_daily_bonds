@@ -38,7 +38,12 @@ class NotificationService:
                     scope_id,
                     str(row["umo"]),
                     f"restart:{row['scope_id']}:{uuid.uuid4().hex}",
-                    render_message(config, "notifications", "restart_invalidated", amount=int(row["amount"])),
+                    render_message(
+                        config,
+                        "notifications",
+                        "restart_invalidated",
+                        amount=int(row["amount"]),
+                    ),
                     now,
                 )
             db.execute(
@@ -64,7 +69,9 @@ class NotificationService:
             ).rowcount
             by_scope: dict[tuple[int, str], list[str]] = {}
             for row in rows:
-                by_scope.setdefault((int(row["scope_id"]), str(row["umo"])), []).append(str(row["id"]))
+                by_scope.setdefault((int(row["scope_id"]), str(row["umo"])), []).append(
+                    str(row["id"])
+                )
             for (scope_id, umo), invite_ids in by_scope.items():
                 config = self.storage.get_settings(scope_id)[0]
                 self._queue(
@@ -72,7 +79,12 @@ class NotificationService:
                     scope_id,
                     umo,
                     f"expired:{scope_id}:{uuid.uuid4().hex}",
-                    render_message(config, "notifications", "invite_expired", invite_ids="、".join(invite_ids)),
+                    render_message(
+                        config,
+                        "notifications",
+                        "invite_expired",
+                        invite_ids="、".join(invite_ids),
+                    ),
                     now,
                 )
             return int(updated)
@@ -86,10 +98,16 @@ class NotificationService:
             try:
                 from astrbot.api.event import MessageChain
 
-                ok = bool(await self.context.send_message(item["umo"], MessageChain().message(item["text"])))
+                ok = bool(
+                    await self.context.send_message(
+                        item["umo"], MessageChain().message(item["text"])
+                    )
+                )
             except Exception as exc:
                 error = type(exc).__name__
-            await asyncio.to_thread(self._finish, item["id"], ok, error, int(time.time()))
+            await asyncio.to_thread(
+                self._finish, item["id"], ok, error, int(time.time())
+            )
             sent += int(ok)
         return sent
 
@@ -117,7 +135,9 @@ class NotificationService:
                     (now, row["id"]),
                 )
                 if claimed.rowcount == 1:
-                    result.append({"id": str(row["id"]), "umo": str(row["umo"]), "text": text})
+                    result.append(
+                        {"id": str(row["id"]), "umo": str(row["umo"]), "text": text}
+                    )
         return result
 
     def _finish(self, item_id: str, ok: bool, error: str | None, now: int) -> None:
@@ -128,11 +148,20 @@ class NotificationService:
             )
 
     @staticmethod
-    def _queue(db: Any, scope_id: int, umo: str, dedupe_key: str, text: str, now: int) -> None:
+    def _queue(
+        db: Any, scope_id: int, umo: str, dedupe_key: str, text: str, now: int
+    ) -> None:
         if not text.strip():
             return
         db.execute(
             """INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at)
                VALUES(?,?,?,?,?,'pending',?)""",
-            (str(uuid.uuid4()), scope_id, dedupe_key, umo, json.dumps({"text": text}, ensure_ascii=False), now),
+            (
+                str(uuid.uuid4()),
+                scope_id,
+                dedupe_key,
+                umo,
+                json.dumps({"text": text}, ensure_ascii=False),
+                now,
+            ),
         )

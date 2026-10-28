@@ -44,7 +44,9 @@ class OneBotAdapter:
     def __init__(self, context: Any, storage: SQLiteStorage) -> None:
         self.context = context
         self.storage = storage
-        self._members: dict[tuple[str, str, str], tuple[float, tuple[MemberRecord, ...]]] = {}
+        self._members: dict[
+            tuple[str, str, str], tuple[float, tuple[MemberRecord, ...]]
+        ] = {}
         self._bot_signatures: dict[tuple[str, str, str], frozenset[str]] = {}
 
     @staticmethod
@@ -73,10 +75,23 @@ class OneBotAdapter:
         message_id = str(raw.get("message_id") or "")
         timestamp = raw.get("time")
         try:
-            observed_at = int(timestamp) if timestamp is not None else int(now if now is not None else time.time())
+            observed_at = (
+                int(timestamp)
+                if timestamp is not None
+                else int(now if now is not None else time.time())
+            )
         except (TypeError, ValueError):
             observed_at = int(now if now is not None else time.time())
-        return RawGroupEvent(raw, post_type, message_type, sender_id, group_id, message_id, segments, observed_at)
+        return RawGroupEvent(
+            raw,
+            post_type,
+            message_type,
+            sender_id,
+            group_id,
+            message_id,
+            segments,
+            observed_at,
+        )
 
     async def group_name(self, scope: Scope) -> str:
         try:
@@ -204,12 +219,27 @@ def _member(row: Mapping[str, Any], known_bots: set[str]) -> MemberRecord:
     return MemberRecord(user_id, nickname, card, user_id in known_bots)
 
 
-def _save_members(storage: SQLiteStorage, scope_id: int, members: Sequence[MemberRecord], now: int) -> None:
+def _save_members(
+    storage: SQLiteStorage, scope_id: int, members: Sequence[MemberRecord], now: int
+) -> None:
     with storage.transaction() as db:
-        db.execute("UPDATE members SET is_present=0,last_observed_at=? WHERE scope_id=?", (now, scope_id))
+        db.execute(
+            "UPDATE members SET is_present=0,last_observed_at=? WHERE scope_id=?",
+            (now, scope_id),
+        )
         db.executemany(
             """INSERT INTO members(scope_id,user_id,nickname,card,is_present,is_known_bot,last_observed_at)
                VALUES(?,?,?,?,1,?,?) ON CONFLICT(scope_id,user_id) DO UPDATE SET
                nickname=excluded.nickname,card=excluded.card,is_present=1,is_known_bot=excluded.is_known_bot,last_observed_at=excluded.last_observed_at""",
-            [(scope_id, member.user_id, member.nickname, member.card, int(member.is_known_bot), now) for member in members],
+            [
+                (
+                    scope_id,
+                    member.user_id,
+                    member.nickname,
+                    member.card,
+                    int(member.is_known_bot),
+                    now,
+                )
+                for member in members
+            ],
         )

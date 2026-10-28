@@ -271,7 +271,8 @@ class CatalogSyncService:
             if (
                 len(entries) > 1000
                 or any(
-                    not isinstance(item.get("size"), int) or item["size"] > _MAX_JSON_BYTES
+                    not isinstance(item.get("size"), int)
+                    or item["size"] > _MAX_JSON_BYTES
                     for item in entries
                 )
                 or sum(item["size"] for item in entries) > _MAX_JSON_BYTES
@@ -329,7 +330,9 @@ class CatalogSyncService:
         return {"commit_sha": sha, "characters": characters, "pools": pools}
 
     @staticmethod
-    async def _json(session: aiohttp.ClientSession, url: str, limit: int) -> dict[str, Any]:
+    async def _json(
+        session: aiohttp.ClientSession, url: str, limit: int
+    ) -> dict[str, Any]:
         async with session.get(url, allow_redirects=False) as response:
             if response.status != 200:
                 raise ValueError(f"读取仓库失败（HTTP {response.status}）。")
@@ -349,11 +352,25 @@ class CatalogSyncService:
     def _validate_source(item: dict[str, Any], kind: str) -> None:
         identifier = item.get("id")
         name = item.get("name")
-        if not isinstance(identifier, str) or not _ID.fullmatch(identifier) or not isinstance(name, str) or not 1 <= len(name) <= 120:
+        if (
+            not isinstance(identifier, str)
+            or not _ID.fullmatch(identifier)
+            or not isinstance(name, str)
+            or not 1 <= len(name) <= 120
+        ):
             raise ValueError("仓库角色或角色池的 ID、名称无效。")
         if kind == "pool":
             members = item.get("character_ids")
-            if item.get("mode") not in {"wife", "husband"} or not isinstance(members, list) or len(members) > 5000 or any(not isinstance(value, str) or not _ID.fullmatch(value) for value in members) or len(set(members)) != len(members):
+            if (
+                item.get("mode") not in {"wife", "husband"}
+                or not isinstance(members, list)
+                or len(members) > 5000
+                or any(
+                    not isinstance(value, str) or not _ID.fullmatch(value)
+                    for value in members
+                )
+                or len(set(members)) != len(members)
+            ):
                 raise ValueError(f"仓库角色池配置无效：{identifier}")
         else:
             aliases = item.get("aliases", [])
@@ -373,12 +390,25 @@ class CatalogSyncService:
             if item["enabled"] and not images:
                 raise ValueError(f"启用角色缺少图片：{identifier}")
             for image in images:
-                if not isinstance(image, dict) or not isinstance(image.get("sha256"), str) or not _DIGEST.fullmatch(image["sha256"]) or not isinstance(image.get("source_url"), str) or any(isinstance(image.get(key), bool) or not isinstance(image.get(key), int) or image[key] < 1 for key in ("width", "height", "bytes")):
+                if (
+                    not isinstance(image, dict)
+                    or not isinstance(image.get("sha256"), str)
+                    or not _DIGEST.fullmatch(image["sha256"])
+                    or not isinstance(image.get("source_url"), str)
+                    or any(
+                        isinstance(image.get(key), bool)
+                        or not isinstance(image.get(key), int)
+                        or image[key] < 1
+                        for key in ("width", "height", "bytes")
+                    )
+                ):
                     raise ValueError(f"仓库角色图片配置无效：{identifier}")
                 try:
                     _validate_image_url(image["source_url"])
                 except ValueError as exc:
-                    raise ValueError(f"仓库角色图片 URL 无效：{identifier}：{exc}") from exc
+                    raise ValueError(
+                        f"仓库角色图片 URL 无效：{identifier}：{exc}"
+                    ) from exc
 
     def _compare(self, remote: dict[str, Any]) -> list[dict[str, Any]]:
         result = []
@@ -386,10 +416,16 @@ class CatalogSyncService:
             return result
         with self.storage._lock:
             db = self.storage._connection()
-            for kind, entities in (("character", remote["characters"]), ("pool", remote["pools"])):
+            for kind, entities in (
+                ("character", remote["characters"]),
+                ("pool", remote["pools"]),
+            ):
                 for identifier, source in entities.items():
                     source_json = catalog_source_json(source, kind)
-                    baseline = db.execute("SELECT source_json FROM catalog_sync_baselines WHERE entity_kind=? AND entity_id=?", (kind, identifier)).fetchone()
+                    baseline = db.execute(
+                        "SELECT source_json FROM catalog_sync_baselines WHERE entity_kind=? AND entity_id=?",
+                        (kind, identifier),
+                    ).fetchone()
                     if baseline and baseline["source_json"] == source_json:
                         continue
                     local, revision = self._local(db, kind, identifier)
@@ -399,58 +435,159 @@ class CatalogSyncService:
                         status = "conflict"
                     else:
                         old = json.loads(baseline["source_json"])
-                        status = "update" if self._core(old, kind) == self._core(local, kind) else "conflict"
+                        status = (
+                            "update"
+                            if self._core(old, kind) == self._core(local, kind)
+                            else "conflict"
+                        )
                     if local and local.get("deleted_at") is not None:
                         status = "blocked"
                     changes = self._diff(local, source, kind)
-                    result.append({"kind": kind, "id": identifier, "name": source["name"], "status": status,
-                                   "changes": changes, "revision": revision, "source": source})
-            for baseline in db.execute("SELECT entity_kind,entity_id,source_json FROM catalog_sync_baselines").fetchall():
+                    result.append(
+                        {
+                            "kind": kind,
+                            "id": identifier,
+                            "name": source["name"],
+                            "status": status,
+                            "changes": changes,
+                            "revision": revision,
+                            "source": source,
+                        }
+                    )
+            for baseline in db.execute(
+                "SELECT entity_kind,entity_id,source_json FROM catalog_sync_baselines"
+            ).fetchall():
                 kind, identifier = baseline["entity_kind"], baseline["entity_id"]
-                collection = remote["characters"] if kind == "character" else remote["pools"]
+                collection = (
+                    remote["characters"] if kind == "character" else remote["pools"]
+                )
                 if identifier not in collection:
                     old = json.loads(baseline["source_json"])
-                    result.append({"kind": kind, "id": identifier, "name": old.get("name", identifier),
-                                   "status": "removed", "changes": {"fields": {}, "note": "仓库已移除；本地保留"}})
+                    result.append(
+                        {
+                            "kind": kind,
+                            "id": identifier,
+                            "name": old.get("name", identifier),
+                            "status": "removed",
+                            "changes": {"fields": {}, "note": "仓库已移除；本地保留"},
+                        }
+                    )
         return result
 
     @staticmethod
-    def _local(db: Any, kind: str, identifier: str) -> tuple[dict[str, Any] | None, int]:
+    def _local(
+        db: Any, kind: str, identifier: str
+    ) -> tuple[dict[str, Any] | None, int]:
         if kind == "character":
-            row = db.execute("SELECT name,aliases_json,gender,enabled,revision,deleted_at,provenance_json FROM characters WHERE id=?", (identifier,)).fetchone()
+            row = db.execute(
+                "SELECT name,aliases_json,gender,enabled,revision,deleted_at,provenance_json FROM characters WHERE id=?",
+                (identifier,),
+            ).fetchone()
             if not row:
                 return None, 0
-            images = [value[0] for value in db.execute("SELECT media_hash FROM character_images WHERE character_id=?", (identifier,)).fetchall()]
-            return {"name": row["name"], "aliases": json.loads(row["aliases_json"]), "gender": row["gender"], "enabled": bool(row["enabled"]), "images": images, "provenance": json.loads(row["provenance_json"]), "deleted_at": row["deleted_at"]}, int(row["revision"])
-        row = db.execute("SELECT name,mode,revision,deleted_at FROM pools WHERE id=?", (identifier,)).fetchone()
+            images = [
+                value[0]
+                for value in db.execute(
+                    "SELECT media_hash FROM character_images WHERE character_id=?",
+                    (identifier,),
+                ).fetchall()
+            ]
+            return {
+                "name": row["name"],
+                "aliases": json.loads(row["aliases_json"]),
+                "gender": row["gender"],
+                "enabled": bool(row["enabled"]),
+                "images": images,
+                "provenance": json.loads(row["provenance_json"]),
+                "deleted_at": row["deleted_at"],
+            }, int(row["revision"])
+        row = db.execute(
+            "SELECT name,mode,revision,deleted_at FROM pools WHERE id=?", (identifier,)
+        ).fetchone()
         if not row:
             return None, 0
-        members = [value[0] for value in db.execute("SELECT character_id FROM pool_members WHERE pool_id=? ORDER BY character_id", (identifier,)).fetchall()]
-        return {"name": row["name"], "mode": row["mode"], "character_ids": members, "deleted_at": row["deleted_at"]}, int(row["revision"])
+        members = [
+            value[0]
+            for value in db.execute(
+                "SELECT character_id FROM pool_members WHERE pool_id=? ORDER BY character_id",
+                (identifier,),
+            ).fetchall()
+        ]
+        return {
+            "name": row["name"],
+            "mode": row["mode"],
+            "character_ids": members,
+            "deleted_at": row["deleted_at"],
+        }, int(row["revision"])
 
     @staticmethod
     def _core(item: dict[str, Any], kind: str) -> dict[str, Any]:
-        keys = ("name", "aliases", "gender", "enabled") if kind == "character" else ("name", "mode", "character_ids")
-        core = {key: sorted(item.get(key, [])) if key == "character_ids" else item.get(key) for key in keys}
+        keys = (
+            ("name", "aliases", "gender", "enabled")
+            if kind == "character"
+            else ("name", "mode", "character_ids")
+        )
+        core = {
+            key: sorted(item.get(key, [])) if key == "character_ids" else item.get(key)
+            for key in keys
+        }
         if kind == "character":
             provenance = item.get("provenance", item)
-            core["provenance"] = {key: provenance.get(key) for key in ("game", "gender_basis", "source_role_ids", "release_status", "material_status", "source_url", "verified_on") if key in item or key in provenance}
+            core["provenance"] = {
+                key: provenance.get(key)
+                for key in (
+                    "game",
+                    "gender_basis",
+                    "source_role_ids",
+                    "release_status",
+                    "material_status",
+                    "source_url",
+                    "verified_on",
+                )
+                if key in item or key in provenance
+            }
         return core
 
     @staticmethod
-    def _diff(local: dict[str, Any] | None, source: dict[str, Any], kind: str) -> dict[str, Any]:
+    def _diff(
+        local: dict[str, Any] | None, source: dict[str, Any], kind: str
+    ) -> dict[str, Any]:
         if kind == "character":
-            fields = {key: {"local": local.get(key) if local else None, "remote": source.get(key)}
-                      for key in ("name", "aliases", "gender", "enabled") if not local or local.get(key) != source.get(key)}
+            fields = {
+                key: {
+                    "local": local.get(key) if local else None,
+                    "remote": source.get(key),
+                }
+                for key in ("name", "aliases", "gender", "enabled")
+                if not local or local.get(key) != source.get(key)
+            }
             old_images = set(local.get("images", [])) if local else set()
-            return {"fields": fields, "images_to_add": sum(image["sha256"] not in old_images for image in source["images"])}
+            return {
+                "fields": fields,
+                "images_to_add": sum(
+                    image["sha256"] not in old_images for image in source["images"]
+                ),
+            }
         old = set(local.get("character_ids", [])) if local else set()
         new = set(source["character_ids"])
-        return {"fields": {key: {"local": local.get(key) if local else None, "remote": source.get(key)}
-                           for key in ("name", "mode") if not local or local.get(key) != source.get(key)},
-                "members_to_add": sorted(new - old), "members_to_remove": sorted(old - new)}
+        return {
+            "fields": {
+                key: {
+                    "local": local.get(key) if local else None,
+                    "remote": source.get(key),
+                }
+                for key in ("name", "mode")
+                if not local or local.get(key) != source.get(key)
+            },
+            "members_to_add": sorted(new - old),
+            "members_to_remove": sorted(old - new),
+        }
 
-    def _validate_dependencies(self, chosen: set[tuple[str, str]], options: dict[tuple[str, str], dict[str, Any]]) -> None:
+    def _validate_dependencies(
+        self,
+        chosen: set[tuple[str, str]],
+        options: dict[tuple[str, str], dict[str, Any]],
+    ) -> None:
         with self.storage._lock:
             db = self.storage._connection()
             for kind, identifier in chosen:
@@ -461,19 +598,36 @@ class CatalogSyncService:
                 incompatible = []
                 for character_id in pool["character_ids"]:
                     if ("character", character_id) in chosen:
-                        gender = options[("character", character_id)]["source"]["gender"]
-                        if gender not in ({"female", "unspecified"} if pool["mode"] == "wife" else {"male", "unspecified"}):
+                        gender = options[("character", character_id)]["source"][
+                            "gender"
+                        ]
+                        if gender not in (
+                            {"female", "unspecified"}
+                            if pool["mode"] == "wife"
+                            else {"male", "unspecified"}
+                        ):
                             incompatible.append(character_id)
                         continue
-                    row = db.execute("SELECT deleted_at,gender FROM characters WHERE id=?", (character_id,)).fetchone()
+                    row = db.execute(
+                        "SELECT deleted_at,gender FROM characters WHERE id=?",
+                        (character_id,),
+                    ).fetchone()
                     if row is None or row["deleted_at"] is not None:
                         missing.append(character_id)
-                    elif row["gender"] not in ({"female", "unspecified"} if pool["mode"] == "wife" else {"male", "unspecified"}):
+                    elif row["gender"] not in (
+                        {"female", "unspecified"}
+                        if pool["mode"] == "wife"
+                        else {"male", "unspecified"}
+                    ):
                         incompatible.append(character_id)
                 if missing:
-                    raise ValueError(f"角色池 {identifier} 缺少角色，请先勾选：{'、'.join(missing[:20])}")
+                    raise ValueError(
+                        f"角色池 {identifier} 缺少角色，请先勾选：{'、'.join(missing[:20])}"
+                    )
                 if incompatible:
-                    raise ValueError(f"角色池 {identifier} 包含性别不匹配的角色：{'、'.join(incompatible[:20])}")
+                    raise ValueError(
+                        f"角色池 {identifier} 包含性别不匹配的角色：{'、'.join(incompatible[:20])}"
+                    )
 
     def _missing_images(self, specs):
         with self.storage._lock:
@@ -542,38 +696,99 @@ class CatalogSyncService:
             await asyncio.gather(*(one(digest, spec) for digest, spec in specs.items()))
         return results
 
-    def _apply_character(self, db: Any, item: dict[str, Any], images: dict[str, tuple[dict[str, Any], bytes, str, str]], now: int) -> None:
+    def _apply_character(
+        self,
+        db: Any,
+        item: dict[str, Any],
+        images: dict[str, tuple[dict[str, Any], bytes, str, str]],
+        now: int,
+    ) -> None:
         source = item["source"]
-        old = db.execute("SELECT provenance_json FROM characters WHERE id=?", (item["id"],)).fetchone()
+        old = db.execute(
+            "SELECT provenance_json FROM characters WHERE id=?", (item["id"],)
+        ).fetchone()
         provenance = json.loads(old["provenance_json"]) if old else {}
-        provenance.update({key: source[key] for key in ("game", "gender_basis", "source_role_ids", "release_status", "material_status", "source_url", "verified_on") if key in source})
-        db.execute("""INSERT INTO characters(id,name,aliases_json,gender,enabled,revision,provenance_json)
+        provenance.update(
+            {
+                key: source[key]
+                for key in (
+                    "game",
+                    "gender_basis",
+                    "source_role_ids",
+                    "release_status",
+                    "material_status",
+                    "source_url",
+                    "verified_on",
+                )
+                if key in source
+            }
+        )
+        db.execute(
+            """INSERT INTO characters(id,name,aliases_json,gender,enabled,revision,provenance_json)
                       VALUES(?,?,?,?,?,1,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,aliases_json=excluded.aliases_json,
                       gender=excluded.gender,enabled=excluded.enabled,revision=characters.revision+1,provenance_json=excluded.provenance_json""",
-                   (item["id"], source["name"], json.dumps(source.get("aliases", []), ensure_ascii=False), source["gender"], int(source["enabled"]), json.dumps(provenance, ensure_ascii=False)))
-        existing = {row[0] for row in db.execute("SELECT media_hash FROM character_images WHERE character_id=?", (item["id"],)).fetchall()}
-        ordinal = int(db.execute("SELECT COALESCE(MAX(ordinal),-1)+1 FROM character_images WHERE character_id=?", (item["id"],)).fetchone()[0])
+            (
+                item["id"],
+                source["name"],
+                json.dumps(source.get("aliases", []), ensure_ascii=False),
+                source["gender"],
+                int(source["enabled"]),
+                json.dumps(provenance, ensure_ascii=False),
+            ),
+        )
+        existing = {
+            row[0]
+            for row in db.execute(
+                "SELECT media_hash FROM character_images WHERE character_id=?",
+                (item["id"],),
+            ).fetchall()
+        }
+        ordinal = int(
+            db.execute(
+                "SELECT COALESCE(MAX(ordinal),-1)+1 FROM character_images WHERE character_id=?",
+                (item["id"],),
+            ).fetchone()[0]
+        )
         for image in source["images"]:
             digest = image["sha256"]
             if digest in images:
                 spec, payload, extension, mime = images[digest]
                 relative = Path("sha256") / f"{digest}.{extension}"
                 _atomic_content_write(self.media_root / relative, payload)
-                db.execute("""INSERT INTO media_blobs(hash,relative_path,mime_type,byte_size,width,height,source_url,verified_at) VALUES(?,?,?,?,?,?,?,?)
+                db.execute(
+                    """INSERT INTO media_blobs(hash,relative_path,mime_type,byte_size,width,height,source_url,verified_at) VALUES(?,?,?,?,?,?,?,?)
                               ON CONFLICT(hash) DO UPDATE SET relative_path=excluded.relative_path,mime_type=excluded.mime_type,
                               byte_size=excluded.byte_size,width=excluded.width,height=excluded.height,
                               source_url=excluded.source_url,verified_at=excluded.verified_at""",
-                           (digest, relative.as_posix(), mime, len(payload), spec["width"], spec["height"], spec["source_url"], now))
+                    (
+                        digest,
+                        relative.as_posix(),
+                        mime,
+                        len(payload),
+                        spec["width"],
+                        spec["height"],
+                        spec["source_url"],
+                        now,
+                    ),
+                )
             if digest not in existing:
-                db.execute("INSERT INTO character_images(character_id,media_hash,ordinal) VALUES(?,?,?)", (item["id"], digest, ordinal))
+                db.execute(
+                    "INSERT INTO character_images(character_id,media_hash,ordinal) VALUES(?,?,?)",
+                    (item["id"], digest, ordinal),
+                )
                 existing.add(digest)
                 ordinal += 1
 
     @staticmethod
     def _apply_pool(db: Any, item: dict[str, Any]) -> None:
         source = item["source"]
-        db.execute("""INSERT INTO pools(id,name,mode,builtin,revision) VALUES(?,?,?,1,1)
+        db.execute(
+            """INSERT INTO pools(id,name,mode,builtin,revision) VALUES(?,?,?,1,1)
                       ON CONFLICT(id) DO UPDATE SET name=excluded.name,mode=excluded.mode,revision=pools.revision+1""",
-                   (item["id"], source["name"], source["mode"]))
+            (item["id"], source["name"], source["mode"]),
+        )
         db.execute("DELETE FROM pool_members WHERE pool_id=?", (item["id"],))
-        db.executemany("INSERT INTO pool_members(pool_id,character_id) VALUES(?,?)", [(item["id"], identifier) for identifier in source["character_ids"]])
+        db.executemany(
+            "INSERT INTO pool_members(pool_id,character_id) VALUES(?,?)",
+            [(item["id"], identifier) for identifier in source["character_ids"]],
+        )

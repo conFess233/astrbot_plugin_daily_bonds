@@ -179,7 +179,10 @@ class RetentionService:
             return deleted
 
     def _remove_expired_job_artifacts(
-        self, expired_jobs: list[tuple[str, str]], tracked_job_ids: set[str], orphan_cutoff: int
+        self,
+        expired_jobs: list[tuple[str, str]],
+        tracked_job_ids: set[str],
+        orphan_cutoff: int,
     ) -> int:
         removed = 0
         roots = {
@@ -199,23 +202,37 @@ class RetentionService:
 
         # Recover directories left behind if the process stopped before recording or
         # removing a job. Age them conservatively so a just-created preview survives.
-        for root in (self.data_root / "staging" / "imports", self.data_root / "staging" / "maintenance", self.data_root / "jobs"):
+        for root in (
+            self.data_root / "staging" / "imports",
+            self.data_root / "staging" / "maintenance",
+            self.data_root / "jobs",
+        ):
             if not root.is_dir() or root.is_symlink():
                 continue
             root_resolved = root.resolve()
             for child in root.iterdir():
-                if child.name in known.get(root, set()) or child.name in tracked_job_ids or child.is_symlink():
+                if (
+                    child.name in known.get(root, set())
+                    or child.name in tracked_job_ids
+                    or child.is_symlink()
+                ):
                     continue
                 if child.is_dir():
                     try:
-                        if int(child.stat().st_mtime) <= orphan_cutoff and root_resolved in child.resolve().parents:
+                        if (
+                            int(child.stat().st_mtime) <= orphan_cutoff
+                            and root_resolved in child.resolve().parents
+                        ):
                             shutil.rmtree(child)
                             removed += 1
                     except OSError:
                         continue
                 elif root.name == "jobs" and child.is_file():
                     try:
-                        if int(child.stat().st_mtime) <= orphan_cutoff and root_resolved == child.resolve().parent:
+                        if (
+                            int(child.stat().st_mtime) <= orphan_cutoff
+                            and root_resolved == child.resolve().parent
+                        ):
                             child.unlink()
                             removed += 1
                     except OSError:
@@ -224,7 +241,12 @@ class RetentionService:
 
     @staticmethod
     def _remove_child_directory(root: Path, name: str) -> bool:
-        if not name or Path(name).name != name or name in {".", ".."} or root.is_symlink():
+        if (
+            not name
+            or Path(name).name != name
+            or name in {".", ".."}
+            or root.is_symlink()
+        ):
             return False
         child = root / name
         if not child.is_dir() or child.is_symlink():
@@ -238,7 +260,9 @@ class RetentionService:
             return False
 
     @staticmethod
-    def _delete(db: sqlite3.Connection, sql: str, parameters: tuple[Any, ...] = ()) -> int:
+    def _delete(
+        db: sqlite3.Connection, sql: str, parameters: tuple[Any, ...] = ()
+    ) -> int:
         return int(db.execute(sql, parameters).rowcount)
 
     def _remove_media_files(self, relative_paths: list[str]) -> None:

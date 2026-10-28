@@ -386,30 +386,55 @@ class CatalogImportService:
                 ),
             )
 
-    def commit(self, payload: dict[str, Any], *, actor: str, now: int) -> dict[str, Any]:
+    def commit(
+        self, payload: dict[str, Any], *, actor: str, now: int
+    ) -> dict[str, Any]:
         job_id = self._text(payload.get("job_id"), "job_id", 64)
         request_id = self._text(payload.get("request_id"), "request_id", 128)
         conflicts = payload.get("conflicts", {})
-        if not isinstance(conflicts, dict) or len(conflicts) > 5000 or any(value not in {"skip", "update"} for value in conflicts.values()):
+        if (
+            not isinstance(conflicts, dict)
+            or len(conflicts) > 5000
+            or any(value not in {"skip", "update"} for value in conflicts.values())
+        ):
             raise ValueError("conflicts 必须是角ID skip/update 的映射")
         image_strategy = payload.get("image_strategy", "append")
         if image_strategy not in {"append", "replace"}:
             raise ValueError("image_strategy 只能append replace")
-        digest = hashlib.sha256(json.dumps({"job_id": job_id, "conflicts": conflicts, "image_strategy": image_strategy},
-                                           sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+        digest = hashlib.sha256(
+            json.dumps(
+                {
+                    "job_id": job_id,
+                    "conflicts": conflicts,
+                    "image_strategy": image_strategy,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=False,
+            ).encode()
+        ).hexdigest()
         with self.storage.transaction() as db:
-            previous = db.execute("SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='imports/commit' AND request_id=?", (actor, request_id)).fetchone()
+            previous = db.execute(
+                "SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='imports/commit' AND request_id=?",
+                (actor, request_id),
+            ).fetchone()
             if previous:
                 if previous["request_hash"] != digest:
                     raise StorageError("request_id 已用于不同导入提交")
                 return json.loads(previous["response_json"])
-            job = db.execute("SELECT * FROM maintenance_jobs WHERE id=? AND kind='import' AND actor=?", (job_id, actor)).fetchone()
+            job = db.execute(
+                "SELECT * FROM maintenance_jobs WHERE id=? AND kind='import' AND actor=?",
+                (job_id, actor),
+            ).fetchone()
             if job is None or int(job["expires_at"]) < now:
                 raise StorageError("导入作业不存在或已过期")
             if job["state"] not in {"ready", "committing"}:
                 raise StorageError("导入作业已经终止提交，需重新预检")
             if job["state"] == "ready":
-                db.execute("UPDATE maintenance_jobs SET state='committing' WHERE id=? AND state='ready'", (job_id,))
+                db.execute(
+                    "UPDATE maintenance_jobs SET state='committing' WHERE id=? AND state='ready'",
+                    (job_id,),
+                )
         stage = self.staging_root / job_id
         plan_path = stage / "plan.json"
         try:
@@ -426,25 +451,50 @@ class CatalogImportService:
             if pool.get("status") in {"invalid", "blocked_conflict"}:
                 continue
             with self.storage.transaction() as db:
-                existing = db.execute("SELECT deleted_at,mode FROM pools WHERE id=?", (pool["id"],)).fetchone()
+                existing = db.execute(
+                    "SELECT deleted_at,mode FROM pools WHERE id=?", (pool["id"],)
+                ).fetchone()
                 if existing is None:
-                    db.execute("INSERT INTO pools(id,name,mode,builtin,revision) VALUES(?,?,?,0,1)", (pool["id"], pool["name"], pool["mode"]))
+                    db.execute(
+                        "INSERT INTO pools(id,name,mode,builtin,revision) VALUES(?,?,?,0,1)",
+                        (pool["id"], pool["name"], pool["mode"]),
+                    )
                     results[f"pool:{pool['id']}"] = {"status": "created"}
                 else:
-                    results.setdefault(f"pool:{pool['id']}", {"status": "kept_existing"})
+                    results.setdefault(
+                        f"pool:{pool['id']}", {"status": "kept_existing"}
+                    )
                 self._save_report(db, job_id, report, results)
 
-        pool_ids = {pool["id"] for pool in plan["pools"] if pool.get("status") not in {"invalid", "blocked_conflict"}}
+        pool_ids = {
+            pool["id"]
+            for pool in plan["pools"]
+            if pool.get("status") not in {"invalid", "blocked_conflict"}
+        }
         for item in plan["characters"]:
             character_id = item.get("id")
             if not item.get("valid"):
-                results[f"character:{item.get('_index')}"] = {"id": character_id, "status": "invalid", "errors": item.get("errors", [])}
+                results[f"character:{item.get('_index')}"] = {
+                    "id": character_id,
+                    "status": "invalid",
+                    "errors": item.get("errors", []),
+                }
                 self._write_report(job_id, report, results)
                 continue
             key = f"character:{character_id}"
-            if key in results and results[key].get("status") in {"created", "updated", "skipped", "revision_conflict", "blocked_deleted_id"}:
+            if key in results and results[key].get("status") in {
+                "created",
+                "updated",
+                "skipped",
+                "revision_conflict",
+                "blocked_deleted_id",
+            }:
                 continue
-            decision = conflicts.get(character_id, "skip") if item.get("status_before_commit") == "conflict" else "update"
+            decision = (
+                conflicts.get(character_id, "skip")
+                if item.get("status_before_commit") == "conflict"
+                else "update"
+            )
             if item.get("status_before_commit") == "blocked_deleted_id":
                 results[key] = {"id": character_id, "status": "blocked_deleted_id"}
                 self._write_report(job_id, report, results)
@@ -454,98 +504,232 @@ class CatalogImportService:
                 self._write_report(job_id, report, results)
                 continue
             try:
-                result = self._commit_character(job_id, item, pool_ids, image_strategy, actor, now, report, results)
+                result = self._commit_character(
+                    job_id, item, pool_ids, image_strategy, actor, now, report, results
+                )
                 results[key] = {"id": character_id, **result}
             except StorageError as exc:
-                results[key] = {"id": character_id, "status": "revision_conflict", "message": str(exc)}
+                results[key] = {
+                    "id": character_id,
+                    "status": "revision_conflict",
+                    "message": str(exc),
+                }
                 self._write_report(job_id, report, results)
 
         summary = self._result_summary(plan, results)
         response = {"job_id": job_id, **summary, "results": results}
         with self.storage.transaction() as db:
-            db.execute("UPDATE maintenance_jobs SET state='completed',report_json=? WHERE id=?", (json.dumps({"summary": summary, "items": self._public_items(plan), "results": results}, ensure_ascii=False), job_id))
-            db.execute("INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
-                       (actor, "imports/commit", request_id, digest, json.dumps(response, ensure_ascii=False), now))
+            db.execute(
+                "UPDATE maintenance_jobs SET state='completed',report_json=? WHERE id=?",
+                (
+                    json.dumps(
+                        {
+                            "summary": summary,
+                            "items": self._public_items(plan),
+                            "results": results,
+                        },
+                        ensure_ascii=False,
+                    ),
+                    job_id,
+                ),
+            )
+            db.execute(
+                "INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
+                (
+                    actor,
+                    "imports/commit",
+                    request_id,
+                    digest,
+                    json.dumps(response, ensure_ascii=False),
+                    now,
+                ),
+            )
         return response
 
     def get_job(self, job_id: str, *, actor: str) -> dict[str, Any] | None:
         with self.storage._lock:
-            row = self.storage._connection().execute("SELECT id,kind,state,report_json,created_at,expires_at FROM maintenance_jobs WHERE id=? AND actor=?", (job_id, actor)).fetchone()
+            row = (
+                self.storage._connection()
+                .execute(
+                    "SELECT id,kind,state,report_json,created_at,expires_at FROM maintenance_jobs WHERE id=? AND actor=?",
+                    (job_id, actor),
+                )
+                .fetchone()
+            )
         if row is None:
             return None
         data = dict(row)
         data["report"] = json.loads(data.pop("report_json"))
         return data
 
-    def _commit_character(self, job_id: str, item: dict[str, Any], valid_pool_ids: set[str], image_strategy: str,
-                          actor: str, now: int, report: dict[str, Any], results: dict[str, Any]) -> dict[str, Any]:
+    def _commit_character(
+        self,
+        job_id: str,
+        item: dict[str, Any],
+        valid_pool_ids: set[str],
+        image_strategy: str,
+        actor: str,
+        now: int,
+        report: dict[str, Any],
+        results: dict[str, Any],
+    ) -> dict[str, Any]:
         character_id = item["id"]
         staged_images = []
         for image in item["images"]:
             ext = image["extension"]
             path = self.staging_root / job_id / "images" / f"{image['sha256']}.{ext}"
-            if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != image["sha256"]:
+            if (
+                not path.is_file()
+                or hashlib.sha256(path.read_bytes()).hexdigest() != image["sha256"]
+            ):
                 raise StorageError("角色素材暂存文件缺失或哈希不匹配")
             staged_images.append((image, path))
         with self.storage.transaction() as db:
-            existing = db.execute("SELECT revision,deleted_at,provenance_json FROM characters WHERE id=?", (character_id,)).fetchone()
+            existing = db.execute(
+                "SELECT revision,deleted_at,provenance_json FROM characters WHERE id=?",
+                (character_id,),
+            ).fetchone()
             expected = int(item.get("existing_revision", 0))
             current = int(existing["revision"]) if existing else 0
             if current != expected:
-                raise StorageError(f"角色 {character_id} 版本已变化：预检 {expected}，当{current}")
+                raise StorageError(
+                    f"角色 {character_id} 版本已变化：预检 {expected}，当{current}"
+                )
             if existing and existing["deleted_at"] is not None:
                 raise StorageError(f"角色 {character_id} 已软删除")
             image_hashes = [image["sha256"] for image, _path in staged_images]
             if existing and image_strategy == "append":
-                old_hashes = [row[0] for row in db.execute("SELECT media_hash FROM character_images WHERE character_id=? ORDER BY ordinal,media_hash", (character_id,)).fetchall()]
+                old_hashes = [
+                    row[0]
+                    for row in db.execute(
+                        "SELECT media_hash FROM character_images WHERE character_id=? ORDER BY ordinal,media_hash",
+                        (character_id,),
+                    ).fetchall()
+                ]
                 image_hashes = list(dict.fromkeys([*old_hashes, *image_hashes]))
             provenance = json.loads(existing["provenance_json"]) if existing else {}
             provenance.update(item.get("provenance", {}))
-            provenance["import_pack"] = {"pack_id": item.get("_pack_id"), "pack_version": item.get("_pack_version")}
-            provenance["import_image_sources"] = [{key: image[key] for key in ("sha256", "source_url", "path") if key in image} for image in item["images"]]
+            provenance["import_pack"] = {
+                "pack_id": item.get("_pack_id"),
+                "pack_version": item.get("_pack_version"),
+            }
+            provenance["import_image_sources"] = [
+                {
+                    key: image[key]
+                    for key in ("sha256", "source_url", "path")
+                    if key in image
+                }
+                for image in item["images"]
+            ]
             revision = current + 1
-            db.execute("""INSERT INTO characters(id,name,aliases_json,gender,enabled,revision,provenance_json) VALUES(?,?,?,?,?,?,?)
+            db.execute(
+                """INSERT INTO characters(id,name,aliases_json,gender,enabled,revision,provenance_json) VALUES(?,?,?,?,?,?,?)
                        ON CONFLICT(id) DO UPDATE SET name=excluded.name,aliases_json=excluded.aliases_json,gender=excluded.gender,
                        enabled=excluded.enabled,revision=excluded.revision,provenance_json=excluded.provenance_json""",
-                       (character_id, item["name"], json.dumps(item["aliases"], ensure_ascii=False), item["gender"], int(item["enabled"]), revision, json.dumps(provenance, ensure_ascii=False)))
+                (
+                    character_id,
+                    item["name"],
+                    json.dumps(item["aliases"], ensure_ascii=False),
+                    item["gender"],
+                    int(item["enabled"]),
+                    revision,
+                    json.dumps(provenance, ensure_ascii=False),
+                ),
+            )
             self.media_root.mkdir(parents=True, exist_ok=True)
             for image, staged in staged_images:
                 extension = image["extension"]
                 relative = Path("sha256") / f"{image['sha256']}.{extension}"
                 target = self.media_root / relative
-                if not target.is_file() or hashlib.sha256(target.read_bytes()).hexdigest() != image["sha256"]:
+                if (
+                    not target.is_file()
+                    or hashlib.sha256(target.read_bytes()).hexdigest()
+                    != image["sha256"]
+                ):
                     _atomic_content_write(target, staged.read_bytes())
-                db.execute("INSERT OR IGNORE INTO media_blobs(hash,relative_path,mime_type,byte_size,width,height,source_url,verified_at) VALUES(?,?,?,?,?,?,?,?)",
-                           (image["sha256"], relative.as_posix(), image["mime_type"], image["bytes"], image["width"], image["height"], image.get("source_url"), now))
-            db.execute("DELETE FROM character_images WHERE character_id=?", (character_id,))
-            db.executemany("INSERT INTO character_images(character_id,media_hash,ordinal) VALUES(?,?,?)", [(character_id, digest, index) for index, digest in enumerate(image_hashes)])
+                db.execute(
+                    "INSERT OR IGNORE INTO media_blobs(hash,relative_path,mime_type,byte_size,width,height,source_url,verified_at) VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        image["sha256"],
+                        relative.as_posix(),
+                        image["mime_type"],
+                        image["bytes"],
+                        image["width"],
+                        image["height"],
+                        image.get("source_url"),
+                        now,
+                    ),
+                )
+            db.execute(
+                "DELETE FROM character_images WHERE character_id=?", (character_id,)
+            )
+            db.executemany(
+                "INSERT INTO character_images(character_id,media_hash,ordinal) VALUES(?,?,?)",
+                [
+                    (character_id, digest, index)
+                    for index, digest in enumerate(image_hashes)
+                ],
+            )
             joined_pools, unresolved, wanted_pool_ids = [], [], set()
             for pool_id in item["pool_ids"]:
-                row = db.execute("SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)).fetchone()
-                mode = "wife" if item["gender"] == "female" else "husband" if item["gender"] == "male" else None
-                if pool_id in valid_pool_ids or (row and row["deleted_at"] is None and (mode is None or row["mode"] == mode)):
-                    if row and row["deleted_at"] is None and (mode is None or row["mode"] == mode):
-                        db.execute("INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)", (pool_id, character_id))
+                row = db.execute(
+                    "SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)
+                ).fetchone()
+                mode = (
+                    "wife"
+                    if item["gender"] == "female"
+                    else "husband"
+                    if item["gender"] == "male"
+                    else None
+                )
+                if pool_id in valid_pool_ids or (
+                    row
+                    and row["deleted_at"] is None
+                    and (mode is None or row["mode"] == mode)
+                ):
+                    if (
+                        row
+                        and row["deleted_at"] is None
+                        and (mode is None or row["mode"] == mode)
+                    ):
+                        db.execute(
+                            "INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)",
+                            (pool_id, character_id),
+                        )
                         joined_pools.append(pool_id)
                         wanted_pool_ids.add(pool_id)
                 else:
                     unresolved.append(pool_id)
             removed_pools = []
-            for row in db.execute("SELECT pool_id FROM pool_members WHERE character_id=?", (character_id,)).fetchall():
+            for row in db.execute(
+                "SELECT pool_id FROM pool_members WHERE character_id=?", (character_id,)
+            ).fetchall():
                 pool_id = str(row["pool_id"])
                 if pool_id not in wanted_pool_ids:
-                    db.execute("DELETE FROM pool_members WHERE pool_id=? AND character_id=?", (pool_id, character_id))
+                    db.execute(
+                        "DELETE FROM pool_members WHERE pool_id=? AND character_id=?",
+                        (pool_id, character_id),
+                    )
                     removed_pools.append(pool_id)
-            result = {"status": "updated" if existing else "created", "revision": revision,
-                      "images": len(image_hashes), "joined_pools": joined_pools, "removed_pools": removed_pools,
-                      "unresolved_pool_ids": unresolved}
+            result = {
+                "status": "updated" if existing else "created",
+                "revision": revision,
+                "images": len(image_hashes),
+                "joined_pools": joined_pools,
+                "removed_pools": removed_pools,
+                "unresolved_pool_ids": unresolved,
+            }
             results[f"character:{character_id}"] = {"id": character_id, **result}
             self._save_report(db, job_id, report, results)
             return result
 
-    def _read_package(self, source: Path, max_bytes: int, max_entries: int, max_expanded: int):
+    def _read_package(
+        self, source: Path, max_bytes: int, max_entries: int, max_expanded: int
+    ):
         with source.open("rb") as stream:
-            is_zip = source.stat().st_size >= 4 and stream.read(4).startswith(b"PK\x03\x04")
+            is_zip = source.stat().st_size >= 4 and stream.read(4).startswith(
+                b"PK\x03\x04"
+            )
         if is_zip:
             _preflight_zip_count(source, max_entries)
             archive = zipfile.ZipFile(source)
@@ -605,11 +789,25 @@ class CatalogImportService:
                     raise ValueError(f"JSON 字段重复：{key}")
                 result[key] = value
             return result
-        return json.loads(raw.decode("utf-8-sig"), object_pairs_hook=object_pairs, parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"非法 JSON 常量：{value}")))
+
+        return json.loads(
+            raw.decode("utf-8-sig"),
+            object_pairs_hook=object_pairs,
+            parse_constant=lambda value: (_ for _ in ()).throw(
+                ValueError(f"非法 JSON 常量：{value}")
+            ),
+        )
 
     @staticmethod
     def _safe_zip_name(value: str) -> str:
-        if not isinstance(value, str) or not value or "\x00" in value or "\\" in value or value.startswith("/") or ":" in value:
+        if (
+            not isinstance(value, str)
+            or not value
+            or "\x00" in value
+            or "\\" in value
+            or value.startswith("/")
+            or ":" in value
+        ):
             raise ValueError("ZIP 包含绝对路径或非法路径")
         raw_parts = value.split("/")
         allowed_trailing_slash = raw_parts[-1] == ""
@@ -623,12 +821,18 @@ class CatalogImportService:
         if not isinstance(value, str):
             raise ValueError("ZIP 图片必须给出 images/ 下的相对路径")
         name = CatalogImportService._safe_zip_name(value)
-        if not name.startswith("images/") or name not in members or members[name].is_dir():
+        if (
+            not name.startswith("images/")
+            or name not in members
+            or members[name].is_dir()
+        ):
             raise ValueError("清单引用的图片路径不存在或不images/ 下")
         return name
 
     @classmethod
-    def _validate_pools(cls, raw: list[Any]) -> tuple[list[dict[str, Any]], set[str], dict[str, str]]:
+    def _validate_pools(
+        cls, raw: list[Any]
+    ) -> tuple[list[dict[str, Any]], set[str], dict[str, str]]:
         rows, ids, errors = [], set(), {}
         for index, pool in enumerate(raw):
             try:
@@ -641,11 +845,28 @@ class CatalogImportService:
                 mode = pool.get("mode")
                 if mode not in _MODES:
                     raise ValueError("角色mode 必须wife husband")
-                rows.append({"id": pool_id, "name": cls._text(pool.get("name"), "pool name", 120), "mode": mode, "_index": index})
+                rows.append(
+                    {
+                        "id": pool_id,
+                        "name": cls._text(pool.get("name"), "pool name", 120),
+                        "mode": mode,
+                        "_index": index,
+                    }
+                )
             except (ValueError, TypeError) as exc:
-                key = str(pool.get("id", index)) if isinstance(pool, dict) else str(index)
+                key = (
+                    str(pool.get("id", index)) if isinstance(pool, dict) else str(index)
+                )
                 errors[key] = str(exc)
-                rows.append({"id": key, "name": "", "mode": "wife", "_index": index, "status": "invalid"})
+                rows.append(
+                    {
+                        "id": key,
+                        "name": "",
+                        "mode": "wife",
+                        "_index": index,
+                        "status": "invalid",
+                    }
+                )
         return rows, ids, errors
 
     @classmethod
@@ -671,19 +892,41 @@ class CatalogImportService:
         if enabled and not images:
             raise ValueError("启用角色必须含图片")
         for image in images:
-            has_url = isinstance(image.get("source_url"), str) and bool(image["source_url"])
+            has_url = isinstance(image.get("source_url"), str) and bool(
+                image["source_url"]
+            )
             has_path = isinstance(image.get("path", image.get("relative_path")), str)
             if has_url == has_path:
                 raise ValueError("每张图片必须恰好提供 source_url ZIP 相对 path")
-        provenance = {key: value for key, value in raw.items() if key not in {"id", "name", "aliases", "gender", "enabled", "pool_ids", "images"}}
+        provenance = {
+            key: value
+            for key, value in raw.items()
+            if key
+            not in {"id", "name", "aliases", "gender", "enabled", "pool_ids", "images"}
+        }
         if len(json.dumps(provenance, ensure_ascii=False, allow_nan=False)) > 20_000:
             raise ValueError("角色来源信息超过大小限制")
-        return {"id": character_id, "name": cls._text(raw.get("name"), "角色名称", 120), "aliases": aliases,
-                "gender": gender, "enabled": enabled, "pool_ids": pool_ids, "provenance": provenance, "_images_raw": images}
+        return {
+            "id": character_id,
+            "name": cls._text(raw.get("name"), "角色名称", 120),
+            "aliases": aliases,
+            "gender": gender,
+            "enabled": enabled,
+            "pool_ids": pool_ids,
+            "provenance": provenance,
+            "_images_raw": images,
+        }
 
     def _pool_exists(self, pool_id: str) -> bool:
         with self.storage._lock:
-            return self.storage._connection().execute("SELECT 1 FROM pools WHERE id=? AND deleted_at IS NULL", (pool_id,)).fetchone() is not None
+            return (
+                self.storage._connection()
+                .execute(
+                    "SELECT 1 FROM pools WHERE id=? AND deleted_at IS NULL", (pool_id,)
+                )
+                .fetchone()
+                is not None
+            )
 
     @staticmethod
     def _duplicate_character_ids(characters: list[Any]) -> set[str]:
@@ -710,7 +953,11 @@ class CatalogImportService:
 
     @staticmethod
     def _text(value: Any, label: str, maximum: int) -> str:
-        if not isinstance(value, str) or not value.strip() or len(value.strip()) > maximum:
+        if (
+            not isinstance(value, str)
+            or not value.strip()
+            or len(value.strip()) > maximum
+        ):
             raise ValueError(f"{label}不能为空且最{maximum} 个字符")
         return value.strip()
 
@@ -718,29 +965,65 @@ class CatalogImportService:
     def _summary(plan: dict[str, Any]) -> dict[str, int]:
         chars = plan["characters"]
         pools = plan["pools"]
-        return {"characters_total": len(chars), "characters_valid": sum(bool(item.get("valid")) for item in chars),
-                "characters_invalid": sum(not item.get("valid") for item in chars),
-                "characters_conflict": sum(item.get("status_before_commit") == "conflict" for item in chars),
-                "pools_total": len(pools), "pools_invalid": sum(item.get("status") == "invalid" for item in pools),
-                "images_staged": int(plan["image_count"])}
+        return {
+            "characters_total": len(chars),
+            "characters_valid": sum(bool(item.get("valid")) for item in chars),
+            "characters_invalid": sum(not item.get("valid") for item in chars),
+            "characters_conflict": sum(
+                item.get("status_before_commit") == "conflict" for item in chars
+            ),
+            "pools_total": len(pools),
+            "pools_invalid": sum(item.get("status") == "invalid" for item in pools),
+            "images_staged": int(plan["image_count"]),
+        }
 
     @staticmethod
     def _public_items(plan: dict[str, Any]) -> dict[str, Any]:
-        return {"pools": [{key: value for key, value in pool.items() if not key.startswith("_")} for pool in plan["pools"]],
-                "characters": [{key: value for key, value in item.items() if not key.startswith("_") or key == "status_before_commit"} for item in plan["characters"]]}
+        return {
+            "pools": [
+                {key: value for key, value in pool.items() if not key.startswith("_")}
+                for pool in plan["pools"]
+            ],
+            "characters": [
+                {
+                    key: value
+                    for key, value in item.items()
+                    if not key.startswith("_") or key == "status_before_commit"
+                }
+                for item in plan["characters"]
+            ],
+        }
 
     @staticmethod
-    def _result_summary(plan: dict[str, Any], results: dict[str, Any]) -> dict[str, int]:
+    def _result_summary(
+        plan: dict[str, Any], results: dict[str, Any]
+    ) -> dict[str, int]:
         statuses = [item.get("status") for item in results.values()]
-        return {"created": statuses.count("created"), "updated": statuses.count("updated"),
-                "skipped": statuses.count("skipped"), "conflicts": statuses.count("revision_conflict") + statuses.count("blocked_deleted_id"),
-                "invalid": statuses.count("invalid"), "pools_created": sum(key.startswith("pool:") and value.get("status") == "created" for key, value in results.items())}
+        return {
+            "created": statuses.count("created"),
+            "updated": statuses.count("updated"),
+            "skipped": statuses.count("skipped"),
+            "conflicts": statuses.count("revision_conflict")
+            + statuses.count("blocked_deleted_id"),
+            "invalid": statuses.count("invalid"),
+            "pools_created": sum(
+                key.startswith("pool:") and value.get("status") == "created"
+                for key, value in results.items()
+            ),
+        }
 
-    def _save_report(self, db: Any, job_id: str, report: dict[str, Any], results: dict[str, Any]) -> None:
+    def _save_report(
+        self, db: Any, job_id: str, report: dict[str, Any], results: dict[str, Any]
+    ) -> None:
         report["results"] = results
-        db.execute("UPDATE maintenance_jobs SET report_json=? WHERE id=?", (json.dumps(report, ensure_ascii=False), job_id))
+        db.execute(
+            "UPDATE maintenance_jobs SET report_json=? WHERE id=?",
+            (json.dumps(report, ensure_ascii=False), job_id),
+        )
 
-    def _write_report(self, job_id: str, report: dict[str, Any], results: dict[str, Any]) -> None:
+    def _write_report(
+        self, job_id: str, report: dict[str, Any], results: dict[str, Any]
+    ) -> None:
         with self.storage.transaction() as db:
             self._save_report(db, job_id, report, results)
 
@@ -755,13 +1038,23 @@ class _SafeImageFetcher:
         try:
             import aiohttp
         except ModuleNotFoundError as exc:
-            raise ValueError("URL 图片导入需要安requirements.txt 中声明的 aiohttp") from exc
+            raise ValueError(
+                "URL 图片导入需要安requirements.txt 中声明的 aiohttp"
+            ) from exc
         if self.session is None:
-            connector = aiohttp.TCPConnector(resolver=_PublicResolver(), use_dns_cache=False, limit=4)
-            self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.timeout), connector=connector, trust_env=False)
+            connector = aiohttp.TCPConnector(
+                resolver=_PublicResolver(), use_dns_cache=False, limit=4
+            )
+            self.session = aiohttp.ClientSession(
+                timeout=aiohttp.ClientTimeout(total=self.timeout),
+                connector=connector,
+                trust_env=False,
+            )
         current = _validate_public_url(url)
         for _attempt in range(6):
-            async with self.session.get(current, allow_redirects=False, headers={"Accept": "image/*"}) as response:
+            async with self.session.get(
+                current, allow_redirects=False, headers={"Accept": "image/*"}
+            ) as response:
                 if response.status in _REDIRECTS:
                     location = response.headers.get("Location")
                     if not location:
@@ -796,7 +1089,13 @@ def _validate_public_url(url: str) -> str:
     if not isinstance(url, str) or len(url) > 2048:
         raise ValueError("素材 URL 无效或过长")
     parts = urlsplit(url)
-    if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password or parts.fragment:
+    if (
+        parts.scheme not in {"http", "https"}
+        or not parts.hostname
+        or parts.username
+        or parts.password
+        or parts.fragment
+    ):
         raise ValueError("素材 URL 只允许无凭据HTTP/HTTPS 地址")
     try:
         port = parts.port
@@ -830,16 +1129,36 @@ def _preflight_zip_count(source: Path, max_entries: int) -> None:
     offset = tail.rfind(b"PK\x05\x06")
     if offset < 0 or len(tail) - offset < 22:
         raise ValueError("ZIP end-of-directory record is missing or invalid")
-    record = tail[offset:offset + 22]
-    _signature, disk, central_disk, disk_entries, total_entries, central_size, central_offset, comment_size = struct.unpack("<4s4H2LH", record)
-    if len(tail) - offset != 22 + comment_size or disk != 0 or central_disk != 0 or disk_entries != total_entries:
+    record = tail[offset : offset + 22]
+    (
+        _signature,
+        disk,
+        central_disk,
+        disk_entries,
+        total_entries,
+        central_size,
+        central_offset,
+        comment_size,
+    ) = struct.unpack("<4s4H2LH", record)
+    if (
+        len(tail) - offset != 22 + comment_size
+        or disk != 0
+        or central_disk != 0
+        or disk_entries != total_entries
+    ):
         raise ValueError("multi-disk or malformed ZIP archives are not supported")
-    if total_entries == 0xFFFF or central_size == 0xFFFFFFFF or central_offset == 0xFFFFFFFF:
+    if (
+        total_entries == 0xFFFF
+        or central_size == 0xFFFFFFFF
+        or central_offset == 0xFFFFFFFF
+    ):
         raise ValueError("ZIP64 archives exceed the supported entry-count envelope")
     if total_entries > max_entries:
         raise ValueError("ZIP entry count exceeds import_max_entries")
     if central_size > min(16 * 1024 * 1024, max_entries * 4096):
-        raise ValueError("ZIP central directory is too large for its configured entry-count limit")
+        raise ValueError(
+            "ZIP central directory is too large for its configured entry-count limit"
+        )
     if central_offset + central_size > size - tail_size + offset:
         raise ValueError("ZIP central directory is outside the uploaded file")
 
@@ -851,7 +1170,9 @@ class _PublicResolver:
             ipaddress.ip_address(host)
             addresses = [(host, family)]
         except ValueError:
-            rows = await loop.getaddrinfo(host, port, family=family, type=socket.SOCK_STREAM)
+            rows = await loop.getaddrinfo(
+                host, port, family=family, type=socket.SOCK_STREAM
+            )
             addresses = [(row[4][0], row[0]) for row in rows]
         if not addresses:
             raise OSError("素材服务器域名没DNS 地址")
@@ -863,7 +1184,16 @@ class _PublicResolver:
             if str(ip) in seen:
                 continue
             seen.add(str(ip))
-            result.append({"hostname": host, "host": str(ip), "port": port, "family": address_family, "proto": 0, "flags": 0})
+            result.append(
+                {
+                    "hostname": host,
+                    "host": str(ip),
+                    "port": port,
+                    "family": address_family,
+                    "proto": 0,
+                    "flags": 0,
+                }
+            )
         return result
 
     async def close(self) -> None:

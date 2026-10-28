@@ -170,16 +170,40 @@ class AdminQueryService:
             "config_revision": revision,
         }
 
-    def intimacy(self, scope_id: int, *, source_id: str | None, limit: int, offset: int) -> dict[str, Any]:
+    def intimacy(
+        self, scope_id: int, *, source_id: str | None, limit: int, offset: int
+    ) -> dict[str, Any]:
         with self.storage._lock:
             db = self.storage._connection()
             if source_id:
-                total = int(db.execute("SELECT COUNT(*) FROM intimacy_edges WHERE scope_id=? AND source_id=?", (scope_id, source_id)).fetchone()[0])
-                rows = db.execute("SELECT source_id,target_id,score,updated_at FROM intimacy_edges WHERE scope_id=? AND source_id=? ORDER BY score DESC,target_id LIMIT ? OFFSET ?", (scope_id, source_id, limit, offset)).fetchall()
+                total = int(
+                    db.execute(
+                        "SELECT COUNT(*) FROM intimacy_edges WHERE scope_id=? AND source_id=?",
+                        (scope_id, source_id),
+                    ).fetchone()[0]
+                )
+                rows = db.execute(
+                    "SELECT source_id,target_id,score,updated_at FROM intimacy_edges WHERE scope_id=? AND source_id=? ORDER BY score DESC,target_id LIMIT ? OFFSET ?",
+                    (scope_id, source_id, limit, offset),
+                ).fetchall()
             else:
-                total = int(db.execute("SELECT COUNT(*) FROM intimacy_edges WHERE scope_id=?", (scope_id,)).fetchone()[0])
-                rows = db.execute("SELECT source_id,target_id,score,updated_at FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id LIMIT ? OFFSET ?", (scope_id, limit, offset)).fetchall()
-        return {"items": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset, "directed": True}
+                total = int(
+                    db.execute(
+                        "SELECT COUNT(*) FROM intimacy_edges WHERE scope_id=?",
+                        (scope_id,),
+                    ).fetchone()[0]
+                )
+                rows = db.execute(
+                    "SELECT source_id,target_id,score,updated_at FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id LIMIT ? OFFSET ?",
+                    (scope_id, limit, offset),
+                ).fetchall()
+        return {
+            "items": [dict(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "directed": True,
+        }
 
     def activity(
         self,
@@ -246,11 +270,20 @@ class AdminQueryService:
             },
         }
 
-    def invites(self, scope_id: int, *, state: str | None, limit: int, offset: int) -> dict[str, Any]:
+    def invites(
+        self, scope_id: int, *, state: str | None, limit: int, offset: int
+    ) -> dict[str, Any]:
         where = ["i.scope_id=?"]
         args: list[Any] = [scope_id]
         if state:
-            allowed = {"pending", "accepted", "rejected", "cancelled", "expired", "invalidated"}
+            allowed = {
+                "pending",
+                "accepted",
+                "rejected",
+                "cancelled",
+                "expired",
+                "invalidated",
+            }
             if state not in allowed:
                 raise ValueError("邀请状态无效。")
             where.append("i.state=?")
@@ -258,16 +291,34 @@ class AdminQueryService:
         clause = " AND ".join(where)
         with self.storage._lock:
             db = self.storage._connection()
-            total = int(db.execute(f"SELECT COUNT(*) FROM gift_invites i WHERE {clause}", args).fetchone()[0])
+            total = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM gift_invites i WHERE {clause}", args
+                ).fetchone()[0]
+            )
             rows = db.execute(
                 f"""SELECT i.id,i.period_id,i.mode,i.relationship_id,i.sender_id,i.recipient_id,i.state,i.created_at,i.expires_at,
                            i.finalized_at,i.reason,i.result_relationship_id,i.relationship_version,ss.name AS snapshot_name
                     FROM gift_invites i JOIN relationships r ON r.id=i.relationship_id JOIN subject_snapshots ss ON ss.id=r.snapshot_id
-                    WHERE {clause} ORDER BY i.created_at DESC,i.id DESC LIMIT ? OFFSET ?""", (*args, limit, offset)
+                    WHERE {clause} ORDER BY i.created_at DESC,i.id DESC LIMIT ? OFFSET ?""",
+                (*args, limit, offset),
             ).fetchall()
-        return {"items": [dict(row) for row in rows], "total": total, "limit": limit, "offset": offset}
+        return {
+            "items": [dict(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
-    def history(self, scope_id: int, *, since: int | None, until: int | None, limit: int, offset: int) -> dict[str, Any]:
+    def history(
+        self,
+        scope_id: int,
+        *,
+        since: int | None,
+        until: int | None,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
         where = ["scope_id=?"]
         args: list[Any] = [scope_id]
         if since is not None:
@@ -279,8 +330,15 @@ class AdminQueryService:
         clause = " AND ".join(where)
         with self.storage._lock:
             db = self.storage._connection()
-            total = int(db.execute(f"SELECT COUNT(*) FROM operation_log WHERE {clause}", args).fetchone()[0])
-            rows = db.execute(f"SELECT * FROM operation_log WHERE {clause} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?", (*args, limit, offset)).fetchall()
+            total = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM operation_log WHERE {clause}", args
+                ).fetchone()[0]
+            )
+            rows = db.execute(
+                f"SELECT * FROM operation_log WHERE {clause} ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?",
+                (*args, limit, offset),
+            ).fetchall()
         items = []
         for row in rows:
             item = dict(row)
@@ -291,5 +349,11 @@ class AdminQueryService:
     @staticmethod
     def _period(db: Any, scope_id: int, period_id: str | None):
         if period_id:
-            return db.execute("SELECT id,sequence,starts_at,ends_at,timezone,reset_time,state FROM periods WHERE scope_id=? AND id=?", (scope_id, period_id)).fetchone()
-        return db.execute("SELECT id,sequence,starts_at,ends_at,timezone,reset_time,state FROM periods WHERE scope_id=? AND state='current'", (scope_id,)).fetchone()
+            return db.execute(
+                "SELECT id,sequence,starts_at,ends_at,timezone,reset_time,state FROM periods WHERE scope_id=? AND id=?",
+                (scope_id, period_id),
+            ).fetchone()
+        return db.execute(
+            "SELECT id,sequence,starts_at,ends_at,timezone,reset_time,state FROM periods WHERE scope_id=? AND state='current'",
+            (scope_id,),
+        ).fetchone()

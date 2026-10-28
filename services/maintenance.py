@@ -34,9 +34,16 @@ class MaintenanceService:
         self.media_root = data_root / "media"
         self._request_lock = threading.RLock()
 
-    def create_export(self, payload: dict[str, Any], *, actor: str, now: int) -> dict[str, Any]:
+    def create_export(
+        self, payload: dict[str, Any], *, actor: str, now: int
+    ) -> dict[str, Any]:
         pool_ids = payload.get("pool_ids")
-        if not isinstance(pool_ids, list) or not pool_ids or len(pool_ids) > 500 or any(not isinstance(item, str) for item in pool_ids):
+        if (
+            not isinstance(pool_ids, list)
+            or not pool_ids
+            or len(pool_ids) > 500
+            or any(not isinstance(item, str) for item in pool_ids)
+        ):
             raise ValueError("pool_ids must be a non-empty list with at most 500 IDs")
         if len(set(pool_ids)) != len(pool_ids):
             raise ValueError("pool_ids cannot contain duplicates")
@@ -45,81 +52,181 @@ class MaintenanceService:
         artifact = self._build_role_pack(pool_ids, now)
         return self._create_job("export", artifact, actor, now, {"pool_ids": pool_ids})
 
-    def create_backup(self, *, actor: str, now: int, keep_count: int = 10,
-                      request_id: str | None = None) -> dict[str, Any]:
+    def create_backup(
+        self,
+        *,
+        actor: str,
+        now: int,
+        keep_count: int = 10,
+        request_id: str | None = None,
+    ) -> dict[str, Any]:
         with self._request_lock:
             digest = hashlib.sha256(b"complete-backup-v1").hexdigest()
             if request_id:
                 with self.storage._lock:
-                    prior = self.storage._connection().execute(
-                        "SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='backups/create' AND request_id=?",
-                        (actor, request_id),
-                    ).fetchone()
+                    prior = (
+                        self.storage._connection()
+                        .execute(
+                            "SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='backups/create' AND request_id=?",
+                            (actor, request_id),
+                        )
+                        .fetchone()
+                    )
                 if prior:
                     if prior["request_hash"] != digest:
-                        raise StorageError("request_id was used for another backup request")
+                        raise StorageError(
+                            "request_id was used for another backup request"
+                        )
                     return json.loads(prior["response_json"])
             artifact = self._build_backup(now)
-            result = self._create_job("backup", artifact, actor, now, {"complete": True})
+            result = self._create_job(
+                "backup", artifact, actor, now, {"complete": True}
+            )
             self.backups_root.mkdir(parents=True, exist_ok=True)
             retained = self.backups_root / f"{now}-{result['job_id']}.zip"
-            shutil.copyfile(self.jobs_root / result["job_id"] / "artifact.zip", retained)
+            shutil.copyfile(
+                self.jobs_root / result["job_id"] / "artifact.zip", retained
+            )
             self._prune_backups(keep_count)
             result["retained_backup"] = retained.name
             if request_id:
                 with self.storage.transaction() as db:
-                    db.execute("INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
-                               (actor, "backups/create", request_id, digest, json.dumps(result, ensure_ascii=False), now))
+                    db.execute(
+                        "INSERT INTO web_admin_dedup(actor_username,endpoint,request_id,request_hash,response_json,created_at) VALUES(?,?,?,?,?,?)",
+                        (
+                            actor,
+                            "backups/create",
+                            request_id,
+                            digest,
+                            json.dumps(result, ensure_ascii=False),
+                            now,
+                        ),
+                    )
             return result
 
     def get_artifact(self, job_id: str, *, actor: str) -> tuple[Path, str] | None:
         with self.storage._lock:
-            row = self.storage._connection().execute(
-                "SELECT kind,state,actor,expires_at,staged_manifest_hash FROM maintenance_jobs WHERE id=?", (job_id,)
-            ).fetchone()
-        if row is None or row["actor"] != actor or row["kind"] not in {"export", "backup"} or row["state"] != "completed" or int(row["expires_at"]) < int(time.time()):
+            row = (
+                self.storage._connection()
+                .execute(
+                    "SELECT kind,state,actor,expires_at,staged_manifest_hash FROM maintenance_jobs WHERE id=?",
+                    (job_id,),
+                )
+                .fetchone()
+            )
+        if (
+            row is None
+            or row["actor"] != actor
+            or row["kind"] not in {"export", "backup"}
+            or row["state"] != "completed"
+            or int(row["expires_at"]) < int(time.time())
+        ):
             return None
         path = self.jobs_root / job_id / "artifact.zip"
         if not path.is_file() or self._hash_file(path) != row["staged_manifest_hash"]:
-            raise StorageError("maintenance artifact is missing or failed its hash check")
+            raise StorageError(
+                "maintenance artifact is missing or failed its hash check"
+            )
         return path, f"{row['kind']}-{job_id}.zip"
 
-    def preview_restore(self, source: Path, *, actor: str, now: int, max_bytes: int,
-                        max_entries: int, max_expanded: int) -> dict[str, Any]:
-        if not source.is_file() or source.stat().st_size <= 0 or source.stat().st_size > max_bytes:
+    def preview_restore(
+        self,
+        source: Path,
+        *,
+        actor: str,
+        now: int,
+        max_bytes: int,
+        max_entries: int,
+        max_expanded: int,
+    ) -> dict[str, Any]:
+        if (
+            not source.is_file()
+            or source.stat().st_size <= 0
+            or source.stat().st_size > max_bytes
+        ):
             raise ValueError("backup is empty or exceeds import_max_bytes")
         job_id = str(uuid.uuid4())
         stage = self.staging_root / job_id
         stage.mkdir(parents=True, exist_ok=False)
         try:
-            manifest, names = self._stage_backup(source, stage, max_entries=max_entries, max_expanded=max_expanded)
+            manifest, names = self._stage_backup(
+                source, stage, max_entries=max_entries, max_expanded=max_expanded
+            )
             database_path = stage / "database.sqlite3"
             report = self._inspect_database(database_path, manifest)
             with self.storage._lock:
                 _current_config, current_revision = self.storage.get_settings()
                 current_state_hash = self._current_state_hash_locked()
-                current_scopes = [dict(row) for row in self.storage._connection().execute(
-                    "SELECT id,platform_id,self_id,group_id,umo FROM scopes ORDER BY id").fetchall()]
+                current_scopes = [
+                    dict(row)
+                    for row in self.storage._connection()
+                    .execute(
+                        "SELECT id,platform_id,self_id,group_id,umo FROM scopes ORDER BY id"
+                    )
+                    .fetchall()
+                ]
             source_scopes = report.pop("scopes")
             scope_mappings = []
             for source_scope in source_scopes:
-                exact = next((scope for scope in current_scopes if all(
-                    scope[key] == source_scope[key] for key in ("platform_id", "self_id", "group_id", "umo"))), None)
-                scope_mappings.append({"source": source_scope, "exact_match": exact,
-                                       "requires_mapping": exact is None})
-            plan = {"job_id": job_id, "actor": actor, "created_at": now, "backup": manifest,
-                    "files": names, "database": report, "current_revision": current_revision,
-                    "current_state_hash": current_state_hash, "source_scopes": source_scopes,
-                    "current_scopes": current_scopes, "scope_mappings": scope_mappings}
-            plan_bytes = json.dumps(plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+                exact = next(
+                    (
+                        scope
+                        for scope in current_scopes
+                        if all(
+                            scope[key] == source_scope[key]
+                            for key in ("platform_id", "self_id", "group_id", "umo")
+                        )
+                    ),
+                    None,
+                )
+                scope_mappings.append(
+                    {
+                        "source": source_scope,
+                        "exact_match": exact,
+                        "requires_mapping": exact is None,
+                    }
+                )
+            plan = {
+                "job_id": job_id,
+                "actor": actor,
+                "created_at": now,
+                "backup": manifest,
+                "files": names,
+                "database": report,
+                "current_revision": current_revision,
+                "current_state_hash": current_state_hash,
+                "source_scopes": source_scopes,
+                "current_scopes": current_scopes,
+                "scope_mappings": scope_mappings,
+            }
+            plan_bytes = json.dumps(
+                plan, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode()
             (stage / "plan.json").write_bytes(plan_bytes)
             digest = hashlib.sha256(plan_bytes).hexdigest()
             with self.storage.transaction() as db:
-                db.execute("INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,'restore',?,'ready',?,?,?,?,?)",
-                           (job_id, actor, str(current_revision), digest, json.dumps(plan, ensure_ascii=False), now, now + 86400))
-            return {"job_id": job_id, "expires_at": now + 86400, "expected_revision": current_revision,
-                    "files": names, "database": report, "backup_created_at": manifest["created_at"],
-                    "scope_mappings": scope_mappings, "current_scopes": current_scopes}
+                db.execute(
+                    "INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,'restore',?,'ready',?,?,?,?,?)",
+                    (
+                        job_id,
+                        actor,
+                        str(current_revision),
+                        digest,
+                        json.dumps(plan, ensure_ascii=False),
+                        now,
+                        now + 86400,
+                    ),
+                )
+            return {
+                "job_id": job_id,
+                "expires_at": now + 86400,
+                "expected_revision": current_revision,
+                "files": names,
+                "database": report,
+                "backup_created_at": manifest["created_at"],
+                "scope_mappings": scope_mappings,
+                "current_scopes": current_scopes,
+            }
         except Exception:
             shutil.rmtree(stage, ignore_errors=True)
             raise
@@ -384,40 +491,92 @@ class MaintenanceService:
         members: dict[str, set[str]] = {pool_id: set() for pool_id in pool_ids}
         with self.storage._lock:
             db = self.storage._connection()
-            pools = db.execute(f"SELECT id,name,mode FROM pools WHERE id IN ({','.join('?' for _ in pool_ids)}) AND deleted_at IS NULL ORDER BY id", pool_ids).fetchall()
+            pools = db.execute(
+                f"SELECT id,name,mode FROM pools WHERE id IN ({','.join('?' for _ in pool_ids)}) AND deleted_at IS NULL ORDER BY id",
+                pool_ids,
+            ).fetchall()
             if len(pools) != len(pool_ids):
                 raise ValueError("one or more pool IDs do not exist or are deleted")
-            for row in db.execute(f"SELECT pool_id,character_id FROM pool_members WHERE pool_id IN ({','.join('?' for _ in pool_ids)})", pool_ids):
+            for row in db.execute(
+                f"SELECT pool_id,character_id FROM pool_members WHERE pool_id IN ({','.join('?' for _ in pool_ids)})",
+                pool_ids,
+            ):
                 members[row["pool_id"]].add(row["character_id"])
-            role_ids = sorted({character_id for values in members.values() for character_id in values})
+            role_ids = sorted(
+                {character_id for values in members.values() for character_id in values}
+            )
             if not role_ids:
                 raise ValueError("selected pools contain no characters")
-            chars = db.execute(f"SELECT id,name,aliases_json,gender,enabled,provenance_json FROM characters WHERE id IN ({','.join('?' for _ in role_ids)}) AND deleted_at IS NULL ORDER BY id", role_ids).fetchall()
-            images = db.execute(f"SELECT ci.character_id,ci.media_hash,mb.relative_path,mb.mime_type,mb.byte_size,mb.width,mb.height FROM character_images ci JOIN media_blobs mb ON mb.hash=ci.media_hash WHERE ci.character_id IN ({','.join('?' for _ in role_ids)}) ORDER BY ci.character_id,ci.ordinal", role_ids).fetchall()
-        image_rows: dict[str, list[dict[str, Any]]] = {role_id: [] for role_id in role_ids}
+            chars = db.execute(
+                f"SELECT id,name,aliases_json,gender,enabled,provenance_json FROM characters WHERE id IN ({','.join('?' for _ in role_ids)}) AND deleted_at IS NULL ORDER BY id",
+                role_ids,
+            ).fetchall()
+            images = db.execute(
+                f"SELECT ci.character_id,ci.media_hash,mb.relative_path,mb.mime_type,mb.byte_size,mb.width,mb.height FROM character_images ci JOIN media_blobs mb ON mb.hash=ci.media_hash WHERE ci.character_id IN ({','.join('?' for _ in role_ids)}) ORDER BY ci.character_id,ci.ordinal",
+                role_ids,
+            ).fetchall()
+        image_rows: dict[str, list[dict[str, Any]]] = {
+            role_id: [] for role_id in role_ids
+        }
         blobs: dict[str, Path] = {}
         for image in images:
             ext = Path(image["relative_path"]).suffix.lower().lstrip(".") or "img"
             relative = f"images/{image['media_hash']}.{ext}"
             path = self.media_root / image["relative_path"]
             if not path.is_file() or self._hash_file(path) != image["media_hash"]:
-                raise StorageError(f"media blob {image['media_hash']} is missing or corrupt")
+                raise StorageError(
+                    f"media blob {image['media_hash']} is missing or corrupt"
+                )
             blobs[relative] = path
-            image_rows[image["character_id"]].append({"path": relative, "sha256": image["media_hash"], "bytes": image["byte_size"],
-                                                        "width": image["width"], "height": image["height"], "mime_type": image["mime_type"]})
+            image_rows[image["character_id"]].append(
+                {
+                    "path": relative,
+                    "sha256": image["media_hash"],
+                    "bytes": image["byte_size"],
+                    "width": image["width"],
+                    "height": image["height"],
+                    "mime_type": image["mime_type"],
+                }
+            )
         for row in chars:
             provenance = json.loads(row["provenance_json"])
-            character = {key: value for key, value in provenance.items() if key not in {"import_pack", "import_image_sources"}}
-            character.update({"id": row["id"], "name": row["name"], "aliases": json.loads(row["aliases_json"]),
-                              "gender": row["gender"], "enabled": bool(row["enabled"]),
-                              "pool_ids": sorted(pool_id for pool_id, values in members.items() if row["id"] in values),
-                              "images": image_rows[row["id"]]})
+            character = {
+                key: value
+                for key, value in provenance.items()
+                if key not in {"import_pack", "import_image_sources"}
+            }
+            character.update(
+                {
+                    "id": row["id"],
+                    "name": row["name"],
+                    "aliases": json.loads(row["aliases_json"]),
+                    "gender": row["gender"],
+                    "enabled": bool(row["enabled"]),
+                    "pool_ids": sorted(
+                        pool_id
+                        for pool_id, values in members.items()
+                        if row["id"] in values
+                    ),
+                    "images": image_rows[row["id"]],
+                }
+            )
             rows.append(character)
-        manifest = {"schema_version": 1, "pack_id": f"export-{uuid.uuid4().hex[:12]}", "pack_version": str(now),
-                    "pools": [{"id": row["id"], "name": row["name"], "mode": row["mode"]} for row in pools], "characters": rows}
+        manifest = {
+            "schema_version": 1,
+            "pack_id": f"export-{uuid.uuid4().hex[:12]}",
+            "pack_version": str(now),
+            "pools": [
+                {"id": row["id"], "name": row["name"], "mode": row["mode"]}
+                for row in pools
+            ],
+            "characters": rows,
+        }
         path = self._temporary_artifact("role-pack-")
         with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, separators=(",", ":")))
+            archive.writestr(
+                "manifest.json",
+                json.dumps(manifest, ensure_ascii=False, separators=(",", ":")),
+            )
             for relative, blob in blobs.items():
                 archive.write(blob, relative)
         return path
@@ -425,7 +584,9 @@ class MaintenanceService:
     def _current_state_hash_locked(self) -> str:
         digest = hashlib.sha256()
         connection = self.storage._connection()
-        tables = connection.execute("SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").fetchall()
+        tables = connection.execute(
+            "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+        ).fetchall()
         for table in tables:
             name = str(table["name"])
             if name in {"maintenance_jobs", "web_admin_dedup"}:
@@ -433,19 +594,36 @@ class MaintenanceService:
             digest.update(name.encode("utf-8"))
             digest.update((table["sql"] or "").encode("utf-8"))
             try:
-                rows = connection.execute(f'SELECT * FROM "{name}" ORDER BY rowid').fetchall()
+                rows = connection.execute(
+                    f'SELECT * FROM "{name}" ORDER BY rowid'
+                ).fetchall()
             except sqlite3.OperationalError:
                 rows = connection.execute(f'SELECT * FROM "{name}"').fetchall()
             for row in rows:
-                values = [value.hex() if isinstance(value, bytes) else value for value in tuple(row)]
-                digest.update(json.dumps(values, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":")).encode("utf-8"))
+                values = [
+                    value.hex() if isinstance(value, bytes) else value
+                    for value in tuple(row)
+                ]
+                digest.update(
+                    json.dumps(
+                        values,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        default=str,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+                )
                 digest.update(b"\n")
         if self.media_root.is_dir():
             for path in sorted(self.media_root.rglob("*")):
                 if path.is_symlink():
-                    raise StorageError("media contains a symlink and cannot be safely restored")
+                    raise StorageError(
+                        "media contains a symlink and cannot be safely restored"
+                    )
                 if path.is_file():
-                    digest.update(path.relative_to(self.media_root).as_posix().encode("utf-8"))
+                    digest.update(
+                        path.relative_to(self.media_root).as_posix().encode("utf-8")
+                    )
                     digest.update(self._hash_file(path).encode("ascii"))
         return digest.hexdigest()
 
@@ -463,49 +641,100 @@ class MaintenanceService:
                     result = target.execute("PRAGMA integrity_check").fetchall()
                     if len(result) != 1 or result[0][0] != "ok":
                         raise StorageError("database backup failed integrity_check")
-                    schema_rows = target.execute("SELECT version,checksum FROM schema_migrations ORDER BY version").fetchall()
-                    media_rows = target.execute("SELECT hash,relative_path,byte_size FROM media_blobs ORDER BY hash").fetchall()
+                    schema_rows = target.execute(
+                        "SELECT version,checksum FROM schema_migrations ORDER BY version"
+                    ).fetchall()
+                    media_rows = target.execute(
+                        "SELECT hash,relative_path,byte_size FROM media_blobs ORDER BY hash"
+                    ).fetchall()
                     configuration_rows = target.execute(
-                        "SELECT scope_key,revision,schema_version FROM settings ORDER BY scope_key").fetchall()
+                        "SELECT scope_key,revision,schema_version FROM settings ORDER BY scope_key"
+                    ).fetchall()
                 finally:
                     target.close()
                 members = [("database.sqlite3", database)]
                 for row in media_rows:
                     raw_relative = str(row["relative_path"])
                     relative = PurePosixPath(raw_relative)
-                    if "\\" in raw_relative or ":" in raw_relative or relative.as_posix() != raw_relative or relative.is_absolute() or not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+                    if (
+                        "\\" in raw_relative
+                        or ":" in raw_relative
+                        or relative.as_posix() != raw_relative
+                        or relative.is_absolute()
+                        or not relative.parts
+                        or any(part in {"", ".", ".."} for part in relative.parts)
+                    ):
                         raise StorageError("database contains an unsafe media path")
                     media_file = self.media_root.joinpath(*relative.parts)
-                    if any(parent.is_symlink() for parent in (media_file, *media_file.parents) if parent == self.media_root or self.media_root in parent.parents):
-                        raise StorageError("plugin media contains a symlink and cannot be backed up")
-                    if not media_file.is_file() or media_file.stat().st_size != int(row["byte_size"]) or self._hash_file(media_file) != row["hash"]:
-                        raise StorageError(f"referenced media {row['hash']} is missing or corrupt")
-                    members.append((media_file.relative_to(self.data_root).as_posix(), media_file))
+                    if any(
+                        parent.is_symlink()
+                        for parent in (media_file, *media_file.parents)
+                        if parent == self.media_root
+                        or self.media_root in parent.parents
+                    ):
+                        raise StorageError(
+                            "plugin media contains a symlink and cannot be backed up"
+                        )
+                    if (
+                        not media_file.is_file()
+                        or media_file.stat().st_size != int(row["byte_size"])
+                        or self._hash_file(media_file) != row["hash"]
+                    ):
+                        raise StorageError(
+                            f"referenced media {row['hash']} is missing or corrupt"
+                        )
+                    members.append(
+                        (media_file.relative_to(self.data_root).as_posix(), media_file)
+                    )
                 _config, configuration_revision = self.storage.get_settings()
-                database_schema = {"version": max((int(row[0]) for row in schema_rows), default=0),
-                                   "migrations": [{"version": int(row[0]), "sha256": str(row[1])}
-                                                   for row in schema_rows]}
-                manifest = {"format": _BACKUP_FORMAT, "schema_version": 1, "created_at": now,
-                            "database_schema": database_schema,
-                            "configuration_versions": [{"scope_key": str(row["scope_key"]),
-                                                         "revision": int(row["revision"]),
-                                                         "schema_version": int(row["schema_version"])}
-                                                        for row in configuration_rows],
-                            "configuration_revision": configuration_revision, "files": {}}
+                database_schema = {
+                    "version": max((int(row[0]) for row in schema_rows), default=0),
+                    "migrations": [
+                        {"version": int(row[0]), "sha256": str(row[1])}
+                        for row in schema_rows
+                    ],
+                }
+                manifest = {
+                    "format": _BACKUP_FORMAT,
+                    "schema_version": 1,
+                    "created_at": now,
+                    "database_schema": database_schema,
+                    "configuration_versions": [
+                        {
+                            "scope_key": str(row["scope_key"]),
+                            "revision": int(row["revision"]),
+                            "schema_version": int(row["schema_version"]),
+                        }
+                        for row in configuration_rows
+                    ],
+                    "configuration_revision": configuration_revision,
+                    "files": {},
+                }
                 for name, member in members:
-                    manifest["files"][name] = {"bytes": member.stat().st_size, "sha256": self._hash_file(member)}
-                with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-                    archive.writestr("backup.json", json.dumps(manifest, separators=(",", ":")))
+                    manifest["files"][name] = {
+                        "bytes": member.stat().st_size,
+                        "sha256": self._hash_file(member),
+                    }
+                with zipfile.ZipFile(
+                    path, "w", compression=zipfile.ZIP_DEFLATED
+                ) as archive:
+                    archive.writestr(
+                        "backup.json", json.dumps(manifest, separators=(",", ":"))
+                    )
                     for name, member in members:
                         archive.write(member, name)
         return path
 
-    def _stage_backup(self, source: Path, stage: Path, *, max_entries: int, max_expanded: int) -> tuple[dict[str, Any], list[str]]:
+    def _stage_backup(
+        self, source: Path, stage: Path, *, max_entries: int, max_expanded: int
+    ) -> tuple[dict[str, Any], list[str]]:
         self._preflight_zip_count(source, max_entries)
         with zipfile.ZipFile(source) as archive:
             infos = archive.infolist()
             if not infos or len(infos) > max_entries:
-                raise ValueError("backup entry count is empty or exceeds the configured limit")
+                raise ValueError(
+                    "backup entry count is empty or exceeds the configured limit"
+                )
             entries: dict[str, zipfile.ZipInfo] = {}
             folded: set[str] = set()
             total = 0
@@ -514,29 +743,44 @@ class MaintenanceService:
                 if info.is_dir():
                     continue
                 if name.casefold() in folded:
-                    raise ValueError("backup contains duplicate or case-colliding paths")
+                    raise ValueError(
+                        "backup contains duplicate or case-colliding paths"
+                    )
                 folded.add(name.casefold())
                 mode = info.external_attr >> 16
                 if stat.S_ISLNK(mode) or info.flag_bits & 1:
-                    raise ValueError("backup may not contain symlinks or encrypted files")
+                    raise ValueError(
+                        "backup may not contain symlinks or encrypted files"
+                    )
                 total += info.file_size
                 if total > max_expanded:
-                    raise ValueError("backup expanded size exceeds the configured limit")
+                    raise ValueError(
+                        "backup expanded size exceeds the configured limit"
+                    )
                 entries[name] = info
             if "backup.json" not in entries or "database.sqlite3" not in entries:
                 raise ValueError("backup must contain backup.json and database.sqlite3")
             manifest = json.loads(archive.read(entries["backup.json"]))
-            if not isinstance(manifest, dict) or manifest.get("format") != _BACKUP_FORMAT or manifest.get("schema_version") != 1:
+            if (
+                not isinstance(manifest, dict)
+                or manifest.get("format") != _BACKUP_FORMAT
+                or manifest.get("schema_version") != 1
+            ):
                 raise ValueError("unsupported backup format or schema version")
             expected = manifest.get("files")
-            if not isinstance(expected, dict) or set(expected) != set(entries) - {"backup.json"}:
+            if not isinstance(expected, dict) or set(expected) != set(entries) - {
+                "backup.json"
+            }:
                 raise ValueError("backup file list does not match its manifest")
             names = []
             for name, info in entries.items():
                 if name == "backup.json":
                     continue
                 spec = expected[name]
-                if not isinstance(spec, dict) or int(spec.get("bytes", -1)) != info.file_size:
+                if (
+                    not isinstance(spec, dict)
+                    or int(spec.get("bytes", -1)) != info.file_size
+                ):
                     raise ValueError(f"backup size mismatch for {name}")
                 destination = stage / name
                 destination.parent.mkdir(parents=True, exist_ok=True)
@@ -562,16 +806,36 @@ class MaintenanceService:
         offset = tail.rfind(b"PK\x05\x06")
         if offset < 0 or len(tail) - offset < 22:
             raise ValueError("ZIP end-of-directory record is missing or invalid")
-        record = tail[offset:offset + 22]
-        _signature, disk, central_disk, disk_entries, total_entries, central_size, central_offset, comment_size = struct.unpack("<4s4H2LH", record)
-        if len(tail) - offset != 22 + comment_size or disk != 0 or central_disk != 0 or disk_entries != total_entries:
+        record = tail[offset : offset + 22]
+        (
+            _signature,
+            disk,
+            central_disk,
+            disk_entries,
+            total_entries,
+            central_size,
+            central_offset,
+            comment_size,
+        ) = struct.unpack("<4s4H2LH", record)
+        if (
+            len(tail) - offset != 22 + comment_size
+            or disk != 0
+            or central_disk != 0
+            or disk_entries != total_entries
+        ):
             raise ValueError("multi-disk or malformed ZIP archives are not supported")
-        if total_entries in {0xFFFF} or central_size == 0xFFFFFFFF or central_offset == 0xFFFFFFFF:
+        if (
+            total_entries in {0xFFFF}
+            or central_size == 0xFFFFFFFF
+            or central_offset == 0xFFFFFFFF
+        ):
             raise ValueError("ZIP64 archives exceed the supported entry-count envelope")
         if total_entries > max_entries:
             raise ValueError("backup entry count exceeds the configured limit")
         if central_size > min(16 * 1024 * 1024, max_entries * 4096):
-            raise ValueError("ZIP central directory is too large for its configured entry-count limit")
+            raise ValueError(
+                "ZIP central directory is too large for its configured entry-count limit"
+            )
         if central_offset + central_size > size - tail_size + offset:
             raise ValueError("ZIP central directory is outside the uploaded file")
 
@@ -692,42 +956,81 @@ class MaintenanceService:
 
     def _finalize_restored_state(self, now: int) -> None:
         db = self.storage._connection()
-        scope_ids = [int(row[0]) for row in db.execute("SELECT id FROM scopes ORDER BY id").fetchall()]
+        scope_ids = [
+            int(row[0])
+            for row in db.execute("SELECT id FROM scopes ORDER BY id").fetchall()
+        ]
         for scope_id in scope_ids:
             config, _revision = self.storage.get_settings(scope_id)
             reset = config["reset"]
-            self.storage.ensure_current_period(scope_id, now, str(reset["timezone"]), str(reset["time"]))
+            self.storage.ensure_current_period(
+                scope_id, now, str(reset["timezone"]), str(reset["time"])
+            )
 
-    def _create_job(self, kind: str, artifact: Path, actor: str, now: int, report: dict[str, Any]) -> dict[str, Any]:
+    def _create_job(
+        self, kind: str, artifact: Path, actor: str, now: int, report: dict[str, Any]
+    ) -> dict[str, Any]:
         job_id = str(uuid.uuid4())
         target_dir = self.jobs_root / job_id
         target_dir.mkdir(parents=True, exist_ok=False)
         target = target_dir / "artifact.zip"
         artifact.replace(target)
         digest = self._hash_file(target)
-        response = {"job_id": job_id, "kind": kind, "state": "completed", "bytes": target.stat().st_size,
-                    "sha256": digest, "expires_at": now + 86400, "download": f"downloads/{job_id}"}
+        response = {
+            "job_id": job_id,
+            "kind": kind,
+            "state": "completed",
+            "bytes": target.stat().st_size,
+            "sha256": digest,
+            "expires_at": now + 86400,
+            "download": f"downloads/{job_id}",
+        }
         _config, revision = self.storage.get_settings()
         with self.storage.transaction() as db:
-            db.execute("INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,?,?,'completed',?,?,?,?,?)",
-                       (job_id, kind, actor, str(revision), digest, json.dumps({**report, **response}, ensure_ascii=False), now, now + 86400))
+            db.execute(
+                "INSERT INTO maintenance_jobs(id,kind,actor,state,expected_revision,staged_manifest_hash,report_json,created_at,expires_at) VALUES(?,?,?,'completed',?,?,?,?,?)",
+                (
+                    job_id,
+                    kind,
+                    actor,
+                    str(revision),
+                    digest,
+                    json.dumps({**report, **response}, ensure_ascii=False),
+                    now,
+                    now + 86400,
+                ),
+            )
         return response
 
     def _temporary_artifact(self, prefix: str) -> Path:
         self.jobs_root.mkdir(parents=True, exist_ok=True)
-        descriptor, name = tempfile.mkstemp(prefix=prefix, suffix=".zip", dir=self.jobs_root)
+        descriptor, name = tempfile.mkstemp(
+            prefix=prefix, suffix=".zip", dir=self.jobs_root
+        )
         os.close(descriptor)
         return Path(name)
 
     def _prune_backups(self, keep_count: int) -> None:
         keep_count = min(100, max(1, int(keep_count)))
-        backups = sorted((path for path in self.backups_root.glob("*.zip") if path.is_file()), key=lambda item: item.stat().st_mtime, reverse=True)
+        backups = sorted(
+            (path for path in self.backups_root.glob("*.zip") if path.is_file()),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
         for path in backups[keep_count:]:
             path.unlink(missing_ok=True)
 
     @staticmethod
     def _safe_name(value: str) -> str:
-        if not isinstance(value, str) or not value or len(value) > _MAX_PATH or "\\" in value or "\x00" in value or value.startswith("/") or ":" in value:
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > _MAX_PATH
+            or "\\" in value
+            or "\x00" in value
+            or value.startswith("/")
+            or ":" in value
+        ):
             raise ValueError("backup contains an absolute or invalid path")
         parts = value.split("/")
         if any(part in {"", ".", ".."} for part in parts):

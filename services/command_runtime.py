@@ -894,12 +894,26 @@ class CommandRuntime:
             if cooldown:
                 remaining = cooldown_seconds - (now - int(cooldown["last_command_at"]))
                 if remaining > 0:
-                    operation_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"daily-bonds:{scope_id}:{event_key}:cooldown"))
+                    operation_id = str(
+                        uuid.uuid5(
+                            uuid.NAMESPACE_URL,
+                            f"daily-bonds:{scope_id}:{event_key}:cooldown",
+                        )
+                    )
                     db.execute(
                         """INSERT OR IGNORE INTO operation_log(id,scope_id,period_id,mode,kind,actor_id,actor_type,result_code,config_revision,data_json,created_at)
                            VALUES(?,?,?,NULL,'command_cooldown',?,'qq','COMMAND_COOLDOWN',?,?,?)""",
-                        (operation_id, scope_id, period_id, user_id, config_revision,
-                         json.dumps({"remaining_seconds": remaining}, ensure_ascii=False), now),
+                        (
+                            operation_id,
+                            scope_id,
+                            period_id,
+                            user_id,
+                            config_revision,
+                            json.dumps(
+                                {"remaining_seconds": remaining}, ensure_ascii=False
+                            ),
+                            now,
+                        ),
                     )
                     if processed:
                         db.execute(
@@ -919,7 +933,9 @@ class CommandRuntime:
             )
             return True, 0, False
 
-    def _release_command_cooldown(self, scope_id: int, user_id: str, claimed_at: int) -> None:
+    def _release_command_cooldown(
+        self, scope_id: int, user_id: str, claimed_at: int
+    ) -> None:
         with self.storage.transaction() as db:
             db.execute(
                 "DELETE FROM cooldowns WHERE scope_id=? AND user_id=? AND last_command_at=?",
@@ -1656,7 +1672,9 @@ def _action_mode(action: str) -> str | None:
 
 
 def _event_key(raw: Mapping[str, Any]) -> tuple[str, str]:
-    encoded = json.dumps(raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
+    encoded = json.dumps(
+        raw, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str
+    )
     digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
     message_id = str(raw.get("message_id") or "")
     return (f"message:{message_id}" if message_id else f"message-hash:{digest}"), digest

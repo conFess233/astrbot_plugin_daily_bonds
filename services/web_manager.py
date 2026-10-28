@@ -330,9 +330,7 @@ class WebManager:
             )
             return json_response({"ok": True, "data": data})
         except (ValueError, OSError) as exc:
-            return self._error(
-                "FONT_UNAVAILABLE", f"字体预览失败：{exc}", 400
-            )
+            return self._error("FONT_UNAVAILABLE", f"字体预览失败：{exc}", 400)
 
     async def batch_images_failure(self):
         return await self._batch_change("record_failure")
@@ -890,9 +888,14 @@ class WebManager:
             src = await asyncio.to_thread(_preview_media_data, self.catalog, media_hash)
             if src is None:
                 return self._error("NOT_FOUND", "图片不存在。", 404)
-            return json_response({"ok": True, "data": {
-                "src": src,
-            }})
+            return json_response(
+                {
+                    "ok": True,
+                    "data": {
+                        "src": src,
+                    },
+                }
+            )
         except (OSError, ValueError, Image.DecompressionBombError):
             return self._error("INVALID_IMAGE", "图片无法预览。", 422)
         except StorageError:
@@ -1062,13 +1065,20 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            data = await asyncio.to_thread(self.corrections.commit, payload, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": payload.get("request_id")})
+            data = await asyncio.to_thread(
+                self.corrections.commit, payload, actor=username, now=int(time.time())
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": payload.get("request_id")}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("CORRECTION_INVALID", str(exc), 400)
         except StorageError as exc:
             message = str(exc)
-            if any(fragment in message for fragment in ("已变化", "版本", "request_id", "预检")):
+            if any(
+                fragment in message
+                for fragment in ("已变化", "版本", "request_id", "预检")
+            ):
                 return self._error("CORRECTION_CONFLICT", message, 409)
             return self._error("INTERNAL_ERROR", "纠错提交失败。", 500)
 
@@ -1080,8 +1090,12 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            data = await self.catalog_sync.check(actor=username, force=payload.get("force") is True)
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await self.catalog_sync.check(
+                actor=username, force=payload.get("force") is True
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError, OSError, asyncio.TimeoutError) as exc:
             return self._error("CATALOG_SYNC_CHECK_FAILED", str(exc), 400)
 
@@ -1094,7 +1108,9 @@ class WebManager:
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
             data = await self.catalog_sync.commit(payload, actor=username)
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, StorageError, OSError, asyncio.TimeoutError) as exc:
             return self._error("CATALOG_SYNC_COMMIT_FAILED", str(exc), 400)
 
@@ -1152,13 +1168,20 @@ class WebManager:
         if not isinstance(payload, dict):
             return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
         try:
-            data = await asyncio.to_thread(self.imports.commit, payload, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": payload.get("request_id")})
+            data = await asyncio.to_thread(
+                self.imports.commit, payload, actor=username, now=int(time.time())
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": payload.get("request_id")}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("IMPORT_INVALID", str(exc), 400)
         except StorageError as exc:
             message = str(exc)
-            if any(fragment in message for fragment in ("request_id", "过期", "已终止", "哈希", "缺失")):
+            if any(
+                fragment in message
+                for fragment in ("request_id", "过期", "已终止", "哈希", "缺失")
+            ):
                 return self._error("IMPORT_CONFLICT", message, 409)
             return self._error("IMPORT_FAILED", message, 500)
 
@@ -1188,8 +1211,15 @@ class WebManager:
             payload = await request.json()
             if not isinstance(payload, dict):
                 return self._error("INVALID_PAYLOAD", "导出请求必须是 JSON 对象。", 400)
-            data = await asyncio.to_thread(self.maintenance.create_export, payload, actor=username, now=int(time.time()))
-            return json_response({"ok": True, "data": data, "request_id": str(uuid.uuid4())})
+            data = await asyncio.to_thread(
+                self.maintenance.create_export,
+                payload,
+                actor=username,
+                now=int(time.time()),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
         except (ValueError, TypeError) as exc:
             return self._error("EXPORT_INVALID", str(exc), 400)
         except StorageError as exc:
@@ -1359,9 +1389,14 @@ class WebManager:
 
     def _catalog_storage_error(self, exc: StorageError):
         message = str(exc)
-        if any(fragment in message for fragment in ("版本冲突", "request_id", "删除预检", "删除目标已变化")):
+        if any(
+            fragment in message
+            for fragment in ("版本冲突", "request_id", "删除预检", "删除目标已变化")
+        ):
             return self._error("CATALOG_CONFLICT", message, 409)
-        if any(fragment in message for fragment in ("不存在", "已删除", "不能", "匹配")):
+        if any(
+            fragment in message for fragment in ("不存在", "已删除", "不能", "匹配")
+        ):
             return self._error("CATALOG_INVALID", message, 400)
         return self._error("INTERNAL_ERROR", "目录保存失败，请刷新后重试。", 500)
 
@@ -1585,7 +1620,9 @@ class WebManager:
     def _authorize(self) -> tuple[str | None, Any | None]:
         username = request.username
         if not username:
-            return None, self._error("UNAUTHENTICATED", "请先登录 AstrBot Dashboard。", 401)
+            return None, self._error(
+                "UNAUTHENTICATED", "请先登录 AstrBot Dashboard。", 401
+            )
         return username, None
 
     def _query_scope_id(self) -> int | None:
@@ -1597,16 +1634,25 @@ class WebManager:
         except (TypeError, ValueError) as exc:
             raise ValueError("scope_id 必须是当前插件中的整数作用域。") from exc
         with self.storage._lock:
-            exists = self.storage._connection().execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,)).fetchone()
+            exists = (
+                self.storage._connection()
+                .execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,))
+                .fetchone()
+            )
         if exists is None:
             raise ValueError("scope_id 不属于当前插件实例。")
         return scope_id
 
     def _stored_override(self, scope_id: int) -> dict[str, Any]:
         with self.storage._lock:
-            row = self.storage._connection().execute(
-                "SELECT value_json FROM settings WHERE scope_key=?", (f"scope:{scope_id}",)
-            ).fetchone()
+            row = (
+                self.storage._connection()
+                .execute(
+                    "SELECT value_json FROM settings WHERE scope_key=?",
+                    (f"scope:{scope_id}",),
+                )
+                .fetchone()
+            )
         return json.loads(row["value_json"]) if row else {}
 
     def _prepare_draft(
@@ -1640,22 +1686,35 @@ class WebManager:
             return None
         if isinstance(raw_scope, int) and not isinstance(raw_scope, bool):
             scope_id = raw_scope
-        elif isinstance(raw_scope, str) and raw_scope.isascii() and raw_scope.isdecimal():
+        elif (
+            isinstance(raw_scope, str) and raw_scope.isascii() and raw_scope.isdecimal()
+        ):
             scope_id = int(raw_scope)
         else:
             raise ValueError("scope_id 必须是整数或 global。")
         with self.storage._lock:
-            exists = self.storage._connection().execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,)).fetchone()
+            exists = (
+                self.storage._connection()
+                .execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,))
+                .fetchone()
+            )
         if exists is None:
             raise ValueError("scope_id 不属于当前插件实例。")
         return scope_id
 
-    def _validate_effective_scopes(self, changed_scope_id: int | None, changed_value: Mapping[str, Any]) -> list[int]:
+    def _validate_effective_scopes(
+        self, changed_scope_id: int | None, changed_value: Mapping[str, Any]
+    ) -> list[int]:
         if changed_scope_id is not None:
             validate_config(changed_value)
             return [changed_scope_id]
         with self.storage._lock:
-            scope_ids = [int(row[0]) for row in self.storage._connection().execute("SELECT id FROM scopes ORDER BY id")]
+            scope_ids = [
+                int(row[0])
+                for row in self.storage._connection().execute(
+                    "SELECT id FROM scopes ORDER BY id"
+                )
+            ]
         affected: list[int] = []
         for scope_id in scope_ids:
             override = self._stored_override(scope_id)
@@ -1666,7 +1725,11 @@ class WebManager:
 
     @staticmethod
     def _error(code: str, message: str, status: int):
-        return error_response(message, status_code=status, data={"code": code, "request_id": str(uuid.uuid4())})
+        return error_response(
+            message,
+            status_code=status,
+            data={"code": code, "request_id": str(uuid.uuid4())},
+        )
 
 
 def _sparse_diff(base: Mapping[str, Any], value: Mapping[str, Any]) -> dict[str, Any]:
@@ -1718,10 +1781,14 @@ def _preview_media_data(catalog: CatalogAdminService, media_hash: str) -> str | 
             image = image.convert("RGBA")
         output = io.BytesIO()
         image.save(output, format="PNG", optimize=True)
-    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode(
+        "ascii"
+    )
 
 
-def _upload_media_file(catalog: CatalogAdminService, path: str, now: int) -> dict[str, Any]:
+def _upload_media_file(
+    catalog: CatalogAdminService, path: str, now: int
+) -> dict[str, Any]:
     with open(path, "rb") as stream:
         payload = stream.read(12 * 1024 * 1024 + 1)
     return catalog.upload_media(payload, now=now)

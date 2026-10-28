@@ -41,7 +41,9 @@ class BusinessResult:
 class GameplayService:
     """共享 Handler/Web 调用的事务服务；随机源与时钟均可注入。"""
 
-    def __init__(self, storage: SQLiteStorage, chooser: random.Random | None = None) -> None:
+    def __init__(
+        self, storage: SQLiteStorage, chooser: random.Random | None = None
+    ) -> None:
         self.storage = storage
         self.chooser = chooser or random.SystemRandom()
 
@@ -485,30 +487,171 @@ class GameplayService:
                 return replay
             self._current_period(db, scope_id, period_id)
             if actor_id == target_id:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "INVALID_TARGET", {}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "INVALID_TARGET",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             destination = "steal" if steal_slot_capacity > 0 else "normal"
-            actor_relationships = self._owner_relationships(db, scope_id, period_id, mode, actor_id, destination)
+            actor_relationships = self._owner_relationships(
+                db, scope_id, period_id, mode, actor_id, destination
+            )
             if len(actor_relationships) >= (steal_slot_capacity or capacity):
                 code = "STEAL_SLOT_FULL" if steal_slot_capacity > 0 else "CAPACITY_FULL"
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", code, {"relationships": actor_relationships}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    code,
+                    {"relationships": actor_relationships},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             counter = self._counter(db, scope_id, period_id, mode, actor_id)
             if attempt_limit and int(counter["steal_attempts"]) >= attempt_limit:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "STEAL_LIMIT", {}, config_revision, now, event_key, payload_hash)
-            if cooldown_seconds and counter["last_steal_at"] is not None and now - int(counter["last_steal_at"]) < cooldown_seconds:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "STEAL_COOLDOWN", {"available_at": int(counter["last_steal_at"]) + cooldown_seconds}, config_revision, now, event_key, payload_hash)
-            target_relations = self._owner_relationships(db, scope_id, period_id, mode, target_id)
-            target_relation = self._choose_owned(target_relations, relation_id, subject_id)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "STEAL_LIMIT",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            if (
+                cooldown_seconds
+                and counter["last_steal_at"] is not None
+                and now - int(counter["last_steal_at"]) < cooldown_seconds
+            ):
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "STEAL_COOLDOWN",
+                    {"available_at": int(counter["last_steal_at"]) + cooldown_seconds},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            target_relations = self._owner_relationships(
+                db, scope_id, period_id, mode, target_id
+            )
+            target_relation = self._choose_owned(
+                target_relations, relation_id, subject_id
+            )
             if target_relation is None:
-                if self._locked_relationship(db, scope_id, period_id, mode, target_id, relation_id, subject_id):
-                    return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "STEAL_SLOT_LOCKED", {}, config_revision, now, event_key, payload_hash)
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "NO_TARGET_RELATIONSHIP", {}, config_revision, now, event_key, payload_hash)
+                if self._locked_relationship(
+                    db, scope_id, period_id, mode, target_id, relation_id, subject_id
+                ):
+                    return self._record_result(
+                        db,
+                        operation_id,
+                        scope_id,
+                        period_id,
+                        mode,
+                        actor_id,
+                        "steal",
+                        "STEAL_SLOT_LOCKED",
+                        {},
+                        config_revision,
+                        now,
+                        event_key,
+                        payload_hash,
+                    )
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "NO_TARGET_RELATIONSHIP",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             target_counter = self._counter(db, scope_id, period_id, mode, target_id)
-            if target_protection_limit and int(target_counter["stolen_successes"]) >= target_protection_limit:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "TARGET_PROTECTED", {}, config_revision, now, event_key, payload_hash)
+            if (
+                target_protection_limit
+                and int(target_counter["stolen_successes"]) >= target_protection_limit
+            ):
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "TARGET_PROTECTED",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             if mode == "member" and target_relation["subject_id"] == actor_id:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "INVALID_TARGET", {}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "INVALID_TARGET",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             if not math_probability(probability):
-                return self._record_result(db, operation_id, scope_id, period_id, mode, actor_id, "steal", "INVALID_PROBABILITY", {}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "INVALID_PROBABILITY",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             success = self.chooser.random() < probability
             db.execute(
                 """UPDATE daily_counters SET steal_attempts=steal_attempts+1,last_steal_at=?
@@ -536,17 +679,51 @@ class GameplayService:
                     event_key,
                     payload_hash,
                 )
-            self._transfer(db, target_relation, actor_id, steal_slot_capacity or capacity, now, "stolen", destination)
+            self._transfer(
+                db,
+                target_relation,
+                actor_id,
+                steal_slot_capacity or capacity,
+                now,
+                "stolen",
+                destination,
+            )
             db.execute(
                 "UPDATE daily_counters SET stolen_successes=stolen_successes+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
                 (scope_id, period_id, mode, target_id),
             )
-            self._issue_credit(db, scope_id, period_id, mode, target_id, operation_id, "stolen", target_relation["id"], now)
-            self._invalidate_relation_invites(db, target_relation["id"], now, "relationship_stolen")
+            self._issue_credit(
+                db,
+                scope_id,
+                period_id,
+                mode,
+                target_id,
+                operation_id,
+                "stolen",
+                target_relation["id"],
+                now,
+            )
+            self._invalidate_relation_invites(
+                db, target_relation["id"], now, "relationship_stolen"
+            )
             return self._record_result(
-                db, operation_id, scope_id, period_id, mode, actor_id, "steal", "STOLEN",
-                {"relationship_id": target_relation["id"], "subject_id": target_relation["subject_id"], "old_owner_id": target_id},
-                config_revision, now, event_key, payload_hash,
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                mode,
+                actor_id,
+                "steal",
+                "STOLEN",
+                {
+                    "relationship_id": target_relation["id"],
+                    "subject_id": target_relation["subject_id"],
+                    "old_owner_id": target_id,
+                },
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
             )
 
     def divorce(
@@ -575,13 +752,59 @@ class GameplayService:
             self._current_period(db, scope_id, period_id)
             counter = self._counter(db, scope_id, period_id, mode, owner_id)
             if divorce_limit and int(counter["divorces"]) >= divorce_limit:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, owner_id, "divorce", "DIVORCE_LIMIT", {}, config_revision, now, event_key, payload_hash)
-            relations = self._owner_relationships(db, scope_id, period_id, mode, owner_id)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    owner_id,
+                    "divorce",
+                    "DIVORCE_LIMIT",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            relations = self._owner_relationships(
+                db, scope_id, period_id, mode, owner_id
+            )
             relationship = self._choose_owned(relations, relationship_id, subject_id)
             if relationship is None:
-                if self._locked_relationship(db, scope_id, period_id, mode, owner_id, relationship_id, subject_id):
-                    return self._record_result(db, operation_id, scope_id, period_id, mode, owner_id, "divorce", "RELATIONSHIP_LOCKED", {}, config_revision, now, event_key, payload_hash)
-                return self._record_result(db, operation_id, scope_id, period_id, mode, owner_id, "divorce", "RELATIONSHIP_NOT_FOUND", {}, config_revision, now, event_key, payload_hash)
+                if self._locked_relationship(
+                    db, scope_id, period_id, mode, owner_id, relationship_id, subject_id
+                ):
+                    return self._record_result(
+                        db,
+                        operation_id,
+                        scope_id,
+                        period_id,
+                        mode,
+                        owner_id,
+                        "divorce",
+                        "RELATIONSHIP_LOCKED",
+                        {},
+                        config_revision,
+                        now,
+                        event_key,
+                        payload_hash,
+                    )
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    owner_id,
+                    "divorce",
+                    "RELATIONSHIP_NOT_FOUND",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             db.execute(
                 "UPDATE relationships SET state='ended',ended_at=?,end_reason='divorce',version=version+1 WHERE id=? AND state='active'",
                 (now, relationship["id"]),
@@ -590,12 +813,38 @@ class GameplayService:
                 "UPDATE daily_counters SET divorces=divorces+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
                 (scope_id, period_id, mode, owner_id),
             )
-            self._issue_credit(db, scope_id, period_id, mode, owner_id, operation_id, "divorce", relationship["id"], now)
-            self._invalidate_relation_invites(db, relationship["id"], now, "relationship_divorced")
+            self._issue_credit(
+                db,
+                scope_id,
+                period_id,
+                mode,
+                owner_id,
+                operation_id,
+                "divorce",
+                relationship["id"],
+                now,
+            )
+            self._invalidate_relation_invites(
+                db, relationship["id"], now, "relationship_divorced"
+            )
             return self._record_result(
-                db, operation_id, scope_id, period_id, mode, owner_id, "divorce", "DIVORCED",
-                {"relationship_id": relationship["id"], "subject_id": relationship["subject_id"], "snapshot_id": relationship["snapshot_id"]},
-                config_revision, now, event_key, payload_hash,
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                mode,
+                owner_id,
+                "divorce",
+                "DIVORCED",
+                {
+                    "relationship_id": relationship["id"],
+                    "subject_id": relationship["subject_id"],
+                    "snapshot_id": relationship["snapshot_id"],
+                },
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
             )
 
     def gift(
@@ -629,48 +878,226 @@ class GameplayService:
                 return replay
             self._current_period(db, scope_id, period_id)
             if not gift_enabled:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "MODE_DISABLED", {}, config_revision, now, event_key, payload_hash)
-            if sender_id == recipient_id:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "INVALID_TARGET", {}, config_revision, now, event_key, payload_hash)
-            sender_relations = self._owner_relationships(db, scope_id, period_id, mode, sender_id)
-            relationship = self._choose_owned(sender_relations, relationship_id, subject_id)
-            if relationship is None:
-                if self._locked_relationship(db, scope_id, period_id, mode, sender_id, relationship_id, subject_id):
-                    return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "RELATIONSHIP_LOCKED", {}, config_revision, now, event_key, payload_hash)
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "RELATIONSHIP_NOT_FOUND", {}, config_revision, now, event_key, payload_hash)
-            recipient_relations = self._owner_relationships(db, scope_id, period_id, mode, recipient_id)
-            if len(recipient_relations) >= capacity:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "CAPACITY_FULL", {"relationships": recipient_relations}, config_revision, now, event_key, payload_hash)
-            if mode == "member" and relationship["subject_id"] == recipient_id:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "INVALID_TARGET", {}, config_revision, now, event_key, payload_hash)
-            if not confirm:
-                result_relationship = self._transfer(db, relationship, recipient_id, capacity, now, "gifted")
-                self._invalidate_relation_invites(db, relationship["id"], now, "relationship_gifted")
                 return self._record_result(
-                    db, operation_id, scope_id, period_id, mode, sender_id, "gift", "GIFTED",
-                    {"relationship_id": relationship["id"], "new_relationship_id": result_relationship, "recipient_id": recipient_id, "subject_id": relationship["subject_id"]},
-                    config_revision, now, event_key, payload_hash,
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "MODE_DISABLED",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
                 )
-            pending = db.execute("SELECT id FROM gift_invites WHERE relationship_id=? AND state='pending'", (relationship["id"],)).fetchone()
+            if sender_id == recipient_id:
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "INVALID_TARGET",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            sender_relations = self._owner_relationships(
+                db, scope_id, period_id, mode, sender_id
+            )
+            relationship = self._choose_owned(
+                sender_relations, relationship_id, subject_id
+            )
+            if relationship is None:
+                if self._locked_relationship(
+                    db,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    relationship_id,
+                    subject_id,
+                ):
+                    return self._record_result(
+                        db,
+                        operation_id,
+                        scope_id,
+                        period_id,
+                        mode,
+                        sender_id,
+                        "gift",
+                        "RELATIONSHIP_LOCKED",
+                        {},
+                        config_revision,
+                        now,
+                        event_key,
+                        payload_hash,
+                    )
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "RELATIONSHIP_NOT_FOUND",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            recipient_relations = self._owner_relationships(
+                db, scope_id, period_id, mode, recipient_id
+            )
+            if len(recipient_relations) >= capacity:
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "CAPACITY_FULL",
+                    {"relationships": recipient_relations},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            if mode == "member" and relationship["subject_id"] == recipient_id:
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "INVALID_TARGET",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            if not confirm:
+                result_relationship = self._transfer(
+                    db, relationship, recipient_id, capacity, now, "gifted"
+                )
+                self._invalidate_relation_invites(
+                    db, relationship["id"], now, "relationship_gifted"
+                )
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "GIFTED",
+                    {
+                        "relationship_id": relationship["id"],
+                        "new_relationship_id": result_relationship,
+                        "recipient_id": recipient_id,
+                        "subject_id": relationship["subject_id"],
+                    },
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            pending = db.execute(
+                "SELECT id FROM gift_invites WHERE relationship_id=? AND state='pending'",
+                (relationship["id"],),
+            ).fetchone()
             if pending:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "INVITE_ALREADY_PENDING", {"invite_id": pending["id"]}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "INVITE_ALREADY_PENDING",
+                    {"invite_id": pending["id"]},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             if timeout_seconds < 1:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "INVALID_TIMEOUT", {}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "INVALID_TIMEOUT",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             pending_count = db.execute(
                 "SELECT COUNT(*) AS count FROM gift_invites WHERE scope_id=? AND sender_id=? AND state='pending'",
                 (scope_id, sender_id),
             ).fetchone()["count"]
             if pending_limit > 0 and int(pending_count) >= pending_limit:
-                return self._record_result(db, operation_id, scope_id, period_id, mode, sender_id, "gift", "INVITE_LIMIT", {"limit": pending_limit}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "INVITE_LIMIT",
+                    {"limit": pending_limit},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             while True:
                 invite_id = str(secrets.randbelow(900_000_000_000) + 100_000_000_000)
-                if db.execute("SELECT 1 FROM gift_invites WHERE id=?", (invite_id,)).fetchone() is None:
+                if (
+                    db.execute(
+                        "SELECT 1 FROM gift_invites WHERE id=?", (invite_id,)
+                    ).fetchone()
+                    is None
+                ):
                     break
             expires_at = now + timeout_seconds
             db.execute(
                 """INSERT INTO gift_invites(id,scope_id,period_id,mode,relationship_id,relationship_version,sender_id,recipient_id,state,created_at,expires_at)
                    VALUES(?,?,?,?,?,?,?,?,'pending',?,?)""",
-                (invite_id, scope_id, period_id, mode, relationship["id"], relationship["version"], sender_id, recipient_id, now, expires_at),
+                (
+                    invite_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    relationship["id"],
+                    relationship["version"],
+                    sender_id,
+                    recipient_id,
+                    now,
+                    expires_at,
+                ),
             )
             if recipient_umo:
                 self._outbox(
@@ -688,9 +1115,24 @@ class GameplayService:
                     now,
                 )
             return self._record_result(
-                db, operation_id, scope_id, period_id, mode, sender_id, "gift", "INVITE_CREATED",
-                {"invite_id": invite_id, "recipient_id": recipient_id, "expires_at": expires_at, "subject_id": relationship["subject_id"]},
-                config_revision, now, event_key, payload_hash,
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                mode,
+                sender_id,
+                "gift",
+                "INVITE_CREATED",
+                {
+                    "invite_id": invite_id,
+                    "recipient_id": recipient_id,
+                    "expires_at": expires_at,
+                    "subject_id": relationship["subject_id"],
+                },
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
             )
 
     def answer_invite(
@@ -723,14 +1165,63 @@ class GameplayService:
             if replay:
                 return replay
             self._current_period(db, scope_id, period_id)
-            invite = db.execute("SELECT * FROM gift_invites WHERE id=? AND scope_id=?", (invite_id, scope_id)).fetchone()
+            invite = db.execute(
+                "SELECT * FROM gift_invites WHERE id=? AND scope_id=?",
+                (invite_id, scope_id),
+            ).fetchone()
             if invite is None:
-                return self._record_result(db, operation_id, scope_id, period_id, None, actor_id, f"gift_{action}", "INVITE_INVALID", {}, config_revision, now, event_key, payload_hash)
-            expected_actor = invite["recipient_id"] if action in {"accept", "reject"} else invite["sender_id"]
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    None,
+                    actor_id,
+                    f"gift_{action}",
+                    "INVITE_INVALID",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            expected_actor = (
+                invite["recipient_id"]
+                if action in {"accept", "reject"}
+                else invite["sender_id"]
+            )
             if actor_id != expected_actor:
-                return self._record_result(db, operation_id, scope_id, period_id, invite["mode"], actor_id, f"gift_{action}", "INVITE_NOT_OWNED", {}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    invite["mode"],
+                    actor_id,
+                    f"gift_{action}",
+                    "INVITE_NOT_OWNED",
+                    {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             if invite["state"] != "pending":
-                return self._record_result(db, operation_id, scope_id, period_id, invite["mode"], actor_id, f"gift_{action}", "INVITE_INVALID", {"state": invite["state"]}, config_revision, now, event_key, payload_hash)
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    invite["mode"],
+                    actor_id,
+                    f"gift_{action}",
+                    "INVITE_INVALID",
+                    {"state": invite["state"]},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             if action == "cancel":
                 state, reason = "cancelled", "sender_cancelled"
             elif action == "reject":
@@ -745,17 +1236,41 @@ class GameplayService:
                 else:
                     relation = db.execute(
                         "SELECT * FROM relationships WHERE id=? AND scope_id=? AND period_id=? AND mode=? AND slot_kind='normal' AND state='active'",
-                        (invite["relationship_id"], scope_id, period_id, invite["mode"]),
+                        (
+                            invite["relationship_id"],
+                            scope_id,
+                            period_id,
+                            invite["mode"],
+                        ),
                     ).fetchone()
-                    if relation is None or relation["owner_id"] != invite["sender_id"] or int(relation["version"]) != int(invite["relationship_version"]):
+                    if (
+                        relation is None
+                        or relation["owner_id"] != invite["sender_id"]
+                        or int(relation["version"])
+                        != int(invite["relationship_version"])
+                    ):
                         state, reason = "invalidated", "relationship_changed"
                     elif not mode_enabled or not gift_enabled:
                         state, reason = "invalidated", "gift_or_mode_disabled"
                     elif not sender_allowed or not recipient_allowed:
                         state, reason = "invalidated", "participant_ineligible"
-                    elif invite["mode"] == "member" and relation["subject_id"] == invite["recipient_id"]:
+                    elif (
+                        invite["mode"] == "member"
+                        and relation["subject_id"] == invite["recipient_id"]
+                    ):
                         state, reason = "invalidated", "self_relationship"
-                    elif len(self._owner_relationships(db, scope_id, period_id, invite["mode"], invite["recipient_id"])) >= capacity:
+                    elif (
+                        len(
+                            self._owner_relationships(
+                                db,
+                                scope_id,
+                                period_id,
+                                invite["mode"],
+                                invite["recipient_id"],
+                            )
+                        )
+                        >= capacity
+                    ):
                         state, reason = "invalidated", "recipient_full"
             updated = db.execute(
                 "UPDATE gift_invites SET state=?,finalized_at=?,reason=? WHERE id=? AND state='pending'",
@@ -765,9 +1280,17 @@ class GameplayService:
                 raise StorageError("邀请状态已由并发操作完成。")
             new_relationship_id = None
             if action == "accept" and state == "accepted":
-                relation = db.execute("SELECT * FROM relationships WHERE id=?", (invite["relationship_id"],)).fetchone()
-                new_relationship_id = self._transfer(db, relation, invite["recipient_id"], capacity, now, "gifted")
-                db.execute("UPDATE gift_invites SET result_relationship_id=? WHERE id=?", (new_relationship_id, invite_id))
+                relation = db.execute(
+                    "SELECT * FROM relationships WHERE id=?",
+                    (invite["relationship_id"],),
+                ).fetchone()
+                new_relationship_id = self._transfer(
+                    db, relation, invite["recipient_id"], capacity, now, "gifted"
+                )
+                db.execute(
+                    "UPDATE gift_invites SET result_relationship_id=? WHERE id=?",
+                    (new_relationship_id, invite_id),
+                )
             elif recipient_umo:
                 final_text = {
                     "cancelled": "已取消",
@@ -789,11 +1312,36 @@ class GameplayService:
                     },
                     now,
                 )
-            result_code = "GIFT_ACCEPTED" if state == "accepted" else ("INVITE_EXPIRED" if state == "expired" else "INVITE_INVALIDATED" if state == "invalidated" else f"INVITE_{state.upper()}")
+            result_code = (
+                "GIFT_ACCEPTED"
+                if state == "accepted"
+                else (
+                    "INVITE_EXPIRED"
+                    if state == "expired"
+                    else "INVITE_INVALIDATED"
+                    if state == "invalidated"
+                    else f"INVITE_{state.upper()}"
+                )
+            )
             return self._record_result(
-                db, operation_id, scope_id, period_id, invite["mode"], actor_id, f"gift_{action}", result_code,
-                {"invite_id": invite_id, "state": state, "reason": reason, "new_relationship_id": new_relationship_id},
-                config_revision, now, event_key, payload_hash,
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                invite["mode"],
+                actor_id,
+                f"gift_{action}",
+                result_code,
+                {
+                    "invite_id": invite_id,
+                    "state": state,
+                    "reason": reason,
+                    "new_relationship_id": new_relationship_id,
+                },
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
             )
 
     def _valid_candidates(
@@ -908,24 +1456,57 @@ class GameplayService:
         target = [candidate.subject_id for candidate in candidates]
         intimacy_points = [max(0, int(intimacy.get(user_id, 0))) for user_id in target]
         activity_counts = [max(0, int(activity.get(user_id, 0))) for user_id in target]
-        baseline = [min(maximum, base + min(max(0.0, (maximum - base) / per_intimacy), points) * per_intimacy) if per_intimacy else base for points in intimacy_points]
+        baseline = [
+            min(
+                maximum,
+                base
+                + min(max(0.0, (maximum - base) / per_intimacy), points) * per_intimacy,
+            )
+            if per_intimacy
+            else base
+            for points in intimacy_points
+        ]
         activity_factor = [
             floor + (1.0 - floor) * min(count / max(1, activity_window_days), 1.0)
             for count in activity_counts
         ]
-        return self.chooser.choices(list(candidates), weights=[a * b for a, b in zip(baseline, activity_factor)], k=1)[0]
+        return self.chooser.choices(
+            list(candidates),
+            weights=[a * b for a, b in zip(baseline, activity_factor)],
+            k=1,
+        )[0]
 
     def _snapshot(self, db: sqlite3.Connection, candidate: Candidate, now: int) -> str:
         snapshot_id = str(uuid.uuid4())
         db.execute(
             "INSERT INTO subject_snapshots(id,subject_kind,subject_id,name,aliases_json,source_revision,created_at) VALUES(?,?,?,?,?,?,?)",
-            (snapshot_id, candidate.subject_kind, candidate.subject_id, candidate.name, json.dumps(candidate.aliases, ensure_ascii=False), candidate.source_revision, now),
+            (
+                snapshot_id,
+                candidate.subject_kind,
+                candidate.subject_id,
+                candidate.name,
+                json.dumps(candidate.aliases, ensure_ascii=False),
+                candidate.source_revision,
+                now,
+            ),
         )
         for digest in dict.fromkeys(candidate.image_hashes):
-            db.execute("INSERT INTO snapshot_images(snapshot_id,media_hash) VALUES(?,?)", (snapshot_id, digest))
+            db.execute(
+                "INSERT INTO snapshot_images(snapshot_id,media_hash) VALUES(?,?)",
+                (snapshot_id, digest),
+            )
         return snapshot_id
 
-    def _transfer(self, db: sqlite3.Connection, relationship: sqlite3.Row, new_owner: str, capacity: int, now: int, reason: str, slot_kind: str = "normal") -> str:
+    def _transfer(
+        self,
+        db: sqlite3.Connection,
+        relationship: sqlite3.Row,
+        new_owner: str,
+        capacity: int,
+        now: int,
+        reason: str,
+        slot_kind: str = "normal",
+    ) -> str:
         db.execute(
             "UPDATE relationships SET state='ended',ended_at=?,end_reason=?,version=version+1 WHERE id=? AND state='active'",
             (now, reason, relationship["id"]),
@@ -952,7 +1533,15 @@ class GameplayService:
         )
         return new_id
 
-    def _owner_relationships(self, db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, owner_id: str, slot_kind: str = "normal") -> list[dict[str, Any]]:
+    def _owner_relationships(
+        self,
+        db: sqlite3.Connection,
+        scope_id: int,
+        period_id: str,
+        mode: str,
+        owner_id: str,
+        slot_kind: str = "normal",
+    ) -> list[dict[str, Any]]:
         rows = db.execute(
             """SELECT r.id,r.scope_id,r.period_id,r.mode,r.owner_id,r.subject_id,r.subject_kind,r.snapshot_id,r.version,s.name,s.aliases_json
                FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id
@@ -960,7 +1549,9 @@ class GameplayService:
                ORDER BY r.acquired_at,r.id""",
             (scope_id, period_id, mode, owner_id, slot_kind),
         ).fetchall()
-        return [dict(row) | {"aliases": json.loads(row["aliases_json"])} for row in rows]
+        return [
+            dict(row) | {"aliases": json.loads(row["aliases_json"])} for row in rows
+        ]
 
     @staticmethod
     def _locked_relationship(
@@ -992,13 +1583,34 @@ class GameplayService:
             is not None
         )
 
-    def _choose_owned(self, relations: Sequence[dict[str, Any]], relation_id: str | None, subject_id: str | None) -> dict[str, Any] | None:
-        matches = [row for row in relations if (relation_id is None or row["id"] == relation_id) and (subject_id is None or row["subject_id"] == subject_id)]
+    def _choose_owned(
+        self,
+        relations: Sequence[dict[str, Any]],
+        relation_id: str | None,
+        subject_id: str | None,
+    ) -> dict[str, Any] | None:
+        matches = [
+            row
+            for row in relations
+            if (relation_id is None or row["id"] == relation_id)
+            and (subject_id is None or row["subject_id"] == subject_id)
+        ]
         if not matches:
             return None
-        return self.chooser.choice(list(matches)) if relation_id is None and subject_id is None else matches[0]
+        return (
+            self.chooser.choice(list(matches))
+            if relation_id is None and subject_id is None
+            else matches[0]
+        )
 
-    def _counter(self, db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, user_id: str) -> sqlite3.Row:
+    def _counter(
+        self,
+        db: sqlite3.Connection,
+        scope_id: int,
+        period_id: str,
+        mode: str,
+        user_id: str,
+    ) -> sqlite3.Row:
         db.execute(
             "INSERT OR IGNORE INTO daily_counters(scope_id,period_id,mode,user_id) VALUES(?,?,?,?)",
             (scope_id, period_id, mode, user_id),
@@ -1008,26 +1620,61 @@ class GameplayService:
             (scope_id, period_id, mode, user_id),
         ).fetchone()
 
-    def _current_period(self, db: sqlite3.Connection, scope_id: int, period_id: str) -> sqlite3.Row:
-        row = db.execute("SELECT * FROM periods WHERE id=? AND scope_id=? AND state='current'", (period_id, scope_id)).fetchone()
+    def _current_period(
+        self, db: sqlite3.Connection, scope_id: int, period_id: str
+    ) -> sqlite3.Row:
+        row = db.execute(
+            "SELECT * FROM periods WHERE id=? AND scope_id=? AND state='current'",
+            (period_id, scope_id),
+        ).fetchone()
         if row is None:
             raise StorageError("请求的周期已结束或不属于当前群。")
         return row
 
-    def _issue_credit(self, db: sqlite3.Connection, scope_id: int, period_id: str, mode: Mode, user_id: str, operation_id: str, reason: str, relation_id: str, now: int) -> None:
+    def _issue_credit(
+        self,
+        db: sqlite3.Connection,
+        scope_id: int,
+        period_id: str,
+        mode: Mode,
+        user_id: str,
+        operation_id: str,
+        reason: str,
+        relation_id: str,
+        now: int,
+    ) -> None:
         source_id = f"{operation_id}:{relation_id}"
         db.execute(
             "INSERT OR IGNORE INTO redraw_credits(id,scope_id,period_id,mode,user_id,source_operation_id,reason,state,issued_at) VALUES(?,?,?,?,?,?,?,'available',?)",
-            (str(uuid.uuid4()), scope_id, period_id, mode, user_id, source_id, reason, now),
+            (
+                str(uuid.uuid4()),
+                scope_id,
+                period_id,
+                mode,
+                user_id,
+                source_id,
+                reason,
+                now,
+            ),
         )
 
-    def _invalidate_relation_invites(self, db: sqlite3.Connection, relation_id: str, now: int, reason: str) -> None:
+    def _invalidate_relation_invites(
+        self, db: sqlite3.Connection, relation_id: str, now: int, reason: str
+    ) -> None:
         db.execute(
             "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason=? WHERE relationship_id=? AND state='pending'",
             (now, reason, relation_id),
         )
 
-    def _outbox(self, db: sqlite3.Connection, scope_id: int, dedupe_key: str, umo: str, payload: dict[str, Any], now: int) -> None:
+    def _outbox(
+        self,
+        db: sqlite3.Connection,
+        scope_id: int,
+        dedupe_key: str,
+        umo: str,
+        payload: dict[str, Any],
+        now: int,
+    ) -> None:
         if payload.get("kind") in {"gift_invite", "gift_invite_final"}:
             invite = db.execute(
                 "SELECT * FROM gift_invites WHERE scope_id=? AND id=?",
@@ -1087,43 +1734,107 @@ class GameplayService:
                 )
         db.execute(
             "INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at) VALUES(?,?,?,?,?,'pending',?)",
-            (str(uuid.uuid4()), scope_id, dedupe_key, umo, json.dumps(payload, ensure_ascii=False), now),
+            (
+                str(uuid.uuid4()),
+                scope_id,
+                dedupe_key,
+                umo,
+                json.dumps(payload, ensure_ascii=False),
+                now,
+            ),
         )
 
-    def _replay(self, db: sqlite3.Connection, scope_id: int, event_key: str | None, payload_hash: str) -> BusinessResult | None:
+    def _replay(
+        self,
+        db: sqlite3.Connection,
+        scope_id: int,
+        event_key: str | None,
+        payload_hash: str,
+    ) -> BusinessResult | None:
         if not event_key:
             return None
-        row = db.execute("SELECT payload_hash,command_operation_id FROM processed_events WHERE scope_id=? AND event_key=?", (scope_id, event_key)).fetchone()
+        row = db.execute(
+            "SELECT payload_hash,command_operation_id FROM processed_events WHERE scope_id=? AND event_key=?",
+            (scope_id, event_key),
+        ).fetchone()
         if row is None:
             return None
         if row["payload_hash"] != payload_hash:
             raise StorageError("同一事件键对应不同消息载荷，拒绝重复执行。")
         if not row["command_operation_id"]:
             return None
-        operation = db.execute("SELECT result_code,data_json FROM operation_log WHERE id=?", (row["command_operation_id"],)).fetchone()
+        operation = db.execute(
+            "SELECT result_code,data_json FROM operation_log WHERE id=?",
+            (row["command_operation_id"],),
+        ).fetchone()
         if operation is None:
             raise StorageError("幂等事件的操作记录缺失。")
         data = json.loads(operation["data_json"])
         return BusinessResult(operation["result_code"], data, replayed=True)
 
     def _record_result(
-        self, db: sqlite3.Connection, operation_id: str, scope_id: int, period_id: str, mode: str | None,
-        actor_id: str, kind: str, code: str, data: dict[str, Any], config_revision: str, now: int,
-        event_key: str | None, payload_hash: str,
+        self,
+        db: sqlite3.Connection,
+        operation_id: str,
+        scope_id: int,
+        period_id: str,
+        mode: str | None,
+        actor_id: str,
+        kind: str,
+        code: str,
+        data: dict[str, Any],
+        config_revision: str,
+        now: int,
+        event_key: str | None,
+        payload_hash: str,
     ) -> BusinessResult:
         result = BusinessResult(code, data)
-        self._record(db, operation_id, scope_id, period_id, mode, actor_id, kind, result, config_revision, now, event_key, payload_hash)
+        self._record(
+            db,
+            operation_id,
+            scope_id,
+            period_id,
+            mode,
+            actor_id,
+            kind,
+            result,
+            config_revision,
+            now,
+            event_key,
+            payload_hash,
+        )
         return result
 
     def _record(
-        self, db: sqlite3.Connection, operation_id: str, scope_id: int, period_id: str, mode: str | None,
-        actor_id: str, kind: str, result: BusinessResult, config_revision: str, now: int,
-        event_key: str | None, payload_hash: str,
+        self,
+        db: sqlite3.Connection,
+        operation_id: str,
+        scope_id: int,
+        period_id: str,
+        mode: str | None,
+        actor_id: str,
+        kind: str,
+        result: BusinessResult,
+        config_revision: str,
+        now: int,
+        event_key: str | None,
+        payload_hash: str,
     ) -> None:
         db.execute(
             """INSERT OR IGNORE INTO operation_log(id,scope_id,period_id,mode,kind,actor_id,actor_type,result_code,config_revision,data_json,created_at)
                VALUES(?,?,?,?,?,?,'qq',?,?,?,?)""",
-            (operation_id, scope_id, period_id, mode, kind, actor_id, result.code, config_revision, json.dumps(result.data, ensure_ascii=False, allow_nan=False), now),
+            (
+                operation_id,
+                scope_id,
+                period_id,
+                mode,
+                kind,
+                actor_id,
+                result.code,
+                config_revision,
+                json.dumps(result.data, ensure_ascii=False, allow_nan=False),
+                now,
+            ),
         )
         if event_key:
             db.execute(
@@ -1150,4 +1861,10 @@ def _candidate_dict(candidate: Candidate) -> dict[str, Any]:
 def math_probability(value: float) -> bool:
     """拒绝 NaN/Infinity 和范围外概率。"""
 
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and value == value and 0 <= value <= 1 and value not in {float("inf"), float("-inf")}
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and value == value
+        and 0 <= value <= 1
+        and value not in {float("inf"), float("-inf")}
+    )

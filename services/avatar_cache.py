@@ -207,7 +207,9 @@ def _valid_qq_id(user_id: str) -> bool:
 
 def _allowed_host(host: str) -> bool:
     host = host.lower().rstrip(".")
-    return host in _ALLOWED_REDIRECT_HOSTS or any(host.endswith(suffix) for suffix in _ALLOWED_REDIRECT_SUFFIXES)
+    return host in _ALLOWED_REDIRECT_HOSTS or any(
+        host.endswith(suffix) for suffix in _ALLOWED_REDIRECT_SUFFIXES
+    )
 
 
 def _inspect_avatar(payload: bytes, max_pixels: int) -> tuple[int, int, str]:
@@ -226,7 +228,9 @@ def _inspect_avatar(payload: bytes, max_pixels: int) -> tuple[int, int, str]:
 
 def _atomic_replace(target: Path, payload: bytes) -> None:
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, temporary = tempfile.mkstemp(prefix=".avatar-", suffix=".tmp", dir=target.parent)
+    fd, temporary = tempfile.mkstemp(
+        prefix=".avatar-", suffix=".tmp", dir=target.parent
+    )
     try:
         with os.fdopen(fd, "wb") as output:
             output.write(payload)
@@ -260,7 +264,9 @@ def _prune_files(
         return 0
     ordered = sorted(
         entries,
-        key=lambda user_id: max((_cache_times(path)[1] for path in entries[user_id]), default=0),
+        key=lambda user_id: max(
+            (_cache_times(path)[1] for path in entries[user_id]), default=0
+        ),
     )
     preserve = preserve_user_ids or set()
     removed = 0
