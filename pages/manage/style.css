@@ -482,3 +482,16 @@ html { scroll-padding-top: 88px; scroll-padding-bottom: 124px; }
 body:not(.has-save-bar) .shell { padding-bottom: 32px; }
 body.has-save-bar.save-bar-collapsed .shell { padding-bottom: 86px; }
 .save-bar.collapsed { padding-block: 8px; }
+
+/* 0.2.0：用户状态、回复形式预览与规则预览 */
+.status-result { display: grid; gap: 12px; margin-top: 12px; }
+.status-mode { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; }
+.status-mode h4 { margin: 0 0 6px; }
+.status-mode ul { margin: 6px 0; padding-left: 18px; }
+.status-mode .facts { color: var(--muted); font-size: 13px; }
+.render-preview-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 12px; }
+.render-preview-grid figure { margin: 0; }
+.render-preview-grid figcaption { margin-bottom: 6px; font-weight: 700; }
+.render-preview-grid img { max-width: 100%; border: 1px solid var(--border); border-radius: 10px; }
+.rule-preview ul { margin: 6px 0 0; padding-left: 18px; }
+.rule-preview li { margin: 4px 0; }

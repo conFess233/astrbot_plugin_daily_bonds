@@ -90,3 +90,59 @@ export function templateParts(text, fields, path = "模板") {
   if (missing.length && !(fields.image && used.has("image"))) throw new Error(`${path} 缺少必要变量：${missing.join("、")}`);
   return parts;
 }
+
+// 服务端 schema 2 中每条文案是 {text, enabled, quote}；编辑器沿用三类叶子路径：
+// messages.<分类>.<键>、reply_enabled.<分类>.<键>、reply_quote.<分类>.<键>。
+// 读取时展开，提交前合并，编辑器其余逻辑无需感知结构变化。
+const MESSAGE_FLAGS = { enabled: "reply_enabled", quote: "reply_quote" };
+
+export function toUiConfig(config) {
+  if (!config || typeof config !== "object") return config;
+  const result = structuredClone(config);
+  const messages = result.messages;
+  if (!messages) return result;
+  for (const [section, entries] of Object.entries(messages)) {
+    for (const [key, entry] of Object.entries(entries || {})) {
+      if (!entry || typeof entry !== "object") continue;
+      if (Object.hasOwn(entry, "text")) entries[key] = entry.text;
+      else delete entries[key];
+      for (const [flag, prefix] of Object.entries(MESSAGE_FLAGS)) {
+        if (!Object.hasOwn(entry, flag)) continue;
+        result[prefix] ??= {};
+        result[prefix][section] ??= {};
+        result[prefix][section][key] = entry[flag];
+      }
+    }
+    if (!Object.keys(entries || {}).length) delete messages[section];
+  }
+  if (!Object.keys(messages).length) delete result.messages;
+  return result;
+}
+
+export function fromUiConfig(config) {
+  if (!config || typeof config !== "object") return config;
+  const result = structuredClone(config);
+  const flags = Object.values(MESSAGE_FLAGS);
+  const touched = result.messages || flags.some((prefix) => result[prefix]);
+  if (!touched) return result;
+  const messages = result.messages || {};
+  const merged = {};
+  for (const [section, entries] of Object.entries(messages)) {
+    merged[section] = {};
+    for (const [key, text] of Object.entries(entries)) {
+      merged[section][key] = section === "titles" ? text : { text };
+    }
+  }
+  for (const [flag, prefix] of Object.entries(MESSAGE_FLAGS)) {
+    for (const [section, entries] of Object.entries(result[prefix] || {})) {
+      merged[section] ??= {};
+      for (const [key, value] of Object.entries(entries)) {
+        merged[section][key] ??= {};
+        merged[section][key][flag] = value;
+      }
+    }
+    delete result[prefix];
+  }
+  result.messages = merged;
+  return result;
+}

@@ -85,6 +85,7 @@ class DailyBondsPlugin(Star):
                 render_html=self.html_render,
             )
             web_manager.runtime_reset = self._runtime.reset
+            web_manager.runtime = self._runtime
             self._maintenance_task = asyncio.create_task(
                 self._maintenance_loop(notifications, retention),
                 name="daily-bonds-maintenance",

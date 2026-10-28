@@ -201,7 +201,10 @@ class CardService:
             result.append(
                 {
                     "primary": row.primary,
-                    "secondary": row.secondary,
+                    # 文字回复用方括号包住来源标签，卡片里已有标签样式。
+                    "secondary": row.secondary.strip()
+                    .removeprefix("[")
+                    .removesuffix("]"),
                     "tone": row.tone,
                     "source": source,
                     "image": data_uri(row.image_path, 240),

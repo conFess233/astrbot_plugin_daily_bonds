@@ -2,8 +2,9 @@ import { configPage } from "./config-workspace.js";
 import { initBatchImages } from "./batch-images.js";
 import { confirmAction } from "./confirm-dialog.js";
 import { initUploadCompression, prepareUploadImage } from "./upload-images.js";
+import { initStatusAndMigration } from "./status-migration.js";
 
-import { configAt, configLeaves, displayValue, draftValues, changedPaths, serializeDraft, templateParts } from "./config-model.js";
+import { configAt, configLeaves, displayValue, draftValues, changedPaths, serializeDraft, templateParts, toUiConfig, fromUiConfig } from "./config-model.js";
 
 initUploadCompression();
 
@@ -41,7 +42,6 @@ const state = {
   scrollPositions: {},
   selectedTemplate: "",
   selectedReplies: new Set(),
-  fonts: [],
   pendingSubmission: null,
   saveNeedsReload: false,
   configGroup: "enabled",
@@ -172,6 +172,7 @@ function beforeUnload(event) {
 }
 
 function updateDirtyState() {
+  renderRulePreview();
   const paths = dirtyPaths();
   const dirty = paths.length > 0;
   const visible = dirty || !!state.pendingSubmission || state.saveNeedsReload;
@@ -324,10 +325,12 @@ const CONFIG_GROUPS = {
   "messages.results": "群内操作结果", "messages.errors": "群内错误提示",
   "messages.notifications": "赠送与重启通知", "messages.titles": "标题与统计标签",
   "reply_quote.results": "结果回复引用", "reply_quote.errors": "错误回复引用",
-  batch_import: "批量图片检测默认值",
+  batch_import: "批量图片检测默认值", render: "回复形式",
 };
 const MESSAGE_LABELS = {
   draw_wife: "抽到老婆", draw_husband: "抽到老公", draw_member: "抽到群友",
+  draw_member_mutual: "群友双向奔赴", my_status: "我的姻缘", help: "姻缘帮助", my_collection: "我的图鉴",
+  status: "我的姻缘标题", collection: "我的图鉴标题",
   capacity_full: "持有名额已满", no_draw_quota: "普通抽取额度用完", no_candidate: "没有候选对象",
   steal_failed: "抢夺失败", stolen: "抢夺成功", divorced: "解除关系成功",
   gifted: "赠送成功", invite_created: "赠送邀请已创建", gift_accepted: "赠送已接受",
@@ -377,7 +380,6 @@ const TITLE_LABELS = {
   designated_slot: "指定槽位标签", wife: "老婆玩法名称", husband: "老公玩法名称", member: "群友玩法名称",
 };
 const CONFIG_LABELS = {
-  font_id: "图片字体",
   schema_version: "配置格式版本", enabled: "启用", mode: "名单模式", ids: "名单 ID",
   male_keywords: "男类检测关键词", female_keywords: "女类检测关键词",
   male_pool_id: "默认男卡池 ID", female_pool_id: "默认女卡池 ID",
@@ -385,9 +387,11 @@ const CONFIG_LABELS = {
   allow_bare: "允许裸关键词", allow_leading_bot_mention: "允许开头 @机器人",
   allow_host_prefix: "允许宿主命令前缀", extra_prefixes: "额外命令前缀",
   cooldown_seconds: "通用冷却（秒）", capacity: "每日容量", steal_enabled: "允许抢夺",
-  designated_capacity: "每周期指定次数与槽位上限", designated_unique: "指定角色只能拥有一段关系",
-  steal_slot_capacity: "每日抢夺槽位数量", rank_merge_rows: "小排行合并行数上限",
-  rank_max_height: "排行图片最大高度（像素）",
+  designated_limit: "每周期指定次数", designated_unique: "指定角色只能拥有一段关系",
+  rank_merge_rows: "每张卡片最多行数",
+  steal_intimacy_bonus: "每点亲密度增加成功率", steal_probability_max: "亲密度加成后的成功率上限",
+  types: "按类型设置", draw: "抽取结果", status: "我的姻缘", help: "姻缘帮助", list: "关系列表",
+  rank: "排行", affection: "好感度", collection: "我的图鉴",
   steal_attempt_limit: "抢夺尝试次数上限", steal_cooldown_seconds: "抢夺冷却（秒）",
   steal_probability: "抢夺成功率（%）", stolen_limit: "被抢次数上限",
   gift_enabled: "允许赠送", gift_mode: "赠送方式", gift_timeout_seconds: "赠送确认超时（秒）",
@@ -404,9 +408,8 @@ const CONFIG_LABELS = {
   retention_days: "历史保留天数", http_timeout_seconds: "HTTP 超时（秒）",
   image_max_bytes: "单图大小上限（字节）", image_max_pixels: "单图像素上限",
   import_max_bytes: "导入包大小上限（字节）", import_max_entries: "导入条目上限",
-  import_max_expanded_bytes: "导入解压上限（字节）", render_width: "渲染宽度（像素）",
-  render_max_height: "单图最大高度（像素）", render_concurrency: "并发渲染数",
-  text_chunk_chars: "文字分片字符数", send_interval_seconds: "分片发送间隔（秒）",
+  import_max_expanded_bytes: "导入解压上限（字节）",
+  text_chunk_chars: "文字分片字符数",
   pending_invites_per_user: "每人待处理邀请上限",
   avatar_cache_ttl_seconds: "头像缓存时间（秒）", avatar_cache_max_entries: "头像缓存人数上限",
   dedupe_retention_days: "事件去重保留天数", backup_keep_count: "备份保留数量",
@@ -418,15 +421,20 @@ const CONFIG_LABELS = {
   divorce_member: "踹群友", list_characters: "老婆列表", list_husband: "老公列表", list_members: "群友列表",
   rank_intimacy: "亲密度排行", rank_activity: "活跃度排行",
   gift_accept: "接受赠送", gift_reject: "拒绝赠送", gift_cancel: "取消赠送", query_affection: "好感度查询",
+  my_status: "我的姻缘", my_collection: "我的图鉴",
 };
 const CONFIG_OPTIONS = {
   "access.groups.mode": [["unrestricted", "不限制"], ["blacklist", "黑名单"], ["whitelist", "白名单"]],
   "access.users.mode": [["unrestricted", "不限制"], ["blacklist", "黑名单"], ["whitelist", "白名单"]],
   "display.intimacy_rank_mode": [["personal", "个人"], ["group_directed", "全群有向"]],
+  "render.mode": [["card", "卡片（t2i 渲染）"], ["text", "纯文本"]],
+  ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
+    [`render.types.${kind}`, [["inherit", "沿用总开关"], ["card", "卡片"], ["text", "纯文本"]]])),
 };
 const FLOAT_CONFIG_PATHS = new Set([
   "weights.base", "weights.per_intimacy_point", "weights.maximum",
-  "weights.activity_floor", "resources.send_interval_seconds",
+  "weights.activity_floor",
+  ...["wife", "husband", "member"].flatMap((mode) => [`modes.${mode}.steal_intimacy_bonus`, `modes.${mode}.steal_probability_max`]),
 ]);
 const CONFIG_HINTS = {
   "access.groups.ids": "每行一个群身份 ID。",
@@ -446,15 +454,19 @@ const CONFIG_HINTS = {
   "modes.husband.divorce_limit": "0 表示不限次数。",
   "modes.member.divorce_limit": "0 表示不限次数。",
   "reset.time": "使用 HH:mm 格式；旧周期结束后生效。",
-  "display.rank_merge_rows": "1～100；不超过此行数的小排行尝试合并为一张图片，仍受图片高度限制。",
-  "display.rank_max_height": "300～16000 像素；超过最大高度的排行拆分为多张图片。",
-  "modes.wife.designated_capacity": "0～100；0 关闭指定老婆。指定次数和槽位共用此上限，每周期重置；失败不扣次数，不占普通或抢夺槽位。",
-  "modes.husband.designated_capacity": "0～100；0 关闭指定老公。指定次数和槽位共用此上限，每周期重置；失败不扣次数，不占普通或抢夺槽位。",
-  "modes.wife.designated_unique": "开启时，已有有效关系的角色不能再次指定；关闭允许同一人或多人重复指定。只影响后续指定，已有关系保留。",
-  "modes.husband.designated_unique": "开启时，已有有效关系的角色不能再次指定；关闭允许同一人或多人重复指定。只影响后续指定，已有关系保留。",
-  "modes.wife.steal_slot_capacity": "0～100；0 表示沿用普通持有容量，正数使用独立抢夺槽位。",
-  "modes.husband.steal_slot_capacity": "0～100；0 表示沿用普通持有容量，正数使用独立抢夺槽位。",
-  "modes.member.steal_slot_capacity": "0～100；0 表示沿用普通持有容量，正数使用独立抢夺槽位。",
+  "display.rank_merge_rows": "1～100；列表每张卡片最多显示的行数，排行每张最多 30 行；超出时分成多张。",
+  "render.mode": "卡片由 AstrBot 的 t2i 服务渲染，会把群名片、头像和角色图发送到该服务；选择纯文本则不发送。渲染失败时自动改发文字。",
+  ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
+    [`render.types.${kind}`, "沿用总开关，或为这一类回复单独选择卡片或纯文本。"])),
+  ...Object.fromEntries(["wife", "husband"].flatMap((mode) => [
+    [`modes.${mode}.designated_limit`, "0～100；0 关闭指定。每周期重置，失败不扣次数；指定得到的关系占用持有上限，当天受保护。"],
+    [`modes.${mode}.designated_unique`, "开启时，已有有效关系的角色不能再次指定；关闭允许同一人或多人重复指定。只影响后续指定，已有关系保留。"],
+  ])),
+  ...Object.fromEntries(["wife", "husband", "member"].flatMap((mode) => [
+    [`modes.${mode}.capacity`, "1～100；所有来源（抽取、指定、抢夺、赠送）共用此上限，同时是每周期普通抽取次数。"],
+    [`modes.${mode}.steal_intimacy_bonus`, "0～1；成功率 = 基础成功率 + 抢夺者对持有者的亲密度 × 此值。0 关闭加成。"],
+    [`modes.${mode}.steal_probability_max`, "0～1；只限制加成后的成功率，基础成功率更高时以基础成功率为准。"],
+  ])),
 };
 
 function configGroup(path) {
@@ -583,11 +595,6 @@ function createConfigField(path, value) {
     input.type = "checkbox";
     input.setAttribute("role", "switch");
     input.checked = value;
-  } else if (path === "resources.font_id") {
-    input = document.createElement("select");
-    input.add(new Option(state.fonts.length ? "自动选择本地字体" : "未读取到本地字体（使用文字回复）", "auto"));
-    for (const font of state.fonts) input.add(new Option(font.name, font.id));
-    if (value !== "auto" && !state.fonts.some((font) => font.id === value)) input.add(new Option("所选字体不可用（自动选择本地字体）", value));
   } else if (CONFIG_OPTIONS[path] || path.endsWith(".gift_mode")) {
     input = document.createElement("select");
     const choices = CONFIG_OPTIONS[path] || [["direct", "直接赠送"], ["confirm", "等待确认"]];
@@ -598,9 +605,9 @@ function createConfigField(path, value) {
     input.type = typeof value === "number" ? "number" : path === "reset.time" ? "time" : "text";
     input.value = path.endsWith(".steal_probability") ? String(value * 100) : String(value);
     if (input.type === "number") input.step = Number.isInteger(value) && !FLOAT_CONFIG_PATHS.has(path) && !path.endsWith(".steal_probability") ? "1" : "any";
-    if (path.endsWith(".steal_probability") || path.endsWith(".designated_capacity") || path.endsWith(".steal_slot_capacity")) { input.min = "0"; input.max = "100"; }
+    if (path.endsWith(".steal_probability") || path.endsWith(".designated_limit")) { input.min = "0"; input.max = "100"; }
+    if (path.endsWith(".steal_intimacy_bonus") || path.endsWith(".steal_probability_max")) { input.min = "0"; input.max = "1"; }
     if (path === "display.rank_merge_rows") { input.min = "1"; input.max = "100"; }
-    if (path === "display.rank_max_height") { input.min = "300"; input.max = "16000"; }
   }
   input.dataset.configPath = path;
   input.id = `field-${path.replaceAll(".", "-")}`;
@@ -677,16 +684,6 @@ function createConfigField(path, value) {
   error.id = `${input.id}-error`;
   input.setAttribute("aria-describedby", `${hint ? input.id + "-help " : ""}${error.id}`);
   card.append(error);
-  if (path === "resources.font_id") {
-    const image = document.createElement("img"); image.className = "font-preview"; image.alt = "字体中文预览"; image.hidden = true;
-    const button = document.createElement("button"); button.type = "button"; button.className = "button secondary"; button.textContent = "预览字体";
-    button.addEventListener("click", async () => {
-      button.disabled = true;
-      try { const result = await apiGet("fonts/preview", { font_id: input.value }); image.src = result.data.src; image.hidden = false; }
-      catch (error) { showNotice(error.message || "预览失败。", "error"); }
-      finally { button.disabled = false; }
-    }); card.append(button, image);
-  }
   fieldCards.set(path, card);
   return card;
 }
@@ -714,6 +711,8 @@ function renderConfigFields() {
   for (const button of document.querySelectorAll("[data-mode-choice]")) button.setAttribute("aria-pressed", String(button.dataset.modeChoice === ui.mode));
   for (const details of configFields.querySelectorAll(".mode-details")) details.open = ui.expanded.includes(details.dataset.modeGroup);
   $("#template-search").value = ui.search; $("#template-category").value = ui.category;
+  // 旧版分类名已经不存在时回到“全部”，避免目录为空。
+  if (!$("#template-category").value) $("#template-category").value = "全部";
   filterTemplates(); $("#template-list").scrollTop = ui.listScroll;
   $(".reply-edit-area").dataset.pane = ui.pane;
   for (const pane of ["edit", "preview"]) $("#reply-" + pane + "-tab").setAttribute("aria-pressed", String(pane === ui.pane));
@@ -769,7 +768,7 @@ const MODE_NAMES = { wife: "今日老婆", husband: "今日老公", member: "娶
 const COMMON_MODE_KEYS = ["enabled", "capacity", "steal_enabled", "steal_probability", "steal_attempt_limit"];
 const MODE_ROWS = {
   enabled: ["玩法启用", "控制该玩法是否可用"],
-  capacity: ["普通容量", "普通抽取总额度", "个"],
+  capacity: ["持有上限", "所有来源共用，也是每周期普通抽取次数", "个"],
   steal_enabled: ["抢夺启用", "是否允许抢夺"],
   steal_probability: ["抢夺成功率", "单次有效抢夺的基础概率", "%"],
   steal_attempt_limit: ["抢夺次数", "每周期尝试上限，0 为不限", "次"],
@@ -853,7 +852,7 @@ function renderModesWorkspace() {
     main.append(details);
   }
   const help = document.createElement("aside"); help.className = "card mode-help";
-  help.innerHTML = '<h3>规则说明</h3><div><strong>当前配置范围</strong><p>全局配置只影响继承该字段的群；群级覆盖仅作用于所选群。</p></div><div><strong>开关与数值</strong><p>关闭玩法不会清空已配置数值。</p></div><div><strong>次数为 0</strong><p>抢夺次数为 0 表示不限。抢夺槽位为 0 表示沿用普通容量。</p></div><div><strong>提交范围</strong><p>仅保存配置，角色、角色池和图片单独提交。</p></div>';
+  help.innerHTML = '<h3>规则说明</h3><div><strong>当前配置范围</strong><p>全局配置只影响继承该字段的群；群级覆盖仅作用于所选群。</p></div><div><strong>开关与数值</strong><p>关闭玩法不会清空已配置数值。</p></div><div><strong>持有上限</strong><p>抽取、指定、抢夺和赠送得到的关系共用一个上限；抢来的和指定的关系当天受保护。</p></div><div><strong>次数为 0</strong><p>抢夺、被抢和离婚次数为 0 表示不限；指定次数为 0 表示关闭指定。</p></div><div><strong>提交范围</strong><p>仅保存配置，角色、角色池和图片单独提交。</p></div>';
   const copy = document.createElement("details"); copy.className = "card mode-copy";
   copy.innerHTML = '<summary>同步本次修改的玩法参数</summary><p class="hint">只同步来源玩法本次修改的参数，专属字段仅同步到支持的玩法。</p><label class="field"><span>来源玩法</span><select id="copy-source"></select></label><div id="copy-targets" class="actions"></div><button id="copy-parameters" type="button" class="button secondary">同步参数改动</button>';
   for (const [mode, name] of Object.entries(MODE_NAMES)) {
@@ -874,20 +873,56 @@ function renderModesWorkspace() {
       showNotice(count ? `已同步 ${count} 项参数到草稿。` : "请先修改来源玩法的参数，并勾选目标玩法。", count ? "success" : "error");
     } catch (error) { showConfigError(error.message); showNotice(error.message, "error"); }
   });
+  const preview = document.createElement("section"); preview.className = "card rule-preview"; preview.id = "rule-preview";
+  preview.setAttribute("aria-live", "polite");
+  help.append(preview);
   main.append(copy); view.append(main, help);
+  renderRulePreview();
 }
+
+// 用当前草稿说明一位用户一天内的额度，帮助核对数值组合是否符合预期。
+function renderRulePreview() {
+  const host = document.getElementById("rule-preview");
+  if (!host || !state.savedConfig) return;
+  const value = (path) => state.draftValues[path];
+  const heading = document.createElement("h3"); heading.textContent = "规则预览（按当前草稿）";
+  const list = document.createElement("ul");
+  for (const [mode, name] of Object.entries(MODE_NAMES)) {
+    const item = document.createElement("li");
+    if (value(`modes.${mode}.enabled`) === false) { item.textContent = `${name}：已关闭`; list.append(item); continue; }
+    const capacity = value(`modes.${mode}.capacity`);
+    const parts = [`最多同时持有 ${capacity} 段`, `每周期普通抽取 ${capacity} 次，离婚可补抽`];
+    const designated = value(`modes.${mode}.designated_limit`);
+    if (designated !== undefined) parts.push(Number(designated) ? `可指定 ${designated} 次` : "不可指定");
+    if (value(`modes.${mode}.steal_enabled`)) {
+      const attempts = Number(value(`modes.${mode}.steal_attempt_limit`));
+      parts.push(`${attempts ? `抢夺 ${attempts} 次` : "抢夺不限次数"}，成功率 ${value(`modes.${mode}.steal_probability`)}%`);
+    } else parts.push("不可抢夺");
+    item.textContent = `${name}：${parts.join("；")}。`;
+    list.append(item);
+  }
+  host.replaceChildren(heading, list);
+}
+
+// 回复词按使用场景分组：同一场景的成功结果与错误提示相邻。
+const TEMPLATE_CATEGORIES = ["抽取与指定", "抢夺", "赠送", "离婚", "列表与统计", "我的姻缘与帮助", "指令与通用提示", "通知", "标题标签"];
 
 function templateCategory(path) {
   const key = path.split(".").at(-1);
-  if (path.startsWith("messages.errors.")) return "错误提示";
   if (path.startsWith("messages.notifications.")) return "通知";
   if (path.startsWith("messages.titles.")) return "标题标签";
-  if (/steal|stolen/.test(key)) return "抢夺";
+  if (/^(my_status|help|my_collection)$/.test(key)) return "我的姻缘与帮助";
+  if (/steal|stolen|target_protected|no_target_relationship/.test(key)) return "抢夺";
   if (/gift|invite/.test(key)) return "赠送";
-  if (/divorce/.test(key)) return "离婚";
-  if (/rank|list|affection/.test(key)) return "列表与统计";
-  if (/draw|designated|capacity/.test(key)) return "抽取";
-  return "其他";
+  if (/divorc/.test(key)) return "离婚";
+  if (/rank|list|affection|activity|page/.test(key)) return "列表与统计";
+  if (/draw|designated|capacity|admin_set|already_held|no_candidate|relationship_locked/.test(key)) return "抽取与指定";
+  return "指令与通用提示";
+}
+
+function templateOrder(path) {
+  const section = path.split(".")[1];
+  return TEMPLATE_CATEGORIES.indexOf(templateCategory(path)) * 10 + ["results", "errors", "notifications", "titles"].indexOf(section);
 }
 
 function renderRepliesWorkspace() {
@@ -898,7 +933,7 @@ function renderRepliesWorkspace() {
     if (/^(messages|reply_quote|reply_enabled)\./.test(path)) store.append(card);
     if (path.startsWith("commands.keywords.")) $("#reply-keywords .config-grid").append(card);
   }
-  const categories = ["全部", "抽取", "抢夺", "赠送", "离婚", "错误提示", "通知", "列表与统计", "标题标签", "其他"];
+  const categories = ["全部", ...TEMPLATE_CATEGORIES];
   for (const category of categories) $("#template-category").add(new Option(category, category));
   $("#template-search").addEventListener("input", filterTemplates);
   $("#template-category").addEventListener("change", filterTemplates);
@@ -962,7 +997,8 @@ function filterTemplates() {
   const search = $("#template-search").value.trim().toLowerCase();
   const category = $("#template-category").value;
   const paths = [...fieldCards.keys()].filter((path) => path.startsWith("messages."));
-  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]}`.toLowerCase().includes(search));
+  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]}`.toLowerCase().includes(search))
+    .sort((left, right) => templateOrder(left) - templateOrder(right));
   $("#template-total").textContent = `${visible.length} / ${paths.length}`;
   for (const path of visible) {
     const button = document.createElement("button"); button.type = "button"; button.dataset.templatePath = path;
@@ -970,7 +1006,8 @@ function filterTemplates() {
     button.classList.toggle("modified", dirtyPaths().includes(path));
     button.setAttribute("aria-pressed", String(path === state.selectedTemplate));
     const name = document.createElement("strong"); name.textContent = configLabel(path);
-    const group = document.createElement("small"); group.textContent = `${templateCategory(path)} · ${path.split(".").at(-1)}`;
+    const kind = { results: "结果", errors: "错误", notifications: "通知", titles: "标签" }[path.split(".")[1]] || "";
+    const group = document.createElement("small"); group.textContent = `${templateCategory(path)} · ${kind} · ${path.split(".").at(-1)}`;
     button.append(name, group); button.addEventListener("click", () => selectTemplate(path));
     const row = document.createElement("div"); row.className = "template-row";
     if (fieldCards.has(path.replace("messages.", "reply_enabled."))) {
@@ -1096,6 +1133,11 @@ function selectConfigGroup(group) {
   for (const section of configFields.querySelectorAll(".config-group")) section.hidden = section.dataset.group !== group;
 }
 
+// 编辑器内部使用展开后的文案路径，提交前合并为服务端 schema 2 结构。
+function apiConfigPayload(payload) {
+  return { ...payload, draft: fromUiConfig(payload.draft), ...(payload.override ? { override: fromUiConfig(payload.override) } : {}) };
+}
+
 function serializeConfig() {
   return serializeDraft(state.savedConfig, state.globalConfig, state.draftValues, state.overridePaths, state.scopeId !== "global", FLOAT_CONFIG_PATHS);
 }
@@ -1115,7 +1157,7 @@ function showConfigError(message) {
 
 async function describeConfigConflict() {
   const latest = await apiGet("config", state.scopeId === "global" ? {} : { scope_id: state.scopeId });
-  const current = state.scopeId === "global" ? latest.data.global : latest.data.effective;
+  const current = toUiConfig(state.scopeId === "global" ? latest.data.global : latest.data.effective);
   const toast = configFeedback("配置版本冲突。草稿已保留，请核对差异；放弃配置更改可重新读取服务端值。");
   const differences = configLeaves(current).filter(([path, value]) => JSON.stringify(value) !== JSON.stringify(configAt(state.savedConfig, path)))
     .map(([path, value]) => ({ 字段: path, 服务端最新值: value, 当前草稿: state.draftValues[path] }));
@@ -1186,15 +1228,15 @@ async function loadConfig(scopeId = state.scopeId) {
   const sequence = ++configLoadSequence;
   const result = await apiGet("config", scopeId === "global" ? {} : { scope_id: scopeId });
   if (sequence !== configLoadSequence) return;
-  const shown = scopeId === "global" ? result.data.global : result.data.effective;
+  const shown = toUiConfig(scopeId === "global" ? result.data.global : result.data.effective);
   const values = draftValues(shown);
   state.scopeId = scopeId;
   scopeSelect.value = scopeId;
   state.globalRevision = result.revision.global;
   state.revision = scopeId === "global" ? result.revision.global : result.revision.scope;
   state.savedConfig = structuredClone(shown);
-  state.globalConfig = structuredClone(result.data.global);
-  state.savedOverride = structuredClone(result.data.override || {});
+  state.globalConfig = toUiConfig(result.data.global);
+  state.savedOverride = toUiConfig(result.data.override || {});
   state.draftValues = values;
   state.overridePaths = new Set(configLeaves(state.savedOverride).map(([path]) => path));
   state.templateFields = result.data.template_fields || {};
@@ -1215,7 +1257,6 @@ async function refreshAll() {
     try { await loadScopes(); } catch (error) { showNotice(error.message || "作用域读取失败。", "error"); }
     await loadOverview();
     try { state.pools = (await apiGet("pools")).data; renderPools(); } catch (error) { showNotice(error.message || "角色池读取失败。", "error"); }
-    try { state.fonts = (await apiGet("fonts")).data; } catch (error) { showNotice(error.message || "字体读取失败。", "error"); }
     await loadConfig();
   } catch (error) { configFeedback(error.message || "读取配置失败，可重试；已有草稿仍保留。"); }
   finally { setBusy(false); updateDirtyState(); }
@@ -1232,7 +1273,7 @@ async function previewDraft() {
   setBusy(true);
   try {
     const { draft, override } = validateDraft();
-    const result = await apiPost("config/preview", { scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }) });
+    const result = await apiPost("config/preview", apiConfigPayload({ scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }) }));
     configFeedback(state.scopeId === "global" ? `校验通过，影响 ${result.data.affected_scopes.length} 个已记录群。草稿尚未保存。` : "校验通过，仅作用于所选群；草稿尚未保存。", "success");
   } catch (error) { configFeedback(error.message || "配置校验失败。"); showConfigError(error.message || ""); }
   finally { setBusy(false); updateDirtyState(); }
@@ -1245,18 +1286,17 @@ async function saveDraft() {
     if (state.saveNeedsReload) { await loadConfig(); return true; }
     if (!state.pendingSubmission) {
       const { draft, override } = validateDraft();
-      const preview = await apiPost("config/preview", { scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }) });
+      const preview = await apiPost("config/preview", apiConfigPayload({ scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }) }));
       const scopeText = state.scopeId === "global" ? `全局配置，影响 ${preview.data.affected_scopes.length} 个已记录群` : $("#editor-title").textContent;
       if (!await confirmAction(`将保存 ${dirtyPaths().length} 项配置修改。\n范围：${scopeText}\n角色、角色池和图片不包含在此提交中。继续吗？`)) return false;
       state.pendingSubmission = { scope_id: state.scopeId, draft, ...(state.scopeId === "global" ? {} : { override }), expected_revision: state.revision, request_id: crypto.randomUUID() };
     }
     const payload = state.pendingSubmission;
     let result;
-    try { result = await apiPost("config/save", payload); }
+    try { result = await apiPost("config/save", apiConfigPayload(payload)); }
     catch (error) {
       const code = error.code || error.error?.code || "";
-      if (code === "CONFIG_SYNC_FAILED" || error.message?.includes("配置已保存")) configFeedback("配置已保存，宿主同步失败。请点击重试本次提交完成同步。");
-      else if (/CONFLICT|INVALID|DENIED|FORBIDDEN|UNAUTHORIZED/.test(code) || error.message?.includes("版本冲突")) {
+      if (/CONFLICT|INVALID|DENIED|FORBIDDEN|UNAUTHORIZED/.test(code) || error.message?.includes("版本冲突")) {
         state.pendingSubmission = null;
         if (/CONFLICT/.test(code) || error.message?.includes("版本冲突")) await describeConfigConflict();
         else { configFeedback(error.message); showConfigError(error.message); }
@@ -2248,6 +2288,8 @@ initBatchImages({ apiGet, apiPost, apiUpload, showNotice,
     else { showNotice("全局默认值已独立保存，配置版本已变化；当前草稿或提交状态保留，请核对保存状态与版本。", "success"); }
   },
 });
+
+initStatusAndMigration({ apiGet, apiPost, apiUpload, confirmAction, showNotice });
 
 await bridge.ready();
 bridge.onContext(() => {

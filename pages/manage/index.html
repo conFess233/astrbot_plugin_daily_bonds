@@ -159,6 +159,20 @@
           <div id="maintenance-report" class="import-report" aria-live="polite">导出或备份完成后会显示作业与下载信息。恢复必须先上传并预检。</div>
           <div id="restore-scope-mappings" class="form-grid" hidden></div>
         </details>
+        <details class="editor-card maintenance-card" id="migration-card">
+          <summary>版本迁移</summary>
+          <p class="hint">升级到 0.2.0 时会自动备份并迁移数据。这里可以查看迁移报告、从升级前备份恢复，或导入旧版本的 <code>state.sqlite3</code>。导入会先备份当前数据库，再替换并迁移；失败时自动还原。角色图片不随数据库导入。</p>
+          <div id="migration-reports" class="import-report" aria-live="polite">正在读取迁移记录…</div>
+          <div class="form-grid">
+            <label class="field"><span>升级前备份</span><select id="migration-backup"><option value="">（无可用备份）</option></select></label>
+            <label class="field"><span>或上传数据库文件</span><input id="migration-file" type="file" accept=".sqlite3,.db,application/vnd.sqlite3,application/octet-stream" /></label>
+          </div>
+          <div class="actions">
+            <button id="migration-preview" class="button secondary" type="button">预检</button>
+            <button id="migration-commit" class="button danger" type="button" disabled>备份当前数据并迁移</button>
+          </div>
+          <div id="migration-plan" class="import-report" aria-live="polite">选择备份或上传文件后预检。</div>
+        </details>
         </fieldset>
       </section>
 
@@ -184,6 +198,21 @@
           <div id="query-table" class="query-table" aria-live="polite">选择作用域后点击查询。</div>
           <div class="list-pagination"><button id="query-prev" class="button secondary" type="button" disabled>上一页</button><span id="query-page" class="muted"></span><button id="query-next" class="button secondary" type="button" disabled>下一页</button></div>
           <details><summary>查看原始 JSON</summary><pre id="query-result" class="query-result"></pre></details>
+        </div>
+        <div class="editor-card" id="status-card">
+          <h3>用户今日状态</h3>
+          <p class="hint">与群内“我的姻缘”相同：使用上方选定的群和用户 ID。</p>
+          <div class="actions"><button id="status-load" class="button secondary" type="button">查询今日状态</button></div>
+          <div id="status-result" class="status-result" aria-live="polite">填写用户 ID 后查询。</div>
+        </div>
+        <div class="editor-card" id="render-preview-card">
+          <h3>回复形式预览</h3>
+          <p class="hint">用上方选定群的已保存配置渲染“姻缘帮助”，对比卡片与纯文本。卡片由 AstrBot 的 t2i 服务渲染。</p>
+          <div class="actions"><button id="render-preview" class="button secondary" type="button">生成预览</button></div>
+          <div class="render-preview-grid">
+            <figure><figcaption>卡片</figcaption><div id="render-preview-card-output" class="muted">尚未生成。</div></figure>
+            <figure><figcaption>纯文本</figcaption><pre id="render-preview-text" class="query-result">尚未生成。</pre></figure>
+          </div>
         </div>
         <div class="editor-card correction-card">
           <h3>管理员纠错（预检后提交）</h3>

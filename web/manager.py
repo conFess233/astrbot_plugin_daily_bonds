@@ -15,6 +15,7 @@ from ..services.catalog.batch_images import BatchImagesService
 from ..services.catalog.importer import CatalogImportService
 from ..services.catalog.sync import CatalogSyncService
 from ..services.maintenance import MaintenanceService
+from ..services.migration import MigrationService
 from ..services.storage import SQLiteStorage
 
 PLUGIN_NAME = "astrbot_plugin_daily_bonds"
@@ -23,10 +24,16 @@ from .catalog_routes import CatalogRoutes
 from .config_routes import ConfigRoutes
 from .data_routes import DataRoutes
 from .maintenance_routes import MaintenanceRoutes
+from .migration_routes import MigrationRoutes
 
 
 class WebManager(
-    ConfigRoutes, DataRoutes, CatalogRoutes, BatchRoutes, MaintenanceRoutes
+    ConfigRoutes,
+    DataRoutes,
+    CatalogRoutes,
+    BatchRoutes,
+    MaintenanceRoutes,
+    MigrationRoutes,
 ):
     """Register authenticated, revision-checked management APIs."""
 
@@ -44,9 +51,37 @@ class WebManager(
         self.catalog_sync = CatalogSyncService(storage)
         self.maintenance = MaintenanceService(storage, storage.database_path.parent)
         self.runtime_reset = None
+        # 由插件入口在运行时就绪后注入，用于卡片预览。
+        self.runtime = None
+        self.migration = MigrationService(storage, self._after_replace)
+
+    def _after_replace(self) -> None:
+        if self.runtime_reset is not None:
+            self.runtime_reset()
 
     def register(self) -> None:
         routes = (
+            ("migration", self.migration_overview, ["GET"], "Migration reports"),
+            (
+                "migration/preview",
+                self.migration_preview,
+                ["POST"],
+                "Inspect a legacy database before migration",
+            ),
+            (
+                "migration/preview-backup",
+                self.migration_preview_backup,
+                ["POST"],
+                "Inspect a pre-migration backup",
+            ),
+            (
+                "migration/commit",
+                self.migration_commit,
+                ["POST"],
+                "Import and migrate a legacy database",
+            ),
+            ("status/user", self.user_status, ["GET"], "Read a user's daily status"),
+            ("render/preview", self.render_preview, ["GET"], "Preview reply forms"),
             ("overview", self.overview, ["GET"], "Today Bonds overview"),
             ("scopes", self.scopes, ["GET"], "Today Bonds scopes"),
             ("config", self.get_config, ["GET"], "Read Today Bonds configuration"),
