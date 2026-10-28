@@ -237,9 +237,13 @@ class CommandRuntime:
                 allow_prefix=True,
             )
         except CommandSyntaxError as exc:
+            event.should_call_llm(True)
             return render_message(config, "errors", "syntax_error", detail=str(exc))
         if command is None:
             return None
+        # 已识别为本插件指令：即使回复被关闭或事件重放而不发送，也不让唤醒消息
+        # 落入宿主默认 LLM；只阻止默认 LLM，不停止其他插件。
+        event.should_call_llm(True)
         if command.action == "set_wife" and not may_set_wife(
             event, raw_event.sender_id, global_config
         ):
