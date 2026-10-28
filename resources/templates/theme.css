@@ -1,16 +1,19 @@
-/* 今日姻缘卡片主题：与管理页共用紫色强调色。由 CardService 嵌入每个模板。 */
+/* 今日姻缘卡片主题：与管理页 WebUI 2.0 共用靛蓝强调色与暖灰底，不用渐变与发光。由 CardService 嵌入每个模板。 */
 :root {
-  --primary: #7367f0;
-  --primary-soft: #edeafd;
-  --pink: #f06292;
-  --pink-soft: #fde7ef;
-  --page: #f4f2fd;
+  --primary: #4a5bd4;
+  --primary-soft: #eceefb;
+  --pink: #c2457a;
+  --pink-soft: #f8e8ef;
+  --page: #f3f3f0;
   --surface: #ffffff;
-  --text: #2f2b3d;
-  --muted: #6d6b77;
-  --subtle: #a5a3ae;
-  --border: #e6e5e8;
-  --gold: #f5a623;
+  --surface-soft: #f7f7f5;
+  --text: #1d1f25;
+  --muted: #6a6d77;
+  --subtle: #a3a5ad;
+  --border: #e3e2dd;
+  --line-strong: #cfcdc6;
+  --seg-off: #e6e5e0;
+  --gold: #c77a1f;
 }
 
 * {
@@ -23,7 +26,7 @@ body {
 }
 
 body {
-  background: linear-gradient(160deg, #f6f3ff 0%, #fdf2f8 100%);
+  background: var(--page);
   color: var(--text);
   font: 15px/1.5 "Noto Sans SC", "Source Han Sans SC", "PingFang SC",
     "Microsoft YaHei", sans-serif;
@@ -34,8 +37,9 @@ body {
   margin: 0 auto;
   max-width: 1180px;
   background: var(--surface);
-  border-radius: 20px;
-  box-shadow: 0 10px 30px rgba(115, 103, 240, 0.12);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(20, 22, 30, 0.05), 0 4px 14px rgba(20, 22, 30, 0.05);
   overflow: hidden;
 }
 
@@ -49,7 +53,8 @@ body {
 
 .card-header h1 {
   margin: 0;
-  font-size: 26px;
+  font-size: 24px;
+  font-weight: 650;
   line-height: 1.25;
 }
 

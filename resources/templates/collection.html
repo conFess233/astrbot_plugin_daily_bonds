@@ -16,16 +16,20 @@
   margin: 0;
   font-size: 18px;
 }
-.progress {
+/* 分段刻度进度条：20 段，已收集的段用主色。 */
+.seg {
   flex: 1;
-  height: 10px;
-  border-radius: 999px;
-  background: var(--primary-soft);
-  overflow: hidden;
+  display: flex;
+  gap: 3px;
+  height: 8px;
 }
-.progress div {
-  height: 100%;
-  background: linear-gradient(90deg, var(--primary), var(--pink));
+.seg i {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--seg-off);
+}
+.seg i.on {
+  background: var(--primary);
 }
 .grid {
   display: grid;
@@ -58,7 +62,7 @@
   right: 6px;
   padding: 0 7px;
   border-radius: 999px;
-  background: rgba(47, 43, 61, 0.72);
+  background: rgba(29, 31, 37, 0.72);
   color: #fff;
   font-size: 12px;
 }
@@ -76,7 +80,8 @@
     <div class="group">
       <div class="group-head">
         <h2>{{ group.label | e }}</h2>
-        <div class="progress"><div style="width: {{ group.percent }}%"></div></div>
+        {% set filled = ((group.percent or 0) / 5) | round(0, 'ceil') | int %}
+        <div class="seg">{% for k in range(20) %}<i{% if k < filled %} class="on"{% endif %}></i>{% endfor %}</div>
         <span class="muted">{{ group.collected }}/{{ group.total }}</span>
       </div>
       {% if group.entries %}

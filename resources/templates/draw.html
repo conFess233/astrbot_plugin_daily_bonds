@@ -7,7 +7,8 @@
 .card { max-width: 640px; }
 .hero {
   position: relative;
-  background: linear-gradient(135deg, var(--primary-soft), var(--pink-soft));
+  background: var(--surface-soft);
+  border-bottom: 1px solid var(--border);
   text-align: center;
   padding: 28px 24px 20px;
 }
@@ -15,8 +16,8 @@
   width: min(100%, 440px);
   max-height: 620px;
   object-fit: contain;
-  border-radius: 16px;
-  box-shadow: 0 8px 24px rgba(47, 43, 61, 0.18);
+  border-radius: 12px;
+  border: 1px solid var(--border);
 }
 .hero .avatar.subject {
   width: 180px;
@@ -34,7 +35,7 @@
 .headline .name {
   margin-top: 4px;
   font-size: 32px;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--primary);
 }
 .message {
