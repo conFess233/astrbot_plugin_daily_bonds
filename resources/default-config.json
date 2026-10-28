@@ -206,37 +206,37 @@
         "quote": false
       },
       "capacity_full": {
-        "text": "持有名额已满：{names}",
+        "text": "持有名额已满：{names}。可以先发送“离婚”解除一段普通关系。",
         "enabled": true,
         "quote": false
       },
       "relationship_locked": {
-        "text": "抢夺或指定槽位关系不可主动解除或赠送。",
+        "text": "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
         "enabled": true,
         "quote": false
       },
       "steal_slot_locked": {
-        "text": "对方的抢夺或指定槽位关系不可抢夺。",
+        "text": "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
         "enabled": true,
         "quote": false
       },
       "capacity_full_single_wife": {
-        "text": "你今日已有老婆啦，请明日再来。",
+        "text": "你今日已有老婆{names}啦，{reset_at} 重置后再来吧。",
         "enabled": true,
         "quote": false
       },
       "capacity_full_single_husband": {
-        "text": "你今日已有老公啦，请明日再来。",
+        "text": "你今日已有老公{names}啦，{reset_at} 重置后再来吧。",
         "enabled": true,
         "quote": false
       },
       "no_draw_quota": {
-        "text": "今天的普通抽取额度已用完",
+        "text": "今天的普通抽取次数已用完，{reset_at} 重置；离婚可获得一次补抽资格。",
         "enabled": true,
         "quote": false
       },
       "no_candidate": {
-        "text": "当前没有可抽取对象",
+        "text": "当前没有可抽取的对象：角色可能都已被持有，或对应角色池没有可用角色。",
         "enabled": true,
         "quote": false
       },
@@ -296,12 +296,12 @@
         "quote": false
       },
       "steal_cooldown": {
-        "text": "抢夺冷却中",
+        "text": "抢夺冷却中，请在 {remaining_seconds} 秒后再试。",
         "enabled": true,
         "quote": false
       },
       "steal_limit": {
-        "text": "本周期抢夺尝试次数已用完",
+        "text": "本周期抢夺次数已用完，{reset_at} 重置。",
         "enabled": true,
         "quote": false
       },
@@ -311,12 +311,12 @@
         "quote": false
       },
       "divorce_limit": {
-        "text": "本周期解除关系次数已用完",
+        "text": "本周期解除关系次数已用完，{reset_at} 重置。",
         "enabled": true,
         "quote": false
       },
       "relationship_not_found": {
-        "text": "没有找到可处理的关系",
+        "text": "没有找到可处理的关系；发送“我的姻缘”查看当前关系。",
         "enabled": true,
         "quote": false
       },
@@ -381,7 +381,7 @@
         "quote": false
       },
       "no_designated_quota": {
-        "text": "本周期指定次数已用完。",
+        "text": "本周期指定次数已用完，{reset_at} 重置。",
         "enabled": true,
         "quote": false
       },
@@ -396,7 +396,7 @@
         "quote": false
       },
       "designated_relationship_locked": {
-        "text": "指定槽位关系不可抢夺、赠送或主动解除。",
+        "text": "指定得到的关系当天受保护，不能抢夺、赠送或主动解除。",
         "enabled": true,
         "quote": false
       },
@@ -437,6 +437,26 @@
       },
       "already_held": {
         "text": "你今天已持有 {name}。",
+        "enabled": true,
+        "quote": false
+      },
+      "draw_member_mutual": {
+        "text": "{actor_name}和{name}双向奔赴啦！{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "my_status": {
+        "text": "{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "help": {
+        "text": "{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "my_collection": {
+        "text": "{lines}{image}",
         "enabled": true,
         "quote": false
       }
@@ -630,7 +650,10 @@
       "designated_slot": "指定",
       "wife": "老婆",
       "husband": "老公",
-      "member": "群友"
+      "member": "群友",
+      "status": "{name}的今日姻缘",
+      "help": "今日姻缘 · 指令帮助",
+      "collection": "{name}的图鉴"
     }
   },
   "history": {

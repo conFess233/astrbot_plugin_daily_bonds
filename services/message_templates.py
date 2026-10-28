@@ -22,7 +22,10 @@ NAME_FIELDS = {
     "target_name",
     "subject_name",
 }
+# 每条群消息都会提供的上下文变量，所有文案均可使用。
+CONTEXT_FIELDS = {"reset_at"}
 FIELD_DESCRIPTIONS = {
+    "reset_at": "下次周期重置时间，如“明天 00:00”",
     "group_name": "当前群名称，读取失败时使用本群",
     "群名": "当前群名称（与 group_name 相同）",
     "actor_name": "触发指令或执行操作的用户名称",
@@ -74,6 +77,10 @@ IMAGE_KEYS = {
     "draw_wife",
     "draw_husband",
     "draw_member",
+    "draw_member_mutual",
+    "my_status",
+    "help",
+    "my_collection",
     "designated_wife",
     "designated_husband",
     "designated_drawn",
@@ -103,6 +110,7 @@ _REQUIRED = {
     "messages.results.draw_wife": {"name"},
     "messages.results.draw_husband": {"name"},
     "messages.results.draw_member": {"name"},
+    "messages.results.draw_member_mutual": {"name"},
     "messages.results.capacity_full": {"names"},
     "messages.results.invite_created": {"invite_id", "accept_keyword"},
     "messages.errors.page_out_of_range": {"pages"},
@@ -159,7 +167,10 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
                 raise ConfigurationError(f"{path} 不允许控制字符")
             fields = _fields(template, path)
             allowed = (
-                _fields(original, path) | NAME_FIELDS | EXTRA_FIELDS.get(key, set())
+                _fields(original, path)
+                | NAME_FIELDS
+                | CONTEXT_FIELDS
+                | EXTRA_FIELDS.get(key, set())
             )
             if key in IMAGE_KEYS and section in {"results", "errors"}:
                 allowed |= {"image"} | EXTRA_FIELDS.get(key, set())
@@ -204,6 +215,7 @@ def template_fields() -> dict[str, dict[str, Any]]:
             allowed = (
                 _fields(original, path)
                 | NAME_FIELDS
+                | CONTEXT_FIELDS
                 | EXTRA_FIELDS.get(key, set())
                 | (EXTRA_FIELDS.get(key, set()) | {"image"} if image else set())
             )
@@ -246,6 +258,7 @@ def render_message(
     values = {
         "group_name": "本群",
         **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},
+        "reset_at": "下次重置",
         **MESSAGE_CONTEXT.get(),
         **values,
         "image": IMAGE_TOKEN,

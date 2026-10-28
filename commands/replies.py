@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -346,6 +347,8 @@ class ReplyMixin:
                 "results",
                 "admin_set_wife"
                 if data.get("admin_set")
+                else "draw_member_mutual"
+                if data.get("mutual")
                 else f"designated_{mode}"
                 if code == "DESIGNATED_DRAWN"
                 else f"draw_{mode}",
@@ -368,11 +371,15 @@ class ReplyMixin:
             )
         key = code.lower()
         if key in config["messages"]["results"]:
+            available_at = data.get("available_at")
             return render_message(
                 config,
                 "results",
                 key,
                 invite_id=data.get("invite_id"),
                 limit=data.get("limit"),
+                remaining_seconds=max(0, int(available_at) - int(time.time()))
+                if available_at
+                else 0,
             )
         return render_message(config, "results", "unknown_result", code=code)

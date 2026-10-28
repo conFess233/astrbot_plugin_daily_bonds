@@ -13,9 +13,11 @@ from typing import Any
 from astrbot.api import logger
 
 from ..adapters.onebot import OneBotAdapter, mentioned_user_ids
+from ..game import rules
 from ..game.members import reconcile_member_eligibility
 from ..game.operations import Candidate, GameplayService
 from ..game.statistics import StatisticsService
+from ..game.status import StatusService
 from ..models import CommandSyntaxError, Scope, StorageError
 from ..services.access import AccessService
 from ..services.admin_permissions import may_set_wife
@@ -28,12 +30,16 @@ from ..services.message_templates import (
 )
 from ..services.storage import SQLiteStorage
 from .actions import ActionMixin
+from .features import FeatureMixin
 from .listing import ListingMixin
 from .parser import parse_command
 from .replies import ReplyMixin, RuntimeReply
 
+# 不属于单一玩法的查询指令：不受玩法开关限制。
+GENERAL_ACTIONS = frozenset({"my_status", "help", "my_collection"})
 
-class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
+
+class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
     """为每条群消息建立配置、成员、统计和玩法上下文。"""
 
     def __init__(
@@ -54,6 +60,7 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
         self.gameplay = gameplay
         self.statistics = statistics
         self.cards = CardService(render_html)
+        self.status = StatusService(storage)
         self.avatar_cache = AvatarCache(storage.database_path.parent / "avatars")
         self._eligibility: dict[int, tuple[str, frozenset[str]]] = {}
         # 作用域编号与会话标识在运行期很少变化，避免每条消息都写库。
@@ -149,6 +156,11 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
             now,
             config["reset"]["timezone"],
             config["reset"]["time"],
+        )
+        set_message_values(
+            reset_at=rules.format_reset(
+                int(period["ends_at"]), config["reset"]["timezone"], now
+            )
         )
         eligibility = (str(period["id"]), frozenset(eligible))
         if is_member_change or self._eligibility.get(scope_id) != eligibility:
@@ -269,6 +281,7 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
             "rank_intimacy",
             "rank_activity",
             "query_affection",
+            *GENERAL_ACTIONS,
             *lifecycle_actions,
         }:
             return render_message(config, "errors", "mode_closed")
@@ -414,15 +427,19 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
                         config_revision=revision,
                         now=raw_event.observed_at,
                     )
-                    reply = await self._result_reply(
-                        result.code, result.data, mode, config
-                    )
+                    data = result.data
+                    if result.code == "DRAWN":
+                        data = await self._draw_facts(
+                            dict(data), scope_id, period, mode, raw_event.sender_id
+                        )
+                    reply = await self._result_reply(result.code, data, mode, config)
             else:
                 reply = await self._query_or_action(
                     command=command,
                     mode=mode,
                     scope_id=scope_id,
                     period_id=str(period["id"]),
+                    period=period,
                     actor_id=raw_event.sender_id,
                     group_id=scope.group_id,
                     group_name=await self.adapter.group_name(scope)
@@ -448,6 +465,40 @@ class CommandRuntime(ActionMixin, ListingMixin, ReplyMixin):
                     raw_event.observed_at,
                 )
         return reply
+
+    async def _draw_facts(
+        self,
+        data: dict[str, Any],
+        scope_id: int,
+        period: Any,
+        mode: str,
+        owner_id: str,
+    ) -> dict[str, Any]:
+        """为抽取结果补充连续结缘天数与群友双向奔赴。"""
+
+        subject_id = str(data["candidate"]["subject_id"])
+        facts: list[str] = []
+        if mode == "member" and await asyncio.to_thread(
+            self.status.is_mutual,
+            scope_id=scope_id,
+            period_id=str(period["id"]),
+            owner_id=owner_id,
+            subject_id=subject_id,
+        ):
+            data["mutual"] = True
+            facts.append("双向奔赴")
+        streak = await asyncio.to_thread(
+            self.status.streak,
+            scope_id=scope_id,
+            mode=mode,
+            owner_id=owner_id,
+            subject_id=subject_id,
+            sequence=int(period["sequence"]),
+        )
+        if streak >= 2:
+            facts.append(f"连续 {streak} 天")
+        data["facts"] = facts
+        return data
 
     def reset(self) -> None:
         """恢复数据库后清除与旧成员及关系状态关联的快照。"""
@@ -600,6 +651,7 @@ def _action_mode(action: str) -> str | None:
         "gift_accept",
         "gift_reject",
         "gift_cancel",
+        *GENERAL_ACTIONS,
     }:
         return "wife"
     return None

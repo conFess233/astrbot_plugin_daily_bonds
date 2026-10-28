@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.group { margin-bottom: 22px; }
+.group:last-child { margin-bottom: 0; }
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.group-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.progress {
+  flex: 1;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  overflow: hidden;
+}
+.progress div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), var(--pink));
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  gap: 10px;
+}
+.item {
+  position: relative;
+  text-align: center;
+}
+.item img,
+.item .placeholder {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--primary-soft);
+}
+.item .placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  font-size: 28px;
+  font-weight: 800;
+}
+.item .times {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: rgba(47, 43, 61, 0.72);
+  color: #fff;
+  font-size: 12px;
+}
+.item .name {
+  margin-top: 4px;
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header"><h1>{{ title | e }}</h1></div>
+  <div class="card-body">
+    {% for group in groups %}
+    <div class="group">
+      <div class="group-head">
+        <h2>{{ group.label | e }}</h2>
+        <div class="progress"><div style="width: {{ group.percent }}%"></div></div>
+        <span class="muted">{{ group.collected }}/{{ group.total }}</span>
+      </div>
+      {% if group.entries %}
+      <div class="grid">
+        {% for entry in group.entries %}
+        <div class="item">
+          {% if entry.image %}<img src="{{ entry.image }}">{% else %}<div class="placeholder">{{ entry.name[:1] | e }}</div>{% endif %}
+          <span class="times">×{{ entry.times }}</span>
+          <div class="name ellipsis">{{ entry.name | e }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% if group.more %}<div class="muted" style="margin-top:8px">还有 {{ group.more }} 个角色未显示</div>{% endif %}
+      {% else %}
+      <div class="empty">{{ empty_text | e }}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

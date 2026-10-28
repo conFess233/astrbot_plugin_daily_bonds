@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.card { max-width: 820px; }
+.section {
+  padding: 14px 0;
+  border-bottom: 1px dashed var(--border);
+}
+.section:last-child { border-bottom: 0; }
+.section-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.section-head h2 {
+  margin: 0;
+  font-size: 18px;
+}
+.count {
+  color: var(--primary);
+  font-weight: 800;
+}
+.relation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0;
+}
+.relation .name {
+  font-weight: 700;
+  margin-right: 4px;
+}
+.quota {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.quota span {
+  padding: 2px 10px;
+  border-radius: 8px;
+  background: #f5f5f7;
+  color: var(--muted);
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header">
+    {% if avatar %}<img class="avatar lg" src="{{ avatar }}">{% else %}<span class="avatar lg initial">{{ initial | e }}</span>{% endif %}
+    <div>
+      <h1>{{ title | e }}</h1>
+      <div class="sub">{{ subtitle | e }}</div>
+    </div>
+  </div>
+  <div class="card-body">
+    {% for section in sections %}
+    <div class="section">
+      <div class="section-head">
+        <h2>{{ section.label | e }}</h2>
+        {% if section.closed %}<span class="muted">玩法已关闭</span>{% else %}<span class="count">{{ section.held }}/{{ section.capacity }}</span>{% endif %}
+      </div>
+      {% if not section.closed %}
+      {% for relation in section.relations %}
+      <div class="relation">
+        <span class="name">{{ relation.name | e }}</span>
+        {% for fact in relation.facts %}<span class="tag{% if loop.index > 1 %} pink{% endif %}">{{ fact | e }}</span>{% endfor %}
+      </div>
+      {% else %}
+      <div class="muted">还没有关系</div>
+      {% endfor %}
+      <div class="quota">{% for item in section.quota %}<span>{{ item | e }}</span>{% endfor %}</div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if invites %}<div class="quota">{% for item in invites %}<span>{{ item | e }}</span>{% endfor %}</div>{% endif %}
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

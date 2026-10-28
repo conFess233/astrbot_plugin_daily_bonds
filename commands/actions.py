@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Mapping
 from typing import Any
 
+from ..game import rules
 from ..models import ParsedCommand
 from ..services.message_templates import (
     MESSAGE_CONTEXT,
@@ -18,6 +20,29 @@ from .replies import RuntimeReply
 
 class ActionMixin:
     """为 CommandRuntime 提供关系操作与查询分发。"""
+
+    async def _steal_probability(
+        self,
+        scope_id: int,
+        actor_id: str,
+        target_id: str | None,
+        mode_config: Mapping[str, Any],
+    ) -> float:
+        """亲密度加成为 0 时直接使用基础成功率，避免多余查询。"""
+
+        base = float(mode_config["steal_probability"])
+        bonus = float(mode_config["steal_intimacy_bonus"])
+        if not bonus or not target_id:
+            return base
+        intimacy = await asyncio.to_thread(
+            self.status.intimacy,
+            scope_id=scope_id,
+            source_id=actor_id,
+            target_id=target_id,
+        )
+        return rules.steal_probability(
+            base, bonus, float(mode_config["steal_probability_max"]), intimacy
+        )
 
     async def _query_or_action(self, **values: Any) -> str | RuntimeReply | None:
         command: ParsedCommand = values["command"]
@@ -36,6 +61,12 @@ class ActionMixin:
             return await self._rank(values)
         if command.action == "query_affection":
             return await self._affection(values)
+        if command.action == "my_status":
+            return await self._my_status(values)
+        if command.action == "help":
+            return await self._help(values)
+        if command.action == "my_collection":
+            return await self._my_collection(values)
         mode = values["mode"]
         mode_config = values["config"]["modes"][mode]
         config = values["config"]
@@ -79,7 +110,9 @@ class ActionMixin:
                 actor_id=actor_id,
                 target_id=target_id,
                 capacity=mode_config["capacity"],
-                probability=mode_config["steal_probability"],
+                probability=await self._steal_probability(
+                    values["scope_id"], actor_id, target_id, mode_config
+                ),
                 attempt_limit=mode_config["steal_attempt_limit"],
                 cooldown_seconds=mode_config["steal_cooldown_seconds"],
                 target_protection_limit=mode_config["stolen_limit"],

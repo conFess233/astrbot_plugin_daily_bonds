@@ -209,9 +209,14 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
         raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
     if action in {"draw_wife", "draw_husband"}:
         return ParsedCommand(action, argument=suffix or None)
-    if action == "draw_member":
+    if action in {"draw_member", "my_status", "help"}:
         _no_suffix(action, suffix)
         return ParsedCommand(action)
+    if action == "my_collection":
+        # 可选参数限定玩法：老婆 / 老公；省略时两种都显示。
+        if suffix and suffix not in {"老婆", "老公"}:
+            raise CommandSyntaxError("图鉴只接受“老婆”或“老公”作为参数。")
+        return ParsedCommand(action, argument=suffix or None)
     if action == "query_affection":
         target, rest = _leading_at(suffix)
         if target is None or rest:
@@ -289,4 +294,4 @@ def _leading_at(suffix: str) -> tuple[str | None, str]:
 
 def _no_suffix(action: str, suffix: str) -> None:
     if suffix:
-        raise CommandSyntaxError(f"{action} 命令不接受额外参数。")
+        raise CommandSyntaxError("这个指令不需要额外参数，直接发送关键词即可。")

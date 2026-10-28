@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.card { max-width: 900px; }
+.groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.group {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.group h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  color: var(--primary);
+}
+.group code {
+  display: block;
+  margin: 4px 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  background: #f7f6fd;
+  font-family: inherit;
+  font-size: 14px;
+}
+.notes {
+  margin: 16px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header"><h1>{{ title | e }}</h1></div>
+  <div class="card-body">
+    <div class="groups">
+      {% for group in groups %}
+      <div class="group">
+        <h2>{{ group.label | e }}</h2>
+        {% for command in group.commands %}<code>{{ command | e }}</code>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    <ul class="notes">{% for note in notes %}<li>{{ note | e }}</li>{% endfor %}</ul>
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>
