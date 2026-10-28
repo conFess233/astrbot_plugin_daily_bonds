@@ -14,8 +14,9 @@ from astrbot.api.star import Context, Star, StarTools
 from PIL import Image as PILImage
 
 from .adapters.onebot import OneBotAdapter
-from .commands.replies_send import reply_chain
-from .commands.runtime import CommandRuntime, RuntimeReply
+from .commands.message_chain import reply_chain
+from .commands.replies import RuntimeReply
+from .commands.runtime import CommandRuntime
 from .game.operations import GameplayService
 from .game.statistics import StatisticsService
 from .services.access import AccessService
