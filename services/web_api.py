@@ -330,12 +330,10 @@ class WebManager(
             scope_id = int(raw)
         except (TypeError, ValueError) as exc:
             raise ValueError("scope_id 必须是当前插件中的整数作用域。") from exc
-        with self.storage._lock:
-            exists = (
-                self.storage._connection()
-                .execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,))
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            exists = db.execute(
+                "SELECT 1 FROM scopes WHERE id=?", (scope_id,)
+            ).fetchone()
         if exists is None:
             raise ValueError("scope_id 不属于当前插件实例。")
         return scope_id

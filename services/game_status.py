@@ -179,27 +179,19 @@ class StatusService:
     ) -> bool:
         """群友玩法中，对方也持有自己时为双向奔赴。"""
 
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode='member' AND owner_id=? AND subject_id=? AND state='active' LIMIT 1",
-                    (scope_id, period_id, subject_id, owner_id),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT 1 FROM relationships WHERE scope_id=? AND period_id=? AND mode='member' AND owner_id=? AND subject_id=? AND state='active' LIMIT 1",
+                (scope_id, period_id, subject_id, owner_id),
+            ).fetchone()
         return row is not None
 
     def intimacy(self, *, scope_id: int, source_id: str, target_id: str) -> int:
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT score FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id=?",
-                    (scope_id, source_id, target_id),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT score FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id=?",
+                (scope_id, source_id, target_id),
+            ).fetchone()
         return int(row[0]) if row else 0
 
     def collection(
@@ -213,8 +205,7 @@ class StatusService:
         """按玩法列出已启用角色池中的收集进度；已停用或移出池的角色仍计入已收集。"""
 
         result = []
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             for mode in modes:
                 pool_ids = list(config["modes"][mode]["pool_ids"])
                 total_ids: set[str] = set()

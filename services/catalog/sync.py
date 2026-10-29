@@ -588,8 +588,7 @@ class CatalogSyncService:
         chosen: set[tuple[str, str]],
         options: dict[tuple[str, str], dict[str, Any]],
     ) -> None:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             for kind, identifier in chosen:
                 if kind != "pool":
                     continue
@@ -630,8 +629,7 @@ class CatalogSyncService:
                     )
 
     def _missing_images(self, specs):
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             specs = {
                 digest: spec
                 for digest, spec in specs.items()

@@ -57,6 +57,7 @@ _ACTIONS = (
     "list_husband",
     "list_members",
     "rank_intimacy",
+    "rank_my_intimacy",
     "rank_activity",
     "gift_accept",
     "gift_reject",
@@ -114,7 +115,6 @@ def validate_config(config: Mapping[str, Any]) -> None:
 
     _enum(config, "access.groups.mode", {"unrestricted", "blacklist", "whitelist"})
     _enum(config, "access.users.mode", {"unrestricted", "blacklist", "whitelist"})
-    _enum(config, "display.intimacy_rank_mode", {"personal", "group_directed"})
     for path in (
         "enabled",
         "commands.allow_bare",

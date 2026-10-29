@@ -7,7 +7,6 @@ import hashlib
 import json
 import re
 import shutil
-import stat
 import uuid
 import zipfile
 from pathlib import Path
@@ -15,18 +14,15 @@ from typing import Any
 
 from ...models.errors import InvalidInputError, StorageError
 from ..storage import SQLiteStorage
+from . import package
 from .core import _atomic_content_write, _inspect_image
 from .safe_fetch import (
     _mime_matches,
-    _preflight_zip_count,
     _read_archive_image,
     _SafeImageFetcher,
 )
 
-_ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
-_GENDERS = {"female", "male", "unspecified"}
-_MODES = {"wife", "husband"}
 
 
 class CatalogImportService:
@@ -63,12 +59,14 @@ class CatalogImportService:
         stage.mkdir(parents=True, exist_ok=False)
         try:
             manifest, members, archive = await asyncio.to_thread(
-                self._read_package, source, max_bytes, max_entries, max_expanded
+                package.read_package, source, max_bytes, max_entries, max_expanded
             )
             if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
                 raise ValueError("manifest 必须schema_version=1 JSON 对象")
-            pack_id = self._text(manifest.get("pack_id"), "pack_id", 128)
-            pack_version = self._text(manifest.get("pack_version"), "pack_version", 128)
+            pack_id = package.text(manifest.get("pack_id"), "pack_id", 128)
+            pack_version = package.text(
+                manifest.get("pack_version"), "pack_version", 128
+            )
             pools_raw = manifest.get("pools")
             characters_raw = manifest.get("characters")
             if not isinstance(pools_raw, list) or not isinstance(characters_raw, list):
@@ -76,8 +74,8 @@ class CatalogImportService:
             if len(pools_raw) + len(characters_raw) > max_entries:
                 raise ValueError("目录项目数超import_max_entries")
 
-            pool_rows, pool_ids, pool_errors = self._validate_pools(pools_raw)
-            duplicate_ids = self._duplicate_character_ids(characters_raw)
+            pool_rows, pool_ids, pool_errors = package.validate_pools(pools_raw)
+            duplicate_ids = package.duplicate_character_ids(characters_raw)
             expanded_bytes = sum(item.file_size for item in members.values())
             if expanded_bytes > max_expanded:
                 raise ValueError("ZIP 解压总大小超过限制")
@@ -89,7 +87,7 @@ class CatalogImportService:
             try:
                 for index, raw in enumerate(characters_raw):
                     try:
-                        character = self._validate_character(raw, duplicate_ids)
+                        character = package.validate_character(raw, duplicate_ids)
                         image_plans: list[dict[str, Any]] = []
                         for image in character.pop("_images_raw"):
                             if image.get("source_url"):
@@ -99,7 +97,7 @@ class CatalogImportService:
                                 source_description = {"source_url": final_url}
                             else:
                                 relative = image.get("path", image.get("relative_path"))
-                                member_name = self._zip_image_path(relative, members)
+                                member_name = package.zip_image_path(relative, members)
                                 if archive is None:
                                     raise ValueError(
                                         "JSON 素材包的图片必须提供 source_url"
@@ -257,8 +255,7 @@ class CatalogImportService:
                 await asyncio.to_thread(archive.close)
 
     def _compare_import(self, planned_characters, pool_rows, pool_errors):
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             for item in planned_characters:
                 if item.get("status") == "invalid":
                     continue
@@ -352,14 +349,10 @@ class CatalogImportService:
                             ):
                                 unresolved.append(pool_id)
                             continue
-                        existing_pool = (
-                            self.storage._connection()
-                            .execute(
-                                "SELECT mode,deleted_at FROM pools WHERE id=?",
-                                (pool_id,),
-                            )
-                            .fetchone()
-                        )
+                        existing_pool = db.execute(
+                            "SELECT mode,deleted_at FROM pools WHERE id=?",
+                            (pool_id,),
+                        ).fetchone()
                         if (
                             existing_pool is None
                             or existing_pool["deleted_at"] is not None
@@ -390,8 +383,8 @@ class CatalogImportService:
     def commit(
         self, payload: dict[str, Any], *, actor: str, now: int
     ) -> dict[str, Any]:
-        job_id = self._text(payload.get("job_id"), "job_id", 64)
-        request_id = self._text(payload.get("request_id"), "request_id", 128)
+        job_id = package.text(payload.get("job_id"), "job_id", 64)
+        request_id = package.text(payload.get("request_id"), "request_id", 128)
         conflicts = payload.get("conflicts", {})
         if (
             not isinstance(conflicts, dict)
@@ -548,15 +541,11 @@ class CatalogImportService:
         return response
 
     def get_job(self, job_id: str, *, actor: str) -> dict[str, Any] | None:
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT id,kind,state,report_json,created_at,expires_at FROM maintenance_jobs WHERE id=? AND actor=?",
-                    (job_id, actor),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT id,kind,state,report_json,created_at,expires_at FROM maintenance_jobs WHERE id=? AND actor=?",
+                (job_id, actor),
+            ).fetchone()
         if row is None:
             return None
         data = dict(row)
@@ -724,243 +713,14 @@ class CatalogImportService:
             self._save_report(db, job_id, report, results)
             return result
 
-    def _read_package(
-        self, source: Path, max_bytes: int, max_entries: int, max_expanded: int
-    ):
-        with source.open("rb") as stream:
-            is_zip = source.stat().st_size >= 4 and stream.read(4).startswith(
-                b"PK\x03\x04"
-            )
-        if is_zip:
-            _preflight_zip_count(source, max_entries)
-            archive = zipfile.ZipFile(source)
-            infos = archive.infolist()
-            if len(infos) > max_entries:
-                archive.close()
-                raise ValueError("ZIP 条目数量超过 import_max_entries")
-            by_name: dict[str, zipfile.ZipInfo] = {}
-            folded: set[str] = set()
-            expanded = 0
-            for info in infos:
-                name = self._safe_zip_name(info.filename)
-                if info.is_dir():
-                    if name != "images" and not name.startswith("images/"):
-                        archive.close()
-                        raise ValueError("ZIP 只允images/ 目录")
-                    continue
-                if name in by_name or name.casefold() in folded:
-                    archive.close()
-                    raise ValueError("ZIP 包含重复或大小写冲突的路径")
-                folded.add(name.casefold())
-                by_name[name] = info
-                expanded += int(info.file_size)
-                mode = info.external_attr >> 16
-                if stat.S_ISLNK(mode):
-                    archive.close()
-                    raise ValueError("ZIP 不允许符号链接")
-                if info.flag_bits & 0x1:
-                    archive.close()
-                    raise ValueError("ZIP 不允许加密条目")
-                if expanded > max_expanded:
-                    archive.close()
-                    raise ValueError("ZIP 解压总大小超过限制")
-                if name != "manifest.json" and not name.startswith("images/"):
-                    archive.close()
-                    raise ValueError("ZIP 只允许根 manifest.json images/ 下的素材")
-            if "manifest.json" not in by_name:
-                archive.close()
-                raise ValueError("ZIP 根目录缺manifest.json")
-            info = by_name["manifest.json"]
-            if info.file_size > max_bytes:
-                archive.close()
-                raise ValueError("manifest.json 超过限制")
-            manifest = self._parse_json(archive.read(info))
-            return manifest, by_name, archive
-        raw = source.read_bytes()
-        if len(raw) > max_bytes:
-            raise ValueError("JSON 包超import_max_bytes")
-        return self._parse_json(raw), {}, None
-
-    @staticmethod
-    def _parse_json(raw: bytes) -> Any:
-        def object_pairs(pairs):
-            result = {}
-            for key, value in pairs:
-                if key in result:
-                    raise ValueError(f"JSON 字段重复：{key}")
-                result[key] = value
-            return result
-
-        return json.loads(
-            raw.decode("utf-8-sig"),
-            object_pairs_hook=object_pairs,
-            parse_constant=lambda value: (_ for _ in ()).throw(
-                ValueError(f"非法 JSON 常量：{value}")
-            ),
-        )
-
-    @staticmethod
-    def _safe_zip_name(value: str) -> str:
-        if (
-            not isinstance(value, str)
-            or not value
-            or "\x00" in value
-            or "\\" in value
-            or value.startswith("/")
-            or ":" in value
-        ):
-            raise ValueError("ZIP 包含绝对路径或非法路径")
-        raw_parts = value.split("/")
-        allowed_trailing_slash = raw_parts[-1] == ""
-        checked_parts = raw_parts[:-1] if allowed_trailing_slash else raw_parts
-        if not checked_parts or any(part in {"", ".", ".."} for part in checked_parts):
-            raise ValueError("ZIP 路径不能包含空段、`.` `..`")
-        return "/".join(checked_parts)
-
-    @staticmethod
-    def _zip_image_path(value: Any, members: dict[str, zipfile.ZipInfo]) -> str:
-        if not isinstance(value, str):
-            raise InvalidInputError("ZIP 图片必须给出 images/ 下的相对路径")
-        name = CatalogImportService._safe_zip_name(value)
-        if (
-            not name.startswith("images/")
-            or name not in members
-            or members[name].is_dir()
-        ):
-            raise ValueError("清单引用的图片路径不存在或不images/ 下")
-        return name
-
-    @classmethod
-    def _validate_pools(
-        cls, raw: list[Any]
-    ) -> tuple[list[dict[str, Any]], set[str], dict[str, str]]:
-        rows, ids, errors = [], set(), {}
-        for index, pool in enumerate(raw):
-            try:
-                if not isinstance(pool, dict):
-                    raise InvalidInputError("角色池必须是 JSON 对象")
-                pool_id = cls._identifier(pool.get("id"), "角色ID")
-                if pool_id in ids:
-                    raise ValueError("角色ID 重复")
-                ids.add(pool_id)
-                mode = pool.get("mode")
-                if mode not in _MODES:
-                    raise ValueError("角色mode 必须wife husband")
-                rows.append(
-                    {
-                        "id": pool_id,
-                        "name": cls._text(pool.get("name"), "pool name", 120),
-                        "mode": mode,
-                        "_index": index,
-                    }
-                )
-            except (ValueError, TypeError) as exc:
-                key = (
-                    str(pool.get("id", index)) if isinstance(pool, dict) else str(index)
-                )
-                errors[key] = str(exc)
-                rows.append(
-                    {
-                        "id": key,
-                        "name": "",
-                        "mode": "wife",
-                        "_index": index,
-                        "status": "invalid",
-                    }
-                )
-        return rows, ids, errors
-
-    @classmethod
-    def _validate_character(cls, raw: Any, duplicates: set[str]) -> dict[str, Any]:
-        if not isinstance(raw, dict):
-            raise InvalidInputError("角色必须JSON 对象")
-        character_id = cls._identifier(raw.get("id"), "角色 ID")
-        if character_id in duplicates:
-            raise ValueError("同一manifest 内存在重复角ID")
-        gender = raw.get("gender")
-        if gender not in _GENDERS:
-            raise ValueError("角色 gender 无效")
-        enabled = raw.get("enabled", False)
-        if not isinstance(enabled, bool):
-            raise InvalidInputError("角色 enabled 必须是布尔值")
-        aliases = cls._string_list(raw.get("aliases", []), "角色别名", 30, 80)
-        pool_ids = cls._string_list(raw.get("pool_ids", []), "角色ID", 100, 128)
-        images = raw.get("images", [])
-        if not isinstance(images, list) or any(
-            not isinstance(item, dict) for item in images
-        ):
-            raise ValueError("角色 images 必须是图片对象数组")
-        if enabled and not images:
-            raise ValueError("启用角色必须含图片")
-        for image in images:
-            has_url = isinstance(image.get("source_url"), str) and bool(
-                image["source_url"]
-            )
-            has_path = isinstance(image.get("path", image.get("relative_path")), str)
-            if has_url == has_path:
-                raise ValueError("每张图片必须恰好提供 source_url ZIP 相对 path")
-        provenance = {
-            key: value
-            for key, value in raw.items()
-            if key
-            not in {"id", "name", "aliases", "gender", "enabled", "pool_ids", "images"}
-        }
-        if len(json.dumps(provenance, ensure_ascii=False, allow_nan=False)) > 20_000:
-            raise ValueError("角色来源信息超过大小限制")
-        return {
-            "id": character_id,
-            "name": cls._text(raw.get("name"), "角色名称", 120),
-            "aliases": aliases,
-            "gender": gender,
-            "enabled": enabled,
-            "pool_ids": pool_ids,
-            "provenance": provenance,
-            "_images_raw": images,
-        }
-
     def _pool_exists(self, pool_id: str) -> bool:
-        with self.storage._lock:
+        with self.storage.read() as db:
             return (
-                self.storage._connection()
-                .execute(
+                db.execute(
                     "SELECT 1 FROM pools WHERE id=? AND deleted_at IS NULL", (pool_id,)
-                )
-                .fetchone()
+                ).fetchone()
                 is not None
             )
-
-    @staticmethod
-    def _duplicate_character_ids(characters: list[Any]) -> set[str]:
-        counts: dict[str, int] = {}
-        for item in characters:
-            if isinstance(item, dict) and isinstance(item.get("id"), str):
-                counts[item["id"]] = counts.get(item["id"], 0) + 1
-        return {item for item, count in counts.items() if count > 1}
-
-    @staticmethod
-    def _string_list(value: Any, label: str, maximum: int, item_max: int) -> list[str]:
-        if not isinstance(value, list) or len(value) > maximum:
-            raise ValueError(f"{label}数组无效或项目过多")
-        result = [CatalogImportService._text(item, label, item_max) for item in value]
-        if len(result) != len(set(result)):
-            raise ValueError(f"{label}不能重复")
-        return result
-
-    @staticmethod
-    def _identifier(value: Any, label: str) -> str:
-        if not isinstance(value, str) or not _ID.fullmatch(value):
-            raise ValueError(f"{label}格式无效")
-        return value
-
-    @staticmethod
-    def _text(value: Any, label: str, maximum: int) -> str:
-        if (
-            not isinstance(value, str)
-            or not value.strip()
-            or len(value.strip()) > maximum
-        ):
-            raise ValueError(f"{label}不能为空且最{maximum} 个字符")
-        return value.strip()
 
     @staticmethod
     def _summary(plan: dict[str, Any]) -> dict[str, int]:

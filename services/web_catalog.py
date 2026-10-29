@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import functools
 import io
 import tempfile
 import time
@@ -34,6 +35,9 @@ class CatalogRoutes:
                 query=str(request.query.get("q") or ""),
                 limit=limit,
                 offset=offset,
+                pool_id=str(request.query.get("pool") or ""),
+                gender=str(request.query.get("gender") or ""),
+                status=str(request.query.get("status") or ""),
             )
             return json_response(
                 {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
@@ -232,7 +236,10 @@ class CatalogRoutes:
         if denied:
             return denied
         try:
-            src = await asyncio.to_thread(_preview_media_data, self.catalog, media_hash)
+            size = self._query_integer("size", 1600, 64, 1600)
+            src = await asyncio.to_thread(
+                _preview_media_data, self.catalog, media_hash, size
+            )
             if src is None:
                 return self._error("NOT_FOUND", "图片不存在。", 404)
             return json_response(
@@ -365,21 +372,33 @@ class CatalogRoutes:
         return self._error("INTERNAL_ERROR", "目录保存失败，请刷新后重试。", 500)
 
 
-def _preview_media_data(catalog: CatalogAdminService, media_hash: str) -> str | None:
+def _preview_media_data(
+    catalog: CatalogAdminService, media_hash: str, size: int = 1600
+) -> str | None:
     result = catalog.get_media(media_hash)
     if result is None:
         return None
     path, _ = result
+    return _encoded_preview(str(path), path.stat().st_mtime_ns, size)
+
+
+# 角色列表一页上百张封面：小尺寸缩略图按文件与尺寸缓存，并用 WebP 减小体积。
+@functools.lru_cache(maxsize=512)
+def _encoded_preview(path: str, mtime_ns: int, size: int) -> str:
+    del mtime_ns  # 仅参与缓存键：文件被替换后重新生成
     with Image.open(path) as source:
         image = ImageOps.exif_transpose(source)
-        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+        image.thumbnail((size, size), Image.Resampling.LANCZOS)
         if image.mode not in ("RGB", "RGBA"):
             image = image.convert("RGBA")
         output = io.BytesIO()
-        image.save(output, format="PNG", optimize=True)
-    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode(
-        "ascii"
-    )
+        if size >= 1600:
+            image.save(output, format="PNG", optimize=True)
+            mime = "image/png"
+        else:
+            image.save(output, format="WEBP", quality=82, method=4)
+            mime = "image/webp"
+    return f"data:{mime};base64," + base64.b64encode(output.getvalue()).decode("ascii")
 
 
 def _upload_media_file(

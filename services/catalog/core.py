@@ -307,14 +307,10 @@ class CatalogService:
                 raise StorageError(f"角色图片摘要无效：{character['id']}")
 
     def _image_is_available(self, digest: str) -> bool:
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT relative_path FROM media_blobs WHERE hash=?", (digest,)
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT relative_path FROM media_blobs WHERE hash=?", (digest,)
+            ).fetchone()
         if row is None:
             return False
         candidate = (self.media_root / row["relative_path"]).resolve()
@@ -449,6 +445,24 @@ def _inspect_image(payload: bytes, max_pixels: int) -> tuple[int, int, str, str]
         return width, height, extension, mime_type
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise StorageError(f"图片解码失败：{exc}") from exc
+
+
+def inspect_uploaded_image(
+    payload: bytes, max_pixels: int
+) -> tuple[int, int, str, str]:
+    """校验管理员上传的图片；格式或内容问题是输入错误，转为可直接展示的说明。"""
+
+    try:
+        return _inspect_image(payload, max_pixels)
+    except StorageError as exc:
+        message = str(exc)
+        if message.startswith("图片解码失败"):
+            message = "无法读取图片内容：文件可能已损坏，或不是 PNG、JPEG、WebP 图片。"
+        elif message.startswith("只接受"):
+            message = "只接受 PNG、JPEG 或 WebP 图片，请转换格式后再上传。"
+        elif message.startswith("图片像素数"):
+            message = "图片分辨率过大，请缩小后再上传。"
+        raise ValueError(message) from exc
 
 
 def _atomic_content_write(target: Path, payload: bytes) -> None:

@@ -441,31 +441,108 @@ dialog[open] { animation: float-in .18s ease-out both; }
 .confirm-dialog { width: min(540px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 22px; }
 .confirm-dialog h3 { margin-bottom: 8px; font-size: 17px; }
 .confirm-dialog .query-result { min-height: 0; max-height: min(50vh, 400px); }
-.batch-dialog { width: min(1100px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 22px; overflow: auto; }
+.batch-dialog { width: min(1100px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 0; overflow: hidden; }
 .batch-dialog .section-head { align-items: flex-start; }
 .batch-dialog .section-head p { margin: 2px 0 0; }
 .batch-dialog progress { width: 100%; height: 8px; margin-top: 12px; accent-color: var(--accent); }
 .batch-dialog li { overflow-wrap: anywhere; }
-.batch-bulk { margin: 14px 0; }
-.batch-drop { display: grid; gap: 6px; margin: 14px 0; padding: 18px; border: 1.5px dashed var(--line-strong); border-radius: 12px; background: var(--surface-soft); text-align: center; cursor: pointer; }
-.batch-drop small { color: var(--muted); font-size: 12px; }
-.batch-drop.dragging { border-color: var(--accent); background: var(--accent-soft); }
-.batch-rows { display: grid; gap: 12px; }
-.batch-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 14px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
-.batch-row.manual { border-color: var(--warning); }
-.batch-row img { width: 120px; height: 150px; object-fit: contain; background: var(--surface-soft); border-radius: 8px; }
-.batch-row h3, .batch-row p { overflow-wrap: anywhere; }
-.batch-error { padding: 10px 12px; border-radius: 10px; background: var(--danger-soft); color: var(--danger); white-space: pre-wrap; overflow-wrap: anywhere; }
-.batch-folder { min-width: 0; margin: 12px 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
-.batch-folder > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; cursor: pointer; }
-.batch-thumbnail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 12px; }
-.batch-thumbnail-grid > .batch-folder { grid-column: 1 / -1; }
-.batch-thumbnail-grid > .batch-row { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
-.batch-thumbnail-grid .batch-row > img { width: 100%; height: 150px; }
-.batch-row-details { font-size: 12.5px; }
-.batch-row-details summary { cursor: pointer; color: var(--accent); }
-.batch-row-details .form-grid { grid-template-columns: 1fr; }
-#batch-import-result ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; padding-left: 18px; }
+/* 角色列表：角色池标签、筛选栏与封面卡片 */
+.pool-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 4px 0 12px; }
+.pool-chip-group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pool-chip-label { color: var(--muted); font-size: 12.5px; }
+.pool-chip { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--text); font-size: 13px; cursor: pointer; }
+.pool-chip:hover { border-color: var(--line-strong); }
+.pool-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.pool-count { min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--surface-soft); color: var(--muted); font-size: 12px; text-align: center; }
+.pool-chip[aria-pressed="true"] .pool-count { background: var(--surface); color: var(--accent); }
+.catalog-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.catalog-filters input[type="search"] { flex: 1 1 200px; min-width: 0; }
+.catalog-filters select { width: auto; }
+.pool-overview { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); font-size: 13px; }
+.pool-overview-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pool-overview .btn { margin-left: auto; }
+.character-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.layout.wide .character-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
+.character-card { display: flex; flex-direction: column; min-width: 0; padding: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.character-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow); transform: translateY(-2px); }
+.character-card[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.character-card.disabled .character-cover img { opacity: .5; filter: grayscale(1); }
+.character-cover { position: relative; display: grid; place-items: center; aspect-ratio: 3 / 4; overflow: hidden; background: var(--surface-soft); border-bottom: 1px solid var(--line); }
+.character-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.character-cover.loading { background: var(--seg-off); }
+.character-cover.empty, .character-cover.broken { background: var(--surface-soft); }
+.cover-initial { color: var(--subtle); font-size: 40px; font-weight: 650; }
+.character-info { display: grid; gap: 3px; padding: 8px 10px 10px; min-width: 0; }
+.character-info strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.character-info .mono { overflow: hidden; color: var(--subtle); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.character-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.character-tags .chip { padding: 1px 7px; font-size: 12px; }
+.character-pools { overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.character-empty { grid-column: 1 / -1; padding: 24px 0; text-align: center; }
+
+/* 拖放上传区：角色编辑（compact）与批量导入共用 */
+.drop-zone { display: flex; align-items: center; gap: 14px; margin: 12px 0; padding: 18px; border: 1.5px dashed var(--line-strong); border-radius: 12px; background: var(--surface-soft); cursor: pointer; }
+.drop-zone:hover, .drop-zone:focus-visible { border-color: var(--accent); }
+.drop-zone.dragging { border-color: var(--accent); background: var(--accent-soft); }
+.drop-zone strong { display: block; font-size: 14px; }
+.drop-zone small { display: block; margin-top: 2px; color: var(--muted); font-size: 12.5px; }
+.drop-icon { display: grid; place-items: center; flex: none; width: 38px; height: 38px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); color: var(--accent); }
+.drop-zone.compact { padding: 12px 14px; gap: 12px; }
+.drop-zone.compact .drop-icon { width: 32px; height: 32px; }
+fieldset:disabled .drop-zone { opacity: .6; cursor: progress; }
+.upload-settings { margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; }
+.upload-settings > summary { padding: 9px 12px; font-size: 13px; font-weight: 550; color: var(--muted); cursor: pointer; }
+.upload-settings[open] > summary { border-bottom: 1px solid var(--line); }
+.upload-settings > :not(summary) { margin-left: 12px; margin-right: 12px; }
+.upload-tiles:empty { display: none; }
+.upload-tile { position: relative; aspect-ratio: 1; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-soft); }
+.upload-tile img { width: 100%; height: 100%; object-fit: cover; opacity: .55; }
+.upload-state { position: absolute; inset: auto 0 0 0; padding: 4px 6px; background: var(--island); color: #fff; font-size: 12px; line-height: 1.35; }
+.upload-tile.failed { border-color: var(--danger); }
+.upload-tile.failed .upload-state { background: var(--danger); max-height: 70%; overflow: auto; }
+.upload-tile .thumb-remove { opacity: 1; }
+
+/* 批量导入：按角色分组核对 */
+.batch-dialog[open] { display: flex; flex-direction: column; }
+.batch-dialog > .section-head { padding: 22px 22px 0; }
+.batch-dialog > fieldset { flex: 1; min-height: 0; overflow: auto; padding: 0 22px 16px; }
+.batch-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 4px; }
+.batch-resume { display: inline-flex; gap: 6px; align-items: center; }
+.batch-resume select { height: 32px; max-width: 260px; }
+.batch-review { margin-top: 8px; }
+.batch-review-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 12px; }
+.batch-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.batch-groups { display: grid; gap: 12px; }
+.batch-empty { padding: 18px 0; text-align: center; }
+.batch-group { padding: 14px 16px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 12px; background: var(--surface); }
+.batch-group[data-tone="attention"] { border-left-color: var(--warning); }
+.batch-group[data-tone="ready"] { border-left-color: var(--success); }
+.batch-group[data-tone="done"] { border-left-color: var(--line-strong); }
+.batch-group-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.batch-group-title { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+.batch-group-title strong { font-size: 15px; overflow-wrap: anywhere; }
+.batch-group-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.batch-group-notes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 8px; font-size: 12.5px; }
+.warn-text { color: var(--warning); }
+.batch-candidates { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--muted); }
+.batch-picker { display: grid; gap: 10px; margin-top: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-soft); }
+.batch-picker input, .batch-picker select { height: 32px; }
+.batch-picker-results { display: flex; flex-wrap: wrap; gap: 6px; min-height: 32px; align-items: center; }
+.batch-picker-new { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.batch-picker-new input { flex: 1 1 160px; min-width: 0; }
+.batch-thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin-top: 12px; }
+.batch-thumb { margin: 0; min-width: 0; }
+.batch-thumb .thumb { position: relative; }
+.batch-thumb .thumb[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.batch-thumb .thumb[aria-pressed="true"]::after { content: "✓"; position: absolute; top: 4px; right: 4px; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 12px; }
+.batch-thumb .thumb.loading { background: var(--seg-off); }
+.thumb-fallback { padding: 6px; color: var(--muted); font-size: 12px; text-align: center; }
+.batch-thumb figcaption { margin-top: 4px; overflow: hidden; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.batch-thumb-error, .batch-thumb-note { margin: 2px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.batch-thumb-error { color: var(--danger); }
+.batch-thumb-note { color: var(--muted); }
+.batch-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 22px; border-top: 1px solid var(--line); background: var(--surface); }
+.batch-footer p { margin: 0; font-size: 13px; }
 
 /* 中等宽度：右侧卡片移到主内容下方 */
 @media (max-width: 1100px) {
@@ -519,7 +596,9 @@ dialog[open] { animation: float-in .18s ease-out both; }
   .data-table { font-size: 12.5px; }
   .fab-wrap { right: 16px; bottom: 18px; }
   .fab-pill { gap: 6px; }
-  .batch-dialog { padding: 14px; }
+  .batch-dialog > .section-head { padding: 14px 14px 0; }
+  .batch-dialog > fieldset { padding: 0 14px 12px; }
+  .batch-footer { padding: 10px 14px; flex-wrap: wrap; }
   .batch-row { grid-template-columns: 1fr; }
   .batch-row img { width: 100%; }
   .batch-thumbnail-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

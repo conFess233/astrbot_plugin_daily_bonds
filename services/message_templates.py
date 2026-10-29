@@ -91,6 +91,7 @@ IMAGE_KEYS = {
     "list_husband",
     "list_member",
     "rank_intimacy",
+    "rank_my_intimacy",
     "rank_activity",
     "query_affection",
     "list_empty",
@@ -102,6 +103,7 @@ EXTRA_FIELDS = {
     "capacity_full_single_wife": {"name", "names"},
     "capacity_full_single_husband": {"name", "names"},
     "rank_intimacy": {"title", "lines", "count", "group_name", "群名"},
+    "rank_my_intimacy": {"title", "lines", "count", "group_name", "群名"},
     "rank_activity": {"title", "lines", "count", "days", "group_name", "群名"},
     "rank_group_intimacy": {"group_name", "群名"},
     "query_affection": {"name", "target_name", "forward_score", "reverse_score"},
@@ -234,6 +236,7 @@ def template_fields() -> dict[str, dict[str, Any]]:
             }
             if "name" in allowed and key in {
                 "rank_intimacy",
+                "rank_my_intimacy",
                 "query_affection",
                 "affection_value",
             }:

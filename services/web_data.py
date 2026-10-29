@@ -25,8 +25,7 @@ class DataRoutes:
         return await asyncio.to_thread(self._overview, scope_id)
 
     def _overview(self, scope_id: int | None):
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             scope_where = " WHERE scope_id=?" if scope_id is not None else ""
             scope_args = (scope_id,) if scope_id is not None else ()
             scopes = (
@@ -121,14 +120,10 @@ class DataRoutes:
         return await asyncio.to_thread(self._scopes)
 
     def _scopes(self):
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    "SELECT id,platform_id,self_id,group_id,created_at FROM scopes ORDER BY platform_id,self_id,group_id LIMIT 500"
-                )
-                .fetchall()
-            )
+        with self.storage.read() as db:
+            rows = db.execute(
+                "SELECT id,platform_id,self_id,group_id,created_at FROM scopes ORDER BY platform_id,self_id,group_id LIMIT 500"
+            ).fetchall()
         return json_response(
             {
                 "ok": True,

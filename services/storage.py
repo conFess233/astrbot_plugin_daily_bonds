@@ -26,7 +26,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 14
+_SCHEMA_VERSION = 15
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -46,6 +46,10 @@ class SQLiteStorage:
         )
         self.connection: sqlite3.Connection | None = None
         self._lock = threading.RLock()
+        # 只读连接单独加锁：sqlite3 连接不能被多个线程同时使用。
+        # 加锁顺序固定为先写锁后读锁（见 close），读锁内不再获取写锁。
+        self._reader: sqlite3.Connection | None = None
+        self._read_lock = threading.Lock()
         # 每条群消息都要读取设置；按两级修订号缓存校验后的结果，
         # 其他写入方会递增修订号，恢复备份会重开连接并清空缓存。
         self._settings_cache: dict[
@@ -67,12 +71,25 @@ class SQLiteStorage:
         connection.execute("PRAGMA foreign_keys=ON")
         connection.execute("PRAGMA busy_timeout=5000")
         connection.execute("PRAGMA journal_mode=WAL")
+        # WAL 下 NORMAL 不会损坏数据库，进程崩溃也不丢已提交事务；只有断电或系统
+        # 崩溃时可能丢失最后几次提交。换来每次提交不再强制刷盘。
+        connection.execute("PRAGMA synchronous=NORMAL")
         self.connection = connection
         try:
             self._migrate()
             problems = connection.execute("PRAGMA quick_check").fetchall()
             if len(problems) != 1 or problems[0][0] != "ok":
                 raise StorageError("SQLite quick_check 未通过，已停止插件初始化。")
+            reader = sqlite3.connect(
+                f"{self.database_path.resolve().as_uri()}?mode=ro",
+                uri=True,
+                timeout=5,
+                isolation_level=None,
+                check_same_thread=False,
+            )
+            reader.row_factory = sqlite3.Row
+            reader.execute("PRAGMA busy_timeout=5000")
+            self._reader = reader
         except Exception:
             connection.close()
             self.connection = None
@@ -81,11 +98,37 @@ class SQLiteStorage:
     def close(self) -> None:
         """关闭连接并释放 SQLite 资源。"""
 
-        with self._lock:
+        with self._lock, self._read_lock:
             self._settings_cache.clear()
+            if self._reader is not None:
+                self._reader.close()
+                self._reader = None
             if self.connection is not None:
                 self.connection.close()
                 self.connection = None
+
+    @contextmanager
+    def read(self) -> Iterator[sqlite3.Connection]:
+        """只读查询：在独立连接的读事务中执行，WAL 下与写事务互不阻塞。
+
+        当前线程已持有写锁时（如写事务中复查数据）沿用主连接，以便读到本事务
+        尚未提交的写入，语义与直接持锁读取相同。块内不得再获取写锁或写入。
+        """
+
+        # RLock 没有公开的持有者查询，_is_owned 在 CPython 的两种实现中都存在。
+        if self._lock._is_owned():
+            yield self._connection()
+            return
+        with self._read_lock:
+            reader = self._reader
+            if reader is None:
+                raise StorageError("SQLite 尚未打开。")
+            # 显式读事务让同一块内的多条查询看到同一快照。
+            reader.execute("BEGIN")
+            try:
+                yield reader
+            finally:
+                reader.rollback()
 
     @contextmanager
     def transaction(self, *, immediate: bool = True) -> Iterator[sqlite3.Connection]:
@@ -309,6 +352,14 @@ class SQLiteStorage:
     ) -> sqlite3.Row:
         """创建当前周期，或在停机跨日后直接推进到当前周期。"""
 
+        # 绝大多数调用时周期仍有效：先用只读查询返回，不为每条群消息开写事务。
+        with self.read() as db:
+            current = db.execute(
+                "SELECT * FROM periods WHERE scope_id=? AND state='current'",
+                (scope_id,),
+            ).fetchone()
+        if current and now < int(current["ends_at"]):
+            return current
         zone = ZoneInfo(timezone)
         try:
             hour, minute = (int(part) for part in reset_time.split(":"))
@@ -507,6 +558,7 @@ class SQLiteStorage:
             migration_dir / "012_message_templates.sql",
             migration_dir / "013_relationship_sources.sql",
             migration_dir / "014_v2_settings_collection.sql",
+            migration_dir / "015_split_intimacy_rank.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
         hooks = {14: _upgrade_settings_v2}

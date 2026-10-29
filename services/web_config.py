@@ -211,15 +211,11 @@ class ConfigRoutes:
             )
 
     def _stored_override(self, scope_id: int) -> dict[str, Any]:
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT value_json FROM settings WHERE scope_key=?",
-                    (f"scope:{scope_id}",),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT value_json FROM settings WHERE scope_key=?",
+                (f"scope:{scope_id}",),
+            ).fetchone()
         return json.loads(row["value_json"]) if row else {}
 
     def _prepare_draft(
@@ -259,12 +255,10 @@ class ConfigRoutes:
             scope_id = int(raw_scope)
         else:
             raise ValueError("scope_id 必须是整数或 global。")
-        with self.storage._lock:
-            exists = (
-                self.storage._connection()
-                .execute("SELECT 1 FROM scopes WHERE id=?", (scope_id,))
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            exists = db.execute(
+                "SELECT 1 FROM scopes WHERE id=?", (scope_id,)
+            ).fetchone()
         if exists is None:
             raise ValueError("scope_id 不属于当前插件实例。")
         return scope_id
@@ -275,12 +269,9 @@ class ConfigRoutes:
         if changed_scope_id is not None:
             validate_config(changed_value)
             return [changed_scope_id]
-        with self.storage._lock:
+        with self.storage.read() as db:
             scope_ids = [
-                int(row[0])
-                for row in self.storage._connection().execute(
-                    "SELECT id FROM scopes ORDER BY id"
-                )
+                int(row[0]) for row in db.execute("SELECT id FROM scopes ORDER BY id")
             ]
         affected: list[int] = []
         for scope_id in scope_ids:

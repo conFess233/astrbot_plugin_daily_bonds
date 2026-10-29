@@ -10,7 +10,7 @@
 }
 
 /* ── 通用反馈 ───────────────────────────── */
-.btn, .icon-btn, .island button, .fab, .anchors button, .segmented button, .catalog-item, .template-item, .thumb, .scope-item .btn {
+.btn, .icon-btn, .island button, .fab, .anchors button, .segmented button, .catalog-item, .template-item, .thumb, .scope-item .btn, .character-card, .pool-chip {
   transition: background-color var(--t-fast), color var(--t-fast), border-color var(--t-fast),
     box-shadow var(--t), transform var(--t-fast) var(--ease-io);
 }

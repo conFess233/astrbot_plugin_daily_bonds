@@ -12,6 +12,7 @@ from typing import Any
 
 from astrbot.api import logger
 
+from .avatar_cache import AvatarCache
 from .cards import CardRow, CardService, data_uri, render_mode
 from .message_templates import (
     IMAGE_TOKEN,
@@ -20,6 +21,7 @@ from .message_templates import (
     render_message,
     set_message_values,
 )
+from .storage import SQLiteStorage
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,10 +35,17 @@ class RuntimeReply:
     text_chunks: tuple[str, ...] = ()
 
 
-class ReplyMixin:
-    """为 CommandRuntime 提供结果格式化与卡片回复。"""
+class ReplyBuilder:
+    """把业务结果格式化为文字或卡片回复，并提供回复共用的名称与头像查询。"""
 
-    async def _reply_with_card(
+    def __init__(
+        self, storage: SQLiteStorage, cards: CardService, avatar_cache: AvatarCache
+    ) -> None:
+        self.storage = storage
+        self.cards = cards
+        self.avatar_cache = avatar_cache
+
+    async def reply_with_card(
         self,
         text: str,
         title: str,
@@ -109,7 +118,7 @@ class ReplyMixin:
             text_chunks=tuple(chunks),
         )
 
-    async def _result_reply(
+    async def result_reply(
         self,
         code: str,
         data: Mapping[str, Any],
@@ -122,7 +131,7 @@ class ReplyMixin:
         if data.get("invite_id"):
             scope_id = MESSAGE_CONTEXT.get().get("scope_id")
             invite = (
-                await asyncio.to_thread(self._invite, scope_id, str(data["invite_id"]))
+                await asyncio.to_thread(self.invite, scope_id, str(data["invite_id"]))
                 if scope_id is not None
                 else None
             )
@@ -135,7 +144,7 @@ class ReplyMixin:
                 )
         if relation_id:
             relation = await asyncio.to_thread(
-                self._relationship_display, str(relation_id)
+                self.relationship_display, str(relation_id)
             )
             if relation:
                 set_message_values(subject_name=relation["name"])
@@ -158,10 +167,10 @@ class ReplyMixin:
             if IMAGE_TOKEN not in text or not relationships:
                 return RuntimeReply(text, starts_cooldown=False)
             details = [
-                await asyncio.to_thread(self._relationship_display, str(item["id"]))
+                await asyncio.to_thread(self.relationship_display, str(item["id"]))
                 for item in relationships
             ]
-            avatars = await self._avatars(
+            avatars = await self.avatars(
                 [
                     item["subject_id"]
                     for item in details
@@ -172,7 +181,7 @@ class ReplyMixin:
             rows = [
                 CardRow(
                     str(item["name"]),
-                    image_path=self._snapshot_image_path(item["image_paths"]),
+                    image_path=self.snapshot_image_path(item["image_paths"]),
                     avatar_path=avatars.get(item["subject_id"]),
                 )
                 for item in details
@@ -183,7 +192,7 @@ class ReplyMixin:
                 return RuntimeReply(
                     text, (image,) if image else (), starts_cooldown=False
                 )
-            card = await self._reply_with_card(
+            card = await self.reply_with_card(
                 text, render_message(config, "titles", "existing"), rows
             )
             return RuntimeReply(
@@ -195,15 +204,15 @@ class ReplyMixin:
             )
         if code in {"DRAWN", "DESIGNATED_DRAWN"} and IMAGE_TOKEN in text:
             item = await asyncio.to_thread(
-                self._relationship_display, str(data["relationship_id"])
+                self.relationship_display, str(data["relationship_id"])
             )
             if item is not None:
                 image = (
-                    (await self._avatars([item["subject_id"]], config)).get(
+                    (await self.avatars([item["subject_id"]], config)).get(
                         item["subject_id"]
                     )
                     if item["subject_kind"] == "member"
-                    else self._snapshot_image_path(item["image_paths"])
+                    else self.snapshot_image_path(item["image_paths"])
                 )
                 card = await self._draw_card(text, item, image, code, data)
                 if card is not None:
@@ -278,29 +287,25 @@ class ReplyMixin:
             fallback_text=message,
         )
 
-    def _relationship_display(self, relationship_id: str) -> dict[str, Any] | None:
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    """SELECT r.scope_id,r.subject_id,r.subject_kind,s.name,
+    def relationship_display(self, relationship_id: str) -> dict[str, Any] | None:
+        with self.storage.read() as db:
+            row = db.execute(
+                """SELECT r.scope_id,r.subject_id,r.subject_kind,s.name,
                           (SELECT GROUP_CONCAT(mb.relative_path,'|') FROM snapshot_images si
                            JOIN media_blobs mb ON mb.hash=si.media_hash WHERE si.snapshot_id=s.id) AS image_paths
                    FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id WHERE r.id=?""",
-                    (relationship_id,),
-                )
-                .fetchone()
-            )
+                (relationship_id,),
+            ).fetchone()
         if row is None:
             return None
         result = dict(row)
         if result["subject_kind"] == "member":
-            result["name"] = self._member_names(result["scope_id"]).get(
+            result["name"] = self.member_names(result["scope_id"]).get(
                 str(result["subject_id"]), "群友"
             )
         return result
 
-    async def _avatars(
+    async def avatars(
         self,
         user_ids: list[str],
         config: Mapping[str, Any],
@@ -321,7 +326,7 @@ class ReplyMixin:
             logger.exception("今日姻缘：头像读取失败，使用占位图。")
             return {}
 
-    def _snapshot_image_path(self, image_paths: str | None) -> Path | None:
+    def snapshot_image_path(self, image_paths: str | None) -> Path | None:
         if not image_paths:
             return None
         media_root = (self.storage.database_path.parent / "media").resolve()
@@ -384,3 +389,22 @@ class ReplyMixin:
                 else 0,
             )
         return render_message(config, "results", "unknown_result", code=code)
+
+    def member_names(self, scope_id: int) -> dict[str, str]:
+        with self.storage.read() as db:
+            rows = db.execute(
+                "SELECT user_id,nickname,card FROM members WHERE scope_id=?",
+                (scope_id,),
+            ).fetchall()
+        return {
+            str(row["user_id"]): str(row["card"] or row["nickname"] or "群友")
+            for row in rows
+        }
+
+    def invite(self, scope_id: int, invite_id: str):
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT * FROM gift_invites WHERE scope_id=? AND id=?",
+                (scope_id, invite_id),
+            ).fetchone()
+        return row

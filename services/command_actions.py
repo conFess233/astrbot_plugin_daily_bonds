@@ -9,17 +9,38 @@ from typing import Any
 
 from ..models.command import ParsedCommand
 from . import game_rules as rules
-from .command_replies import RuntimeReply
+from .command_features import FeatureHandler
+from .command_listing import ListingHandler
+from .command_replies import ReplyBuilder, RuntimeReply
+from .game_status import StatusService
+from .gameplay import GameplayService
 from .message_templates import (
     MESSAGE_CONTEXT,
     MessageText,
     render_message,
     set_message_values,
 )
+from .storage import SQLiteStorage
 
 
-class ActionMixin:
-    """为 CommandRuntime 提供关系操作与查询分发。"""
+class ActionHandler:
+    """抽取以外的关系操作（抢夺、赠送、离婚）与查询指令分发。"""
+
+    def __init__(
+        self,
+        storage: SQLiteStorage,
+        gameplay: GameplayService,
+        status: StatusService,
+        replies: ReplyBuilder,
+        listing: ListingHandler,
+        features: FeatureHandler,
+    ) -> None:
+        self.storage = storage
+        self.gameplay = gameplay
+        self.status = status
+        self.replies = replies
+        self.listing = listing
+        self.features = features
 
     async def _steal_probability(
         self,
@@ -44,10 +65,10 @@ class ActionMixin:
             base, bonus, float(mode_config["steal_probability_max"]), intimacy
         )
 
-    async def _query_or_action(self, **values: Any) -> str | RuntimeReply | None:
+    async def query_or_action(self, **values: Any) -> str | RuntimeReply | None:
         command: ParsedCommand = values["command"]
         if command.action in {"list_characters", "list_husband", "list_members"}:
-            return await self._list_relationships(
+            return await self.listing.list_relationships(
                 values["scope_id"],
                 values["period_id"],
                 values["mode"],
@@ -57,16 +78,16 @@ class ActionMixin:
                 values["config"]["resources"],
                 values["config"],
             )
-        if command.action in {"rank_intimacy", "rank_activity"}:
-            return await self._rank(values)
+        if command.action in {"rank_intimacy", "rank_my_intimacy", "rank_activity"}:
+            return await self.listing.rank(values)
         if command.action == "query_affection":
-            return await self._affection(values)
+            return await self.listing.affection(values)
         if command.action == "my_status":
-            return await self._my_status(values)
+            return await self.features.my_status(values)
         if command.action == "help":
-            return await self._help(values)
+            return await self.features.help(values)
         if command.action == "my_collection":
-            return await self._my_collection(values)
+            return await self.features.my_collection(values)
         mode = values["mode"]
         mode_config = values["config"]["modes"][mode]
         config = values["config"]
@@ -98,7 +119,7 @@ class ActionMixin:
                 return render_message(config, "errors", "steal_relation_ambiguous")
             if relation_id:
                 relation = await asyncio.to_thread(
-                    self._relationship_display, relation_id
+                    self.replies.relationship_display, relation_id
                 )
                 if relation:
                     set_message_values(subject_name=relation["name"])
@@ -122,7 +143,7 @@ class ActionMixin:
                 config_revision=values["revision"],
                 now=values["now"],
             )
-            return await self._result_reply(
+            return await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
         if command.action.startswith("gift_") and command.action not in {
@@ -146,7 +167,7 @@ class ActionMixin:
                 return render_message(config, "errors", "gift_relation_ambiguous")
             if relation_id:
                 relation = await asyncio.to_thread(
-                    self._relationship_display, relation_id
+                    self.replies.relationship_display, relation_id
                 )
                 if relation:
                     set_message_values(subject_name=relation["name"])
@@ -169,7 +190,7 @@ class ActionMixin:
                 now=values["now"],
             )
             accept_keyword = values["config"]["commands"]["keywords"]["gift_accept"][0]
-            return await self._result_reply(
+            return await self.replies.result_reply(
                 result.code,
                 result.data,
                 mode,
@@ -237,7 +258,7 @@ class ActionMixin:
                 config_revision=values["revision"],
                 now=values["now"],
             )
-            return await self._result_reply(
+            return await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
         if command.action in {"gift_accept", "gift_reject", "gift_cancel"}:
@@ -256,12 +277,12 @@ class ActionMixin:
             if invite_id is None:
                 return render_message(config, "errors", "invite_none")
             invite = await asyncio.to_thread(
-                self._invite, values["scope_id"], invite_id
+                self.replies.invite, values["scope_id"], invite_id
             )
             if invite is None:
                 return render_message(config, "errors", "invite_invalid_id")
             relation = await asyncio.to_thread(
-                self._relationship_display, str(invite["relationship_id"])
+                self.replies.relationship_display, str(invite["relationship_id"])
             )
             set_message_values(
                 sender_name=names.get(str(invite["sender_id"]), "群友"),
@@ -292,7 +313,7 @@ class ActionMixin:
                 config_revision=values["revision"],
                 now=values["now"],
             )
-            return await self._result_reply(
+            return await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
         return None
@@ -307,11 +328,9 @@ class ActionMixin:
         target_user_id: str | None,
     ) -> list[dict[str, str]]:
         marks = ",".join("?" for _ in modes)
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    f"""SELECT r.id,r.mode,r.subject_id,r.slot_kind,s.name,s.aliases_json,
+        with self.storage.read() as db:
+            rows = db.execute(
+                f"""SELECT r.id,r.mode,r.subject_id,r.slot_kind,s.name,s.aliases_json,
                            m.nickname,m.card
                     FROM relationships r
                     JOIN subject_snapshots s ON s.id=r.snapshot_id
@@ -320,10 +339,8 @@ class ActionMixin:
                     WHERE r.scope_id=? AND r.period_id=? AND r.owner_id=? AND r.state='active'
                       AND r.mode IN ({marks})
                     ORDER BY r.acquired_at,r.id""",
-                    (scope_id, period_id, owner_id, *modes),
-                )
-                .fetchall()
-            )
+                (scope_id, period_id, owner_id, *modes),
+            ).fetchall()
         matches: list[dict[str, str]] = []
         normalized = query.removeprefix("#") if query else None
         for row in rows:
@@ -353,18 +370,14 @@ class ActionMixin:
     def _resolve_relation(
         self, scope_id: int, period_id: str, mode: str, owner_id: str, query: str | None
     ) -> str | None:
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    """SELECT r.id,r.subject_id,r.slot_kind,s.name,s.aliases_json FROM relationships r
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT r.id,r.subject_id,r.slot_kind,s.name,s.aliases_json FROM relationships r
                    JOIN subject_snapshots s ON s.id=r.snapshot_id
                    WHERE r.scope_id=? AND r.period_id=? AND r.mode=? AND r.owner_id=? AND r.state='active'
                    ORDER BY r.acquired_at,r.id""",
-                    (scope_id, period_id, mode, owner_id),
-                )
-                .fetchall()
-            )
+                (scope_id, period_id, mode, owner_id),
+            ).fetchall()
         if not query:
             return None
         normalized = query.removeprefix("#")
@@ -388,27 +401,11 @@ class ActionMixin:
         self, scope_id: int, actor_id: str, action: str
     ) -> str | None:
         column = "sender_id" if action == "cancel" else "recipient_id"
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    f"SELECT id FROM gift_invites WHERE scope_id=? AND {column}=? AND state='pending' ORDER BY created_at,id",
-                    (scope_id, actor_id),
-                )
-                .fetchall()
-            )
+        with self.storage.read() as db:
+            rows = db.execute(
+                f"SELECT id FROM gift_invites WHERE scope_id=? AND {column}=? AND state='pending' ORDER BY created_at,id",
+                (scope_id, actor_id),
+            ).fetchall()
         if len(rows) > 1:
             return "multiple"
         return str(rows[0]["id"]) if rows else None
-
-    def _invite(self, scope_id: int, invite_id: str):
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT * FROM gift_invites WHERE scope_id=? AND id=?",
-                    (scope_id, invite_id),
-                )
-                .fetchone()
-            )
-        return row

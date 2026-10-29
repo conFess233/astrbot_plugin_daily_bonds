@@ -56,7 +56,18 @@ class NotificationService:
     async def expire_due(self, now: int) -> int:
         return await asyncio.to_thread(self._expire_due, now)
 
+    def _exists(self, sql: str, params: tuple[Any, ...] = ()) -> bool:
+        """维护循环每 5 秒运行一次；空闲时只做只读检查，不开写事务。"""
+
+        with self.storage.read() as db:
+            return db.execute(sql, params).fetchone() is not None
+
     def _expire_due(self, now: int) -> int:
+        if not self._exists(
+            "SELECT 1 FROM gift_invites WHERE state='pending' AND expires_at<=? LIMIT 1",
+            (now,),
+        ):
+            return 0
         with self.storage.transaction() as db:
             rows = db.execute(
                 """SELECT i.scope_id,s.umo,i.id FROM gift_invites i JOIN scopes s ON s.id=i.scope_id
@@ -116,6 +127,10 @@ class NotificationService:
 
     def _claim(self, limit: int, now: int) -> list[dict[str, str]]:
         result = []
+        if not self._exists(
+            "SELECT 1 FROM notification_outbox WHERE state='pending' LIMIT 1"
+        ):
+            return result
         with self.storage.transaction() as db:
             rows = db.execute(
                 "SELECT id,umo,payload_json FROM notification_outbox WHERE state='pending' ORDER BY created_at,id LIMIT ?",

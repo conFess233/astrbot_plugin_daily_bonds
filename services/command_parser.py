@@ -228,6 +228,7 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
         "list_husband",
         "list_members",
         "rank_intimacy",
+        "rank_my_intimacy",
         "rank_activity",
     }:
         if not suffix:

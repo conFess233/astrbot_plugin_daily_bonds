@@ -7,6 +7,7 @@ import json
 import sqlite3
 from collections.abc import Mapping, Sequence
 from datetime import datetime, time, timedelta
+from itertools import pairwise
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -120,16 +121,12 @@ class StatisticsService:
         self, scope_id: int, source_id: str, target_id: str
     ) -> dict[str, Any]:
         """读取两个累计有向分值；缺失的方向返回零，不合并为双向总分。"""
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    """SELECT source_id,target_id,score FROM intimacy_edges WHERE scope_id=?
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT source_id,target_id,score FROM intimacy_edges WHERE scope_id=?
                    AND ((source_id=? AND target_id=?) OR (source_id=? AND target_id=?))""",
-                    (scope_id, source_id, target_id, target_id, source_id),
-                )
-                .fetchall()
-            )
+                (scope_id, source_id, target_id, target_id, source_id),
+            ).fetchall()
         scores = {
             (row["source_id"], row["target_id"]): int(row["score"]) for row in rows
         }
@@ -154,43 +151,63 @@ class StatisticsService:
             raise ValueError("window_days 必须在 1 到 365 之间。")
         zone = ZoneInfo(timezone)
         start = now - window_days * 86400
+        lower, upper = start + 1, now + 1
+        first_day = datetime.fromtimestamp(start, zone).date()
+        last_day = datetime.fromtimestamp(now, zone).date()
+        boundaries = [
+            int(
+                datetime.combine(
+                    first_day + timedelta(days=offset), time(), zone
+                ).timestamp()
+            )
+            for offset in range((last_day - first_day).days + 2)
+        ]
         totals: dict[str, int] = {}
         active_days: dict[str, int] = {}
-        day = datetime.fromtimestamp(start, zone).date()
-        last_day = datetime.fromtimestamp(now, zone).date()
-        # 按自然日边界在数据库聚合，避免把窗口内所有秒桶搬到 Python。
-        with self.storage._lock:
-            while day <= last_day:
-                tomorrow = day + timedelta(days=1)
-                lower = max(
-                    start + 1, int(datetime.combine(day, time(), zone).timestamp())
-                )
-                upper = min(
-                    now + 1, int(datetime.combine(tomorrow, time(), zone).timestamp())
-                )
-                rows = (
-                    self.storage._connection()
-                    .execute(
-                        """SELECT user_id,SUM(messages) AS messages FROM (
-                       SELECT user_id,message_count AS messages FROM activity_seconds
-                       WHERE scope_id=? AND observed_second>=? AND observed_second<?
-                       UNION ALL SELECT user_id,0 FROM activity_pokes
+        with self.storage.read() as db:
+            if all(b - a == 86400 for a, b in pairwise(boundaries)):
+                # 窗口内没有夏令时切换：自然日编号可直接由秒数算出，一次聚合完成。
+                origin = boundaries[0]
+                rows = db.execute(
+                    """SELECT user_id,SUM(messages) AS messages,COUNT(DISTINCT day) AS days FROM (
+                       SELECT user_id,message_count AS messages,(observed_second-?)/86400 AS day
+                       FROM activity_seconds WHERE scope_id=? AND observed_second>=? AND observed_second<?
+                       UNION ALL SELECT user_id,0,(observed_second-?)/86400 FROM activity_pokes
                        WHERE scope_id=? AND observed_second>=? AND observed_second<?)
                        GROUP BY user_id""",
-                        (scope_id, lower, upper, scope_id, lower, upper),
-                    )
-                    .fetchall()
-                )
+                    (origin, scope_id, lower, upper, origin, scope_id, lower, upper),
+                ).fetchall()
                 for row in rows:
                     user_id = str(row["user_id"])
-                    if (
-                        eligible_user_ids is not None
-                        and user_id not in eligible_user_ids
-                    ):
-                        continue
-                    totals[user_id] = totals.get(user_id, 0) + int(row["messages"])
-                    active_days[user_id] = active_days.get(user_id, 0) + 1
-                day = tomorrow
+                    totals[user_id] = int(row["messages"])
+                    active_days[user_id] = int(row["days"])
+            else:
+                # 有夏令时切换的时区按自然日边界逐日聚合。
+                for day_start, day_end in pairwise(boundaries):
+                    rows = db.execute(
+                        """SELECT user_id,SUM(messages) AS messages FROM (
+                           SELECT user_id,message_count AS messages FROM activity_seconds
+                           WHERE scope_id=? AND observed_second>=? AND observed_second<?
+                           UNION ALL SELECT user_id,0 FROM activity_pokes
+                           WHERE scope_id=? AND observed_second>=? AND observed_second<?)
+                           GROUP BY user_id""",
+                        (
+                            scope_id,
+                            max(lower, day_start),
+                            min(upper, day_end),
+                        )
+                        * 2,
+                    ).fetchall()
+                    for row in rows:
+                        user_id = str(row["user_id"])
+                        totals[user_id] = totals.get(user_id, 0) + int(row["messages"])
+                        active_days[user_id] = active_days.get(user_id, 0) + 1
+        if eligible_user_ids is not None:
+            totals = {
+                user_id: count
+                for user_id, count in totals.items()
+                if user_id in eligible_user_ids
+            }
         return sorted(
             [
                 {
@@ -207,15 +224,11 @@ class StatisticsService:
         self, scope_id: int, *, eligible_user_ids: set[str] | None = None
     ) -> list[dict[str, Any]]:
         """排行榜与抽取共用本群有效成员之间的亲密度记录，不限个人榜范围。"""
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    "SELECT source_id,target_id,score FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id",
-                    (scope_id,),
-                )
-                .fetchall()
-            )
+        with self.storage.read() as db:
+            rows = db.execute(
+                "SELECT source_id,target_id,score FROM intimacy_edges WHERE scope_id=? ORDER BY score DESC,source_id,target_id",
+                (scope_id,),
+            ).fetchall()
         return [
             dict(row)
             for row in rows
@@ -284,7 +297,7 @@ class StatisticsService:
                         return False
                 else:
                     db.execute(
-                        "INSERT INTO processed_events(scope_id,event_key,payload_hash,observed_at,stats_applied) VALUES(?,?,?,?,0)",
+                        "INSERT INTO processed_events(scope_id,event_key,payload_hash,observed_at,stats_applied) VALUES(?,?,?,?,1)",
                         (scope_id, event_key, payload_hash, now),
                     )
                 if activity:
@@ -306,10 +319,12 @@ class StatisticsService:
                         _add_score(
                             db, scope_id, target_id, sender_id, passive_points, now
                         )
-                db.execute(
-                    "UPDATE processed_events SET stats_applied=1 WHERE scope_id=? AND event_key=?",
-                    (scope_id, event_key),
-                )
+                if prior:
+                    # 新事件插入时已标记为已统计；只有先由冷却等流程登记的事件需要补标。
+                    db.execute(
+                        "UPDATE processed_events SET stats_applied=1 WHERE scope_id=? AND event_key=?",
+                        (scope_id, event_key),
+                    )
             return True
         except sqlite3.Error as exc:
             raise StorageError(f"群聊统计事务失败：{exc}") from exc

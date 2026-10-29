@@ -40,8 +40,7 @@ class AdminQueryService:
             where.append("(r.owner_id LIKE ? OR r.subject_id LIKE ? OR ss.name LIKE ?)")
             args.extend([f"%{term}%"] * 3)
         clause = " AND ".join(where)
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             total = int(
                 db.execute(
                     f"SELECT COUNT(*) FROM relationships r JOIN periods p ON p.id=r.period_id AND p.scope_id=r.scope_id JOIN subject_snapshots ss ON ss.id=r.snapshot_id WHERE {clause}",
@@ -172,8 +171,7 @@ class AdminQueryService:
     def intimacy(
         self, scope_id: int, *, source_id: str | None, limit: int, offset: int
     ) -> dict[str, Any]:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             if source_id:
                 total = int(
                     db.execute(
@@ -226,8 +224,7 @@ class AdminQueryService:
         )
         if user_id:
             ranked = [row for row in ranked if row["user_id"] == user_id]
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             args: list[Any] = [scope_id, start, now]
             user_clause = ""
             if user_id:
@@ -288,8 +285,7 @@ class AdminQueryService:
             where.append("i.state=?")
             args.append(state)
         clause = " AND ".join(where)
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             total = int(
                 db.execute(
                     f"SELECT COUNT(*) FROM gift_invites i WHERE {clause}", args
@@ -327,8 +323,7 @@ class AdminQueryService:
             where.append("created_at<=?")
             args.append(until)
         clause = " AND ".join(where)
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             total = int(
                 db.execute(
                     f"SELECT COUNT(*) FROM operation_log WHERE {clause}", args

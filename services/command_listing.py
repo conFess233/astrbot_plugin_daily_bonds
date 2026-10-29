@@ -6,20 +6,38 @@ import asyncio
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from .cards import PAIR_LIMIT, CardRow, render_mode
-from .command_replies import RuntimeReply
+from .avatar_cache import AvatarCache
+from .cards import PAIR_LIMIT, CardRow, CardService, render_mode
+from .command_replies import ReplyBuilder, RuntimeReply
 from .message_templates import (
     IMAGE_TOKEN,
     render_message,
 )
+from .statistics import StatisticsService
+from .storage import SQLiteStorage
 
 
-class ListingMixin:
-    """为 CommandRuntime 提供列表与排行查询。"""
+class ListingHandler:
+    """关系列表、亲密度与活跃度排行、好感度查询。"""
+
+    def __init__(
+        self,
+        storage: SQLiteStorage,
+        statistics: StatisticsService,
+        cards: CardService,
+        avatar_cache: AvatarCache,
+        replies: ReplyBuilder,
+    ) -> None:
+        self.storage = storage
+        self.statistics = statistics
+        self.cards = cards
+        self.avatar_cache = avatar_cache
+        self.replies = replies
 
     def _rank_data(self, values: Mapping[str, Any]):
         config = values["config"]
-        intimacy = values["command"].action == "rank_intimacy"
+        action = values["command"].action
+        intimacy = action in {"rank_intimacy", "rank_my_intimacy"}
         if not config["display"][
             "intimacy_rank_enabled" if intimacy else "activity_rank_enabled"
         ]:
@@ -30,10 +48,9 @@ class ListingMixin:
             )
         if not intimacy and not config["statistics"]["activity_enabled"]:
             return render_message(config, "errors", "activity_disabled")
-        names = self._member_names(values["scope_id"])
-        global_directed = (
-            intimacy and config["display"]["intimacy_rank_mode"] == "group_directed"
-        )
+        names = self.replies.member_names(values["scope_id"])
+        # 亲密度排行展示全群（双向合并），我的亲密度排行只列出触发者给群友的分值。
+        global_directed = action == "rank_intimacy"
         if intimacy:
             rows = self.statistics.intimacy_rows(
                 values["scope_id"], eligible_user_ids=values["eligible"]
@@ -71,22 +88,7 @@ class ListingMixin:
             )
         return ranked, title, names, global_directed
 
-    def _member_names(self, scope_id: int) -> dict[str, str]:
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    "SELECT user_id,nickname,card FROM members WHERE scope_id=?",
-                    (scope_id,),
-                )
-                .fetchall()
-            )
-        return {
-            str(row["user_id"]): str(row["card"] or row["nickname"] or "群友")
-            for row in rows
-        }
-
-    async def _rank(self, values: Mapping[str, Any]) -> str | RuntimeReply:
+    async def rank(self, values: Mapping[str, Any]) -> str | RuntimeReply:
         config = values["config"]
         command = values["command"]
         result = await asyncio.to_thread(self._rank_data, values)
@@ -122,23 +124,19 @@ class ListingMixin:
         ids = {source for source, _, _, _ in selected} | {
             target for _, target, _, _ in selected if target
         }
-        personal = key == "rank_intimacy" and not global_directed
+        personal = key == "rank_my_intimacy"
         if personal:
             ids.add(values["actor_id"])
         group_id = values.get("group_id", "") if key == "rank_activity" else ""
-        avatars = await self._avatars(
+        avatars = await self.replies.avatars(
             list(ids), config, group_ids=[group_id] if group_id else ()
         )
         lines, cards = [], []
         for index, (source, target, score, days) in enumerate(
             selected, (page - 1) * page_size + 1 if pagination else 1
         ):
-            if key == "rank_intimacy":
-                subject = (
-                    f"{names.get(source, '群友')} → {names.get(target, '群友')}"
-                    if global_directed
-                    else names.get(target, "群友")
-                )
+            if personal:
+                subject = names.get(target, "群友")
                 detail = render_message(config, "titles", "intimacy_value", score=score)
             else:
                 subject = names.get(source, "群友")
@@ -152,11 +150,6 @@ class ListingMixin:
                     detail,
                     avatar_path=avatars.get(target if personal else source),
                     avatar_user_id=target if personal else source,
-                    other_avatar_path=avatars.get(target) if global_directed else None,
-                    other_avatar_user_id=target if global_directed else "",
-                    pair_names=(display_name(source), display_name(target))
-                    if global_directed
-                    else None,
                     pair_rank=index,
                     score=score,
                     badge=f"活跃 {days} 天" if key == "rank_activity" else "",
@@ -199,7 +192,7 @@ class ListingMixin:
             )
         elif group_id:
             options["header_avatar_path"] = avatars.get(f"group-{group_id}")
-        return await self._reply_with_card(
+        return await self.replies.reply_with_card(
             text,
             image_title if personal else title,
             cards,
@@ -232,7 +225,7 @@ class ListingMixin:
             merged.append((left, right, forward, reverse))
         merged.sort(key=lambda pair: (-(pair[2] + pair[3]), -pair[2], pair[0], pair[1]))
         shown = merged[:PAIR_LIMIT]
-        avatars = await self._avatars(
+        avatars = await self.replies.avatars(
             list({user for left, right, _, _ in shown for user in (left, right)}),
             config,
         )
@@ -276,7 +269,7 @@ class ListingMixin:
         subtitle = f"双向合并 · 共 {len(merged)} 对" + (
             f" · 显示前 {PAIR_LIMIT} 对" if len(merged) > PAIR_LIMIT else ""
         )
-        return await self._reply_with_card(
+        return await self.replies.reply_with_card(
             text,
             title,
             cards,
@@ -291,7 +284,7 @@ class ListingMixin:
             empty_text=render_message(config, "titles", "empty"),
         )
 
-    async def _affection(self, values: Mapping[str, Any]) -> str | RuntimeReply:
+    async def affection(self, values: Mapping[str, Any]) -> str | RuntimeReply:
         config, actor, target = (
             values["config"],
             values["actor_id"],
@@ -302,7 +295,7 @@ class ListingMixin:
         scores = await asyncio.to_thread(
             self.statistics.pair_intimacy, values["scope_id"], actor, target
         )
-        names = await asyncio.to_thread(self._member_names, values["scope_id"])
+        names = await asyncio.to_thread(self.replies.member_names, values["scope_id"])
         name, target_name = names.get(actor, "群友"), names.get(target, "群友")
         title = render_message(
             config, "titles", "query_affection", name=name, target_name=target_name
@@ -335,7 +328,7 @@ class ListingMixin:
             forward_score=forward,
             reverse_score=reverse,
         )
-        avatars = await self._avatars([actor, target], config)
+        avatars = await self.replies.avatars([actor, target], config)
         card = CardRow(
             "",
             pair_names=(name, target_name),
@@ -346,33 +339,27 @@ class ListingMixin:
             avatar_user_id=actor,
             other_avatar_user_id=target,
         )
-        return await self._reply_with_card(
+        return await self.replies.reply_with_card(
             text, title, [card], fallback_text=f"{title}\n" + "\n".join(labels)
         )
 
     def _relationship_rows(self, scope_id: int, period_id: str, mode: str):
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,r.acquisition_kind,r.source_owner_id,s.id AS snapshot_id,s.name,s.subject_kind,
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,r.acquisition_kind,r.source_owner_id,s.id AS snapshot_id,s.name,s.subject_kind,
                           (SELECT GROUP_CONCAT(mb.relative_path,'|') FROM snapshot_images si
                            JOIN media_blobs mb ON mb.hash=si.media_hash WHERE si.snapshot_id=s.id) AS image_paths
                    FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id
                    WHERE r.scope_id=? AND r.period_id=? AND r.mode=? AND r.state='active' """
-                    "ORDER BY r.mode,r.owner_id,r.acquired_at,r.id",
-                    (scope_id, period_id, mode),
-                )
-                .fetchall()
-            )
+                "ORDER BY r.mode,r.owner_id,r.acquired_at,r.id",
+                (scope_id, period_id, mode),
+            ).fetchall()
             members = {
                 str(row["user_id"]): str(row["card"] or row["nickname"] or "群友")
-                for row in self.storage._connection()
-                .execute(
+                for row in db.execute(
                     "SELECT user_id,nickname,card FROM members WHERE scope_id=?",
                     (scope_id,),
-                )
-                .fetchall()
+                ).fetchall()
             }
         rows = [dict(row) for row in rows]
         for row in rows:
@@ -380,7 +367,7 @@ class ListingMixin:
                 row["name"] = members.get(str(row["subject_id"]), "群友")
         return rows, members
 
-    async def _list_relationships(
+    async def list_relationships(
         self,
         scope_id: int,
         period_id: str,
@@ -429,7 +416,7 @@ class ListingMixin:
         ]
         title = render_message(config, "titles", f"list_{mode}")
         if not entries:
-            return await self._reply_with_card(
+            return await self.replies.reply_with_card(
                 render_message(config, "errors", "list_empty", title=title), title, ()
             )
         if not pagination_enabled:
@@ -493,7 +480,7 @@ class ListingMixin:
                 source_label_parts=row["source_parts"],
                 source_avatar_path=avatars.get(str(row.get("source_owner_id") or "")),
                 source_user_id=str(row.get("source_owner_id") or ""),
-                image_path=self._snapshot_image_path(row["image_paths"])
+                image_path=self.replies.snapshot_image_path(row["image_paths"])
                 if mode != "member"
                 else None,
                 avatar_path=avatars.get(str(row["owner_id"])),
@@ -511,4 +498,4 @@ class ListingMixin:
             )
             for row in selected_rows
         ]
-        return await self._reply_with_card(text, title, card_rows)
+        return await self.replies.reply_with_card(text, title, card_rows)

@@ -118,10 +118,16 @@ def upgrade_config(
         if not resources:
             result.pop("resources")
     display = result.get("display")
-    if isinstance(display, dict) and display.pop("rank_max_height", None) is not None:
-        notes.append(
-            "移除 display.rank_max_height：卡片按 display.rank_merge_rows 分图。"
-        )
+    if isinstance(display, dict):
+        if display.pop("rank_max_height", None) is not None:
+            notes.append(
+                "移除 display.rank_max_height：卡片按 display.rank_merge_rows 分图。"
+            )
+        if display.pop("intimacy_rank_mode", None) is not None:
+            notes.append(
+                "移除 display.intimacy_rank_mode：亲密度排行固定展示全群，"
+                "个人排行改用“我的亲密度排行”。"
+            )
         if not display:
             result.pop("display")
     weights = result.get("weights")

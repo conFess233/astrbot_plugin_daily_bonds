@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import threading
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,31 @@ from typing import Any
 from ...models.errors import StorageError
 from ..storage import SQLiteStorage
 from .admin import _ID, CatalogAdminService
-from .core import _atomic_content_write, _inspect_image
+from .core import _atomic_content_write, inspect_uploaded_image
+
+# 文件名里常见的描述词：匹配角色名时去掉，不影响名称本身含这些字的角色（先做完整匹配）。
+_DESCRIPTORS = re.compile(
+    r"立绘|头像|半身|全身|原画|插画|壁纸|截图|皮肤|时装|官方|表情|"
+    r"avatar|portrait|icon|full|half|art|image|img|pic|photo|copy|副本",
+    re.IGNORECASE,
+)
+_BRACKETED = re.compile(r"[(\[（【「『《<]([^)\]）】」』》>]*)[)\]）】」』》>]")
+_SEPARATORS = re.compile(r"[\s_\-.·・,，、+&|]+")
+# 只由编号或相机默认前缀组成的文件名，不能当作角色名。
+_GENERIC_STEM = re.compile(
+    r"^(?:img|image|dsc|pic|photo|screenshot|截图|微信图片|未命名)?[\s_\-.\d]*$",
+    re.IGNORECASE,
+)
+
+
+def _fold(text: str) -> str:
+    """全角转半角并忽略大小写，用于名称比较。"""
+
+    return unicodedata.normalize("NFKC", text).casefold().strip()
+
+
+def _trim(text: str) -> str:
+    return re.sub(r"[\s_.\-]*\d*$", "", text.strip(" _.-")).strip(" _.-")
 
 
 class BatchImagesService:
@@ -86,8 +111,7 @@ class BatchImagesService:
         return job
 
     def _validate_pools(self, settings: dict[str, Any]) -> None:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             for gender, mode in (("male", "husband"), ("female", "wife")):
                 if not settings[f"{gender}_pool_id"]:
                     continue
@@ -101,15 +125,11 @@ class BatchImagesService:
     def get(self, job_id: str, *, actor: str, now: int) -> dict[str, Any]:
         if not isinstance(job_id, str):
             raise TypeError("作业 ID 无效。")
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT report_json,expires_at FROM maintenance_jobs WHERE id=? AND actor=? AND kind='import'",
-                    (job_id, actor),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT report_json,expires_at FROM maintenance_jobs WHERE id=? AND actor=? AND kind='import'",
+                (job_id, actor),
+            ).fetchone()
         if row is None or int(row["expires_at"]) <= now:
             raise StorageError("批量导入作业不存在或已过期。")
         job = json.loads(row["report_json"])
@@ -184,15 +204,11 @@ class BatchImagesService:
             return job
 
     def list_jobs(self, *, actor: str, now: int) -> list[dict[str, Any]]:
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    "SELECT report_json FROM maintenance_jobs WHERE actor=? AND kind='import' AND expires_at>? ORDER BY created_at DESC",
-                    (actor, now),
-                )
-                .fetchall()
-            )
+        with self.storage.read() as db:
+            rows = db.execute(
+                "SELECT report_json FROM maintenance_jobs WHERE actor=? AND kind='import' AND expires_at>? ORDER BY created_at DESC",
+                (actor, now),
+            ).fetchall()
         return [
             job
             for row in rows
@@ -211,14 +227,10 @@ class BatchImagesService:
         )
 
     def _characters(self) -> list[dict[str, Any]]:
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    "SELECT id,name,aliases_json,gender,revision FROM characters WHERE deleted_at IS NULL"
-                )
-                .fetchall()
-            )
+        with self.storage.read() as db:
+            rows = db.execute(
+                "SELECT id,name,aliases_json,gender,revision FROM characters WHERE deleted_at IS NULL"
+            ).fetchall()
         return [
             {
                 "id": row["id"],
@@ -278,11 +290,66 @@ class BatchImagesService:
         return gender, clean, issues
 
     @staticmethod
-    def _match(text: str, characters: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        ids = [c for c in characters if c["id"] == text.removeprefix("#")]
-        return ids or [
-            c for c in characters if c["name"] == text or text in c["aliases"]
-        ]
+    def _match(
+        texts: list[str], characters: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], str]:
+        """按顺序尝试文件名与文件夹名的各种写法，返回候选角色与匹配方式说明。
+
+        依次为：ID、名称或别名完全一致（忽略大小写与全半角）；拆分后的词完全一致；
+        名称或别名（至少 2 个字）出现在文件名或文件夹名中且只对应一个角色。
+        """
+
+        index: dict[str, dict[str, dict[str, Any]]] = {}
+        for character in characters:
+            for key in (character["id"], character["name"], *character["aliases"]):
+                if key:
+                    index.setdefault(_fold(key), {})[character["id"]] = character
+        folded = [_fold(text) for text in texts if text.strip()]
+        for text in folded:
+            hits = index.get(text) or index.get(text.removeprefix("#"))
+            if hits:
+                return list(hits.values()), ""
+        tokens = {
+            token for text in folded for token in _SEPARATORS.split(text) if token
+        }
+        token_hits = {
+            cid: c for token in tokens for cid, c in index.get(token, {}).items()
+        }
+        if len(token_hits) == 1:
+            return list(token_hits.values()), ""
+        contained: dict[str, tuple[int, dict[str, Any]]] = {}
+        for character in characters:
+            for key in (character["name"], *character["aliases"]):
+                name = _fold(key)
+                if len(name) >= 2 and any(name in text for text in folded):
+                    best = contained.get(character["id"], (0, character))[0]
+                    contained[character["id"]] = (max(best, len(name)), character)
+        if contained:
+            longest = max(length for length, _ in contained.values())
+            winners = [c for length, c in contained.values() if length == longest]
+            if len(winners) == 1:
+                return winners, f"按名称包含匹配到 {winners[0]['name']}"
+            return winners, ""
+        return list(token_hits.values()), ""
+
+    @staticmethod
+    def _texts(stem: str, without_suffix: str, clean: str, folders: list[str]):
+        """文件名与文件夹名的候选写法：原样、去括号、括号内文字、去描述词。"""
+
+        texts: list[str] = []
+        for text in (stem, without_suffix, clean, *folders):
+            outside = _BRACKETED.sub(" ", text)
+            variants = [
+                text,
+                outside,
+                *_BRACKETED.findall(text),
+                _DESCRIPTORS.sub(" ", outside),
+            ]
+            for variant in variants:
+                for value in (variant.strip(), _trim(variant)):
+                    if value and value not in texts:
+                        texts.append(value)
+        return texts
 
     def _assign(
         self,
@@ -306,11 +373,23 @@ class BatchImagesService:
         without_suffix = stem
         while (shorter := re.sub(suffix, "", without_suffix)) != without_suffix:
             without_suffix = shorter
-        candidates = (
-            self._match(stem, characters)
-            or self._match(without_suffix, characters)
-            or self._match(clean, characters)
+        # 文件夹由近到远：“鸣潮/长离/01.png” 依次尝试“长离”“鸣潮”。
+        folders = [
+            part
+            for part in reversed(item.get("relative_path", "").split("/")[:-1])
+            if part
+        ]
+        candidates, note = self._match(
+            self._texts(stem, without_suffix, clean, folders), characters
         )
+        if _GENERIC_STEM.fullmatch(clean) and folders:
+            # “01.png”“IMG_1234.jpg” 这类文件名用所在文件夹名作新角色名。
+            folder_gender, folder_clean, folder_issues = self._detect(
+                folders[0], job["settings"]
+            )
+            clean = folder_clean
+            if issues and not folder_issues:
+                gender, issues = folder_gender, []
         item.update(
             {
                 "candidates": [{"id": c["id"], "name": c["name"]} for c in candidates],
@@ -322,7 +401,7 @@ class BatchImagesService:
         if len(candidates) == 1:
             self._existing(item, candidates[0]["id"])
             item["needs_manual"] = False
-            item["warnings"] = []
+            item["warnings"] = [note] if note else []
         else:
             same = next(
                 (
@@ -400,8 +479,7 @@ class BatchImagesService:
         characters = {}
         seen = {}
         planned_pools = {}
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             library = {}
             stored_hashes = {
                 str(row[0]) for row in db.execute("SELECT hash FROM media_blobs")
@@ -474,7 +552,7 @@ class BatchImagesService:
                 > job["limits"]["bytes"]
             ):
                 raise ValueError("本批次图片数量或总字节数超过限制。")
-            width, height, ext, mime = _inspect_image(payload, 40_000_000)
+            width, height, ext, mime = inspect_uploaded_image(payload, 40_000_000)
             digest = hashlib.sha256(payload).hexdigest()
             item = {
                 "row_id": str(uuid.uuid4()),
@@ -525,6 +603,13 @@ class BatchImagesService:
             if items is not None:
                 if not isinstance(items, list) or len(items) > job["limits"]["entries"]:
                     raise ValueError("图片修改列表无效。")
+                loaded: list[list[dict[str, Any]]] = []
+
+                def characters_cache() -> list[dict[str, Any]]:
+                    if not loaded:
+                        loaded.append(self._characters())
+                    return loaded[0]
+
                 lookup = {r["row_id"]: r for r in job["items"]}
                 for patch in items:
                     if not isinstance(patch, dict) or patch.get("row_id") not in lookup:
@@ -532,6 +617,18 @@ class BatchImagesService:
                     item = lookup[patch["row_id"]]
                     if item["status"] == "imported":
                         raise ValueError("已经导入的图片不能修改。")
+                    if (
+                        set(patch) == {"row_id", "relative_path"}
+                        and not item.get("upload_error")
+                        and not item.get("edited")
+                    ):
+                        # 上传后补充的文件夹路径：参与匹配，不算人工修改。
+                        item["relative_path"] = self._relative_path(
+                            patch["relative_path"]
+                        )
+                        if item["status"] == "pending" and not item.get("excluded"):
+                            self._assign(item, job, characters_cache())
+                        continue
                     if item.get("upload_error"):
                         if "relative_path" in patch:
                             item["relative_path"] = self._relative_path(
@@ -664,8 +761,7 @@ class BatchImagesService:
         )
         if not item["pool_ids"]:
             raise ValueError("新角色必须选择卡池。")
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             for pool_id in item["pool_ids"]:
                 row = db.execute(
                     "SELECT mode,deleted_at FROM pools WHERE id=?", (pool_id,)

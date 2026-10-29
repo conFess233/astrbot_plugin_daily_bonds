@@ -40,14 +40,10 @@ class MigrationService:
         self._lock = threading.Lock()
 
     def overview(self) -> dict[str, Any]:
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    "SELECT id,source,from_version,to_version,report_json,created_at FROM migration_reports ORDER BY created_at DESC LIMIT 20"
-                )
-                .fetchall()
-            )
+        with self.storage.read() as db:
+            rows = db.execute(
+                "SELECT id,source,from_version,to_version,report_json,created_at FROM migration_reports ORDER BY created_at DESC LIMIT 20"
+            ).fetchall()
         backups = []
         if self.backup_dir.is_dir():
             for path in sorted(self.backup_dir.glob("pre-*.sqlite3"), reverse=True):
@@ -185,7 +181,11 @@ class MigrationService:
         }
 
     def _inspect(self, path: Path) -> dict[str, Any]:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        # 备份由 WAL 库复制而来，文件头仍标记 WAL；静态副本没有 -shm，只读打开会失败。
+        # immutable 告诉 SQLite 文件不会被改动，跳过锁与共享内存。
+        connection = sqlite3.connect(
+            f"{path.resolve().as_uri()}?mode=ro&immutable=1", uri=True
+        )
         connection.row_factory = sqlite3.Row
         try:
             check = connection.execute("PRAGMA integrity_check").fetchall()

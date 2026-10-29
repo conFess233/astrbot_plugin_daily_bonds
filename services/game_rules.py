@@ -1,12 +1,15 @@
-"""玩法规则的纯计算：额度、冷却、概率与重置时间。
+"""玩法规则的纯计算：额度、冷却、概率、重置时间与角色名匹配。
 
 聊天回复、“我的姻缘”和管理页查询共用这些函数，避免各处口径不一致。
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from zoneinfo import ZoneInfo
+
+from ..models.gameplay import Candidate
 
 
 def normal_draw_remaining(capacity: int, normal_draws: int) -> int:
@@ -58,3 +61,48 @@ def format_reset(ends_at: int, timezone: str, now: int) -> str:
     if delta == 1:
         return f"明天 {clock}"
     return f"{target.month}月{target.day}日 {clock}"
+
+
+def match_candidates(candidates: Sequence[Candidate], query: str) -> list[Candidate]:
+    """按 `#ID`/纯数字 ID（可省略来源前缀）、名称、别名的顺序匹配角色，名称与别名忽略大小写。
+
+    都没有完全匹配时退回到名称或别名包含查询词，结果多于一个由调用方列出让用户选择。
+    """
+
+    query = query.strip()
+    if not query:
+        return []
+    exact_id = query.removeprefix("#")
+    by_id = [item for item in candidates if item.subject_id == exact_id]
+    if not by_id and ":" not in exact_id:
+        # 内置角色 ID 带来源前缀（如 `wuwa:1102`），允许只输入编号部分。
+        by_id = [
+            item
+            for item in candidates
+            if item.subject_id.rpartition(":")[2] == exact_id
+        ]
+    if by_id or query.startswith("#"):
+        return by_id
+    folded = query.casefold()
+    by_name = [item for item in candidates if item.name.casefold() == folded]
+    if by_name:
+        return by_name
+    by_alias = [
+        item
+        for item in candidates
+        if any(alias.casefold() == folded for alias in item.aliases)
+    ]
+    if by_alias:
+        return by_alias
+    return [
+        item
+        for item in candidates
+        if folded in item.name.casefold()
+        or any(folded in alias.casefold() for alias in item.aliases)
+    ]
+
+
+def candidate_choices(candidates: Sequence[Candidate]) -> str:
+    """歧义提示中的候选列表：每行“名称 · #ID”。"""
+
+    return "\n".join(f"{item.name} · #{item.subject_id}" for item in candidates)

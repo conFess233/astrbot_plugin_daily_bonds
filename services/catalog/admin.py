@@ -12,7 +12,7 @@ from typing import Any
 
 from ...models.errors import StorageError
 from ..storage import SQLiteStorage
-from .core import _atomic_content_write, _inspect_image
+from .core import _atomic_content_write, inspect_uploaded_image
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,127}$")
 _HASH = re.compile(r"^[0-9a-f]{64}$")
@@ -29,39 +29,96 @@ class CatalogAdminService:
         self.media_root = media_root
 
     def list_characters(
-        self, *, query: str = "", limit: int = 50, offset: int = 0
+        self,
+        *,
+        query: str = "",
+        limit: int = 50,
+        offset: int = 0,
+        pool_id: str = "",
+        gender: str = "",
+        status: str = "",
     ) -> dict[str, Any]:
+        """分页列出角色，附封面图与所属角色池。
+
+        `pool_id` 为空表示全部，`-` 表示未加入任何角色池；`status` 可为
+        `missing_images`（没有图片）或 `disabled`（停用）。`stats` 统计的是
+        去掉 `status` 条件后的结果，供筛选栏显示数量。
+        """
+
         limit = max(1, min(int(limit), 100))
         offset = max(0, min(int(offset), 1_000_000))
         term = query.strip()[:100]
-        with self.storage._lock:
-            db = self.storage._connection()
-            where = "c.deleted_at IS NULL"
-            args: list[Any] = []
-            if term:
-                where += " AND (c.id LIKE ? OR c.name LIKE ? OR c.aliases_json LIKE ?)"
-                args.extend([f"%{term}%"] * 3)
+        if gender not in {"", "female", "male", "unspecified"}:
+            raise ValueError("性别筛选无效。")
+        if status not in {"", "missing_images", "disabled"}:
+            raise ValueError("状态筛选无效。")
+        where = "c.deleted_at IS NULL"
+        args: list[Any] = []
+        if term:
+            where += " AND (c.id LIKE ? OR c.name LIKE ? OR c.aliases_json LIKE ?)"
+            args.extend([f"%{term}%"] * 3)
+        if pool_id == "-":
+            where += """ AND NOT EXISTS (SELECT 1 FROM pool_members pm JOIN pools p
+                        ON p.id=pm.pool_id AND p.deleted_at IS NULL WHERE pm.character_id=c.id)"""
+        elif pool_id:
+            where += " AND EXISTS (SELECT 1 FROM pool_members pm WHERE pm.character_id=c.id AND pm.pool_id=?)"
+            args.append(pool_id[:128])
+        if gender:
+            where += " AND c.gender=?"
+            args.append(gender)
+        no_images = (
+            "NOT EXISTS (SELECT 1 FROM character_images ci WHERE ci.character_id=c.id)"
+        )
+        filtered = (
+            where
+            + {
+                "": "",
+                "missing_images": f" AND {no_images}",
+                "disabled": " AND c.enabled=0",
+            }[status]
+        )
+        with self.storage.read() as db:
+            stats = db.execute(
+                f"""SELECT COUNT(*) AS total,
+                           COALESCE(SUM({no_images}),0) AS missing_images,
+                           COALESCE(SUM(c.enabled=0),0) AS disabled
+                    FROM characters c WHERE {where}""",
+                args,
+            ).fetchone()
             total = int(
                 db.execute(
-                    f"SELECT COUNT(*) FROM characters c WHERE {where}", args
+                    f"SELECT COUNT(*) FROM characters c WHERE {filtered}", args
                 ).fetchone()[0]
             )
             rows = db.execute(
                 f"""SELECT c.id,c.name,c.aliases_json,c.gender,c.enabled,c.revision,c.provenance_json,
-                           (SELECT COUNT(*) FROM character_images ci WHERE ci.character_id=c.id) AS image_count
-                    FROM characters c WHERE {where} ORDER BY c.name,c.id LIMIT ? OFFSET ?""",
+                           (SELECT COUNT(*) FROM character_images ci WHERE ci.character_id=c.id) AS image_count,
+                           (SELECT ci.media_hash FROM character_images ci WHERE ci.character_id=c.id
+                            ORDER BY ci.ordinal LIMIT 1) AS cover_hash,
+                           (SELECT GROUP_CONCAT(pm.pool_id, char(31)) FROM pool_members pm
+                            JOIN pools p ON p.id=pm.pool_id AND p.deleted_at IS NULL
+                            WHERE pm.character_id=c.id) AS pool_ids
+                    FROM characters c WHERE {filtered} ORDER BY c.name,c.id LIMIT ? OFFSET ?""",
                 (*args, limit, offset),
             ).fetchall()
+        items = []
+        for row in rows:
+            item = self._character_dict(row)
+            item["cover_hash"] = row["cover_hash"] or ""
+            item["pool_ids"] = row["pool_ids"].split("\x1f") if row["pool_ids"] else []
+            items.append(item)
         return {
-            "items": [self._character_dict(row) for row in rows],
+            "items": items,
             "total": total,
             "limit": limit,
             "offset": offset,
+            "stats": {
+                key: int(stats[key]) for key in ("total", "missing_images", "disabled")
+            },
         }
 
     def get_character(self, character_id: str) -> dict[str, Any] | None:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             row = db.execute(
                 "SELECT * FROM characters WHERE id=? AND deleted_at IS NULL",
                 (character_id,),
@@ -93,18 +150,14 @@ class CatalogAdminService:
         return result
 
     def list_pools(self) -> list[dict[str, Any]]:
-        with self.storage._lock:
-            rows = (
-                self.storage._connection()
-                .execute(
-                    """SELECT p.id,p.name,p.mode,p.builtin,p.revision,COUNT(c.id) AS character_count,
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT p.id,p.name,p.mode,p.builtin,p.revision,COUNT(c.id) AS character_count,
                           COALESCE(GROUP_CONCAT(c.id, char(31)), '') AS character_ids
                    FROM pools p LEFT JOIN pool_members pm ON pm.pool_id=p.id
                    LEFT JOIN characters c ON c.id=pm.character_id AND c.deleted_at IS NULL
                    WHERE p.deleted_at IS NULL GROUP BY p.id ORDER BY p.mode,p.name"""
-                )
-                .fetchall()
-            )
+            ).fetchall()
         return [dict(row) for row in rows]
 
     def save_character(
@@ -543,7 +596,9 @@ class CatalogAdminService:
     def upload_media(self, payload: bytes, *, now: int) -> dict[str, Any]:
         if not payload or len(payload) > _MAX_IMAGE_BYTES:
             raise ValueError("图片文件为空或超过 12 MiB 限制。")
-        width, height, extension, mime_type = _inspect_image(payload, _MAX_PIXELS)
+        width, height, extension, mime_type = inspect_uploaded_image(
+            payload, _MAX_PIXELS
+        )
         digest = hashlib.sha256(payload).hexdigest()
         relative = Path("sha256") / f"{digest}.{extension}"
         target = self.media_root / relative
@@ -572,15 +627,11 @@ class CatalogAdminService:
     def get_media(self, digest: str) -> tuple[Path, str] | None:
         if not _HASH.fullmatch(digest):
             return None
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT relative_path,mime_type FROM media_blobs WHERE hash=?",
-                    (digest,),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT relative_path,mime_type FROM media_blobs WHERE hash=?",
+                (digest,),
+            ).fetchone()
         if row is None:
             return None
         target = (self.media_root / row["relative_path"]).resolve()
@@ -590,8 +641,7 @@ class CatalogAdminService:
         return target, str(row["mime_type"])
 
     def catalog_summary(self) -> dict[str, int]:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             characters = int(
                 db.execute(
                     "SELECT COUNT(*) FROM characters WHERE deleted_at IS NULL"

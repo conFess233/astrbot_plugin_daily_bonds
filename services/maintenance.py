@@ -7,8 +7,6 @@ import json
 import os
 import shutil
 import sqlite3
-import stat
-import struct
 import tempfile
 import threading
 import time
@@ -18,10 +16,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 from ..models.errors import InvalidInputError, StorageError
+from . import backup_archive
 from .storage import SQLiteStorage
-
-_BACKUP_FORMAT = "astrbot-daily-bonds-backup"
-_MAX_PATH = 512
 
 
 class MaintenanceService:
@@ -63,15 +59,11 @@ class MaintenanceService:
         with self._request_lock:
             digest = hashlib.sha256(b"complete-backup-v1").hexdigest()
             if request_id:
-                with self.storage._lock:
-                    prior = (
-                        self.storage._connection()
-                        .execute(
-                            "SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='backups/create' AND request_id=?",
-                            (actor, request_id),
-                        )
-                        .fetchone()
-                    )
+                with self.storage.read() as db:
+                    prior = db.execute(
+                        "SELECT request_hash,response_json FROM web_admin_dedup WHERE actor_username=? AND endpoint='backups/create' AND request_id=?",
+                        (actor, request_id),
+                    ).fetchone()
                 if prior:
                     if prior["request_hash"] != digest:
                         raise StorageError(
@@ -105,15 +97,11 @@ class MaintenanceService:
             return result
 
     def get_artifact(self, job_id: str, *, actor: str) -> tuple[Path, str] | None:
-        with self.storage._lock:
-            row = (
-                self.storage._connection()
-                .execute(
-                    "SELECT kind,state,actor,expires_at,staged_manifest_hash FROM maintenance_jobs WHERE id=?",
-                    (job_id,),
-                )
-                .fetchone()
-            )
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT kind,state,actor,expires_at,staged_manifest_hash FROM maintenance_jobs WHERE id=?",
+                (job_id,),
+            ).fetchone()
         if (
             row is None
             or row["actor"] != actor
@@ -123,7 +111,10 @@ class MaintenanceService:
         ):
             return None
         path = self.jobs_root / job_id / "artifact.zip"
-        if not path.is_file() or self._hash_file(path) != row["staged_manifest_hash"]:
+        if (
+            not path.is_file()
+            or backup_archive.hash_file(path) != row["staged_manifest_hash"]
+        ):
             raise StorageError(
                 "maintenance artifact is missing or failed its hash check"
             )
@@ -149,7 +140,7 @@ class MaintenanceService:
         stage = self.staging_root / job_id
         stage.mkdir(parents=True, exist_ok=False)
         try:
-            manifest, names = self._stage_backup(
+            manifest, names = backup_archive.stage_backup(
                 source, stage, max_entries=max_entries, max_expanded=max_expanded
             )
             database_path = stage / "database.sqlite3"
@@ -234,8 +225,8 @@ class MaintenanceService:
     def commit_restore(
         self, payload: dict[str, Any], *, actor: str, now: int, keep_count: int = 10
     ) -> dict[str, Any]:
-        job_id = self._text(payload.get("job_id"), "job_id", 64)
-        request_id = self._text(payload.get("request_id"), "request_id", 128)
+        job_id = backup_archive.text(payload.get("job_id"), "job_id", 64)
+        request_id = backup_archive.text(payload.get("request_id"), "request_id", 128)
         expected_revision = payload.get("expected_revision")
         if payload.get("confirm") is not True:
             raise ValueError("confirm must be true after reviewing the restore preview")
@@ -291,11 +282,11 @@ class MaintenanceService:
                 "current database revision changed; preview restore again"
             )
         for name, spec in plan["backup"]["files"].items():
-            staged_path = stage / self._safe_name(name)
+            staged_path = stage / backup_archive.safe_name(name)
             if (
                 not staged_path.is_file()
                 or staged_path.stat().st_size != int(spec["bytes"])
-                or self._hash_file(staged_path) != spec["sha256"]
+                or backup_archive.hash_file(staged_path) != spec["sha256"]
             ):
                 raise StorageError(
                     f"staged restore file failed its preview hash check: {name}"
@@ -372,7 +363,9 @@ class MaintenanceService:
                             f"scope {source_id} mapping must be an object"
                         )
                     target = tuple(
-                        self._text(candidate.get(key), f"scope {source_id} {key}", 256)
+                        backup_archive.text(
+                            candidate.get(key), f"scope {source_id} {key}", 256
+                        )
                         for key in ("platform_id", "self_id", "group_id", "umo")
                     )
                     if not any(
@@ -491,8 +484,7 @@ class MaintenanceService:
     def _build_role_pack(self, pool_ids: list[str], now: int) -> Path:
         rows: list[dict[str, Any]] = []
         members: dict[str, set[str]] = {pool_id: set() for pool_id in pool_ids}
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             pools = db.execute(
                 f"SELECT id,name,mode FROM pools WHERE id IN ({','.join('?' for _ in pool_ids)}) AND deleted_at IS NULL ORDER BY id",
                 pool_ids,
@@ -525,7 +517,10 @@ class MaintenanceService:
             ext = Path(image["relative_path"]).suffix.lower().lstrip(".") or "img"
             relative = f"images/{image['media_hash']}.{ext}"
             path = self.media_root / image["relative_path"]
-            if not path.is_file() or self._hash_file(path) != image["media_hash"]:
+            if (
+                not path.is_file()
+                or backup_archive.hash_file(path) != image["media_hash"]
+            ):
                 raise StorageError(
                     f"media blob {image['media_hash']} is missing or corrupt"
                 )
@@ -626,7 +621,7 @@ class MaintenanceService:
                     digest.update(
                         path.relative_to(self.media_root).as_posix().encode("utf-8")
                     )
-                    digest.update(self._hash_file(path).encode("ascii"))
+                    digest.update(backup_archive.hash_file(path).encode("ascii"))
         return digest.hexdigest()
 
     def _build_backup(self, now: int) -> Path:
@@ -680,7 +675,7 @@ class MaintenanceService:
                     if (
                         not media_file.is_file()
                         or media_file.stat().st_size != int(row["byte_size"])
-                        or self._hash_file(media_file) != row["hash"]
+                        or backup_archive.hash_file(media_file) != row["hash"]
                     ):
                         raise StorageError(
                             f"referenced media {row['hash']} is missing or corrupt"
@@ -697,7 +692,7 @@ class MaintenanceService:
                     ],
                 }
                 manifest = {
-                    "format": _BACKUP_FORMAT,
+                    "format": backup_archive.BACKUP_FORMAT,
                     "schema_version": 1,
                     "created_at": now,
                     "database_schema": database_schema,
@@ -715,7 +710,7 @@ class MaintenanceService:
                 for name, member in members:
                     manifest["files"][name] = {
                         "bytes": member.stat().st_size,
-                        "sha256": self._hash_file(member),
+                        "sha256": backup_archive.hash_file(member),
                     }
                 with zipfile.ZipFile(
                     path, "w", compression=zipfile.ZIP_DEFLATED
@@ -727,122 +722,12 @@ class MaintenanceService:
                         archive.write(member, name)
         return path
 
-    def _stage_backup(
-        self, source: Path, stage: Path, *, max_entries: int, max_expanded: int
-    ) -> tuple[dict[str, Any], list[str]]:
-        self._preflight_zip_count(source, max_entries)
-        with zipfile.ZipFile(source) as archive:
-            infos = archive.infolist()
-            if not infos or len(infos) > max_entries:
-                raise ValueError(
-                    "backup entry count is empty or exceeds the configured limit"
-                )
-            entries: dict[str, zipfile.ZipInfo] = {}
-            folded: set[str] = set()
-            total = 0
-            for info in infos:
-                name = self._safe_name(info.filename)
-                if info.is_dir():
-                    continue
-                if name.casefold() in folded:
-                    raise ValueError(
-                        "backup contains duplicate or case-colliding paths"
-                    )
-                folded.add(name.casefold())
-                mode = info.external_attr >> 16
-                if stat.S_ISLNK(mode) or info.flag_bits & 1:
-                    raise ValueError(
-                        "backup may not contain symlinks or encrypted files"
-                    )
-                total += info.file_size
-                if total > max_expanded:
-                    raise ValueError(
-                        "backup expanded size exceeds the configured limit"
-                    )
-                entries[name] = info
-            if "backup.json" not in entries or "database.sqlite3" not in entries:
-                raise ValueError("backup must contain backup.json and database.sqlite3")
-            manifest = json.loads(archive.read(entries["backup.json"]))
-            if (
-                not isinstance(manifest, dict)
-                or manifest.get("format") != _BACKUP_FORMAT
-                or manifest.get("schema_version") != 1
-            ):
-                raise ValueError("unsupported backup format or schema version")
-            expected = manifest.get("files")
-            if not isinstance(expected, dict) or set(expected) != set(entries) - {
-                "backup.json"
-            }:
-                raise ValueError("backup file list does not match its manifest")
-            names = []
-            for name, info in entries.items():
-                if name == "backup.json":
-                    continue
-                spec = expected[name]
-                if (
-                    not isinstance(spec, dict)
-                    or int(spec.get("bytes", -1)) != info.file_size
-                ):
-                    raise ValueError(f"backup size mismatch for {name}")
-                destination = stage / name
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                digest = hashlib.sha256()
-                size = 0
-                with archive.open(info) as reader, destination.open("wb") as writer:
-                    while chunk := reader.read(1024 * 1024):
-                        size += len(chunk)
-                        digest.update(chunk)
-                        writer.write(chunk)
-                if size != info.file_size or digest.hexdigest() != spec.get("sha256"):
-                    raise ValueError(f"backup hash mismatch for {name}")
-                names.append(name)
-            return manifest, names
-
-    @staticmethod
-    def _preflight_zip_count(source: Path, max_entries: int) -> None:
-        size = source.stat().st_size
-        tail_size = min(size, 22 + 65_535)
-        with source.open("rb") as stream:
-            stream.seek(size - tail_size)
-            tail = stream.read(tail_size)
-        offset = tail.rfind(b"PK\x05\x06")
-        if offset < 0 or len(tail) - offset < 22:
-            raise ValueError("ZIP end-of-directory record is missing or invalid")
-        record = tail[offset : offset + 22]
-        (
-            _signature,
-            disk,
-            central_disk,
-            disk_entries,
-            total_entries,
-            central_size,
-            central_offset,
-            comment_size,
-        ) = struct.unpack("<4s4H2LH", record)
-        if (
-            len(tail) - offset != 22 + comment_size
-            or disk != 0
-            or central_disk != 0
-            or disk_entries != total_entries
-        ):
-            raise ValueError("multi-disk or malformed ZIP archives are not supported")
-        if (
-            total_entries in {0xFFFF}
-            or central_size == 0xFFFFFFFF
-            or central_offset == 0xFFFFFFFF
-        ):
-            raise ValueError("ZIP64 archives exceed the supported entry-count envelope")
-        if total_entries > max_entries:
-            raise ValueError("backup entry count exceeds the configured limit")
-        if central_size > min(16 * 1024 * 1024, max_entries * 4096):
-            raise ValueError(
-                "ZIP central directory is too large for its configured entry-count limit"
-            )
-        if central_offset + central_size > size - tail_size + offset:
-            raise ValueError("ZIP central directory is outside the uploaded file")
-
     def _inspect_database(self, path: Path, manifest: dict[str, Any]) -> dict[str, Any]:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        # 备份由 WAL 库复制而来，文件头仍标记 WAL；静态副本没有 -shm，只读打开会失败。
+        # immutable 告诉 SQLite 文件不会被改动，跳过锁与共享内存。
+        connection = sqlite3.connect(
+            f"{path.resolve().as_uri()}?mode=ro&immutable=1", uri=True
+        )
         connection.row_factory = sqlite3.Row
         try:
             integrity = connection.execute("PRAGMA integrity_check").fetchall()
@@ -922,7 +807,7 @@ class MaintenanceService:
                 if (
                     not media_file.is_file()
                     or media_file.stat().st_size != int(row["byte_size"])
-                    or self._hash_file(media_file) != row["hash"]
+                    or backup_archive.hash_file(media_file) != row["hash"]
                 ):
                     raise ValueError(
                         f"backup media reference {row['hash']} is missing or corrupt"
@@ -977,7 +862,7 @@ class MaintenanceService:
         target_dir.mkdir(parents=True, exist_ok=False)
         target = target_dir / "artifact.zip"
         artifact.replace(target)
-        digest = self._hash_file(target)
+        digest = backup_archive.hash_file(target)
         response = {
             "job_id": job_id,
             "kind": kind,
@@ -1021,34 +906,3 @@ class MaintenanceService:
         )
         for path in backups[keep_count:]:
             path.unlink(missing_ok=True)
-
-    @staticmethod
-    def _safe_name(value: str) -> str:
-        if (
-            not isinstance(value, str)
-            or not value
-            or len(value) > _MAX_PATH
-            or "\\" in value
-            or "\x00" in value
-            or value.startswith("/")
-            or ":" in value
-        ):
-            raise ValueError("backup contains an absolute or invalid path")
-        parts = value.split("/")
-        if any(part in {"", ".", ".."} for part in parts):
-            raise ValueError("backup path contains an empty, dot, or parent segment")
-        return "/".join(parts)
-
-    @staticmethod
-    def _hash_file(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
-
-    @staticmethod
-    def _text(value: Any, label: str, maximum: int) -> str:
-        if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-            raise ValueError(f"{label} is empty or too long")
-        return value.strip()

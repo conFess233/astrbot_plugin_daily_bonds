@@ -76,6 +76,9 @@
       "rank_intimacy": [
         "亲密度排行"
       ],
+      "rank_my_intimacy": [
+        "我的亲密度排行"
+      ],
       "rank_activity": [
         "活跃度排行"
       ],
@@ -180,7 +183,6 @@
   "display": {
     "pagination_enabled": true,
     "page_size": 10,
-    "intimacy_rank_mode": "personal",
     "intimacy_rank_enabled": true,
     "activity_rank_enabled": true,
     "rank_merge_rows": 50
@@ -420,6 +422,11 @@
         "enabled": true,
         "quote": false
       },
+      "rank_my_intimacy": {
+        "text": "{image}",
+        "enabled": true,
+        "quote": false
+      },
       "rank_activity": {
         "text": "{image}",
         "enabled": true,
@@ -593,7 +600,7 @@
         "quote": false
       },
       "admin_set_ambiguous": {
-        "text": "角色名或别名不唯一：{name}；请使用完整角色名。",
+        "text": "匹配到多个角色：{name}；请使用明确 ID：\n{candidates}",
         "enabled": true,
         "quote": false
       },
@@ -635,7 +642,7 @@
       "list_member": "群友配偶列表",
       "existing": "已有关系",
       "rank_intimacy": "{name}与群友的亲密度排行",
-      "rank_group_intimacy": "全群有向亲密度排行",
+      "rank_group_intimacy": "{群名}的亲密度排行",
       "rank_activity": "{群名}的活跃度排行",
       "query_affection": "{name}与{target_name}的好感度",
       "page": "{title} 第 {page}/{pages} 页",

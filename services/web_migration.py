@@ -110,8 +110,7 @@ class MigrationRoutes:
             return self._error("STATUS_INVALID", str(exc), 400)
 
     def _user_status(self, scope_id: int, user_id: str) -> dict[str, Any]:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             period = db.execute(
                 "SELECT * FROM periods WHERE scope_id=? AND state='current'",
                 (scope_id,),
@@ -157,7 +156,7 @@ class MigrationRoutes:
             token = MESSAGE_CONTEXT.set({})
             try:
                 set_message_values(render={"mode": mode, "types": {}})
-                reply = await runtime._help({"config": config})
+                reply = await runtime.features.help({"config": config})
             finally:
                 MESSAGE_CONTEXT.reset(token)
             if mode == "text":

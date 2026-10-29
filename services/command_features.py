@@ -9,14 +9,16 @@ from typing import Any
 
 from astrbot.api import logger
 
-from .cards import data_uri, render_mode
-from .command_replies import RuntimeReply
+from .cards import CardService, data_uri, render_mode
+from .command_replies import ReplyBuilder, RuntimeReply
+from .game_status import StatusService
 from .message_templates import (
     IMAGE_TOKEN,
     MESSAGE_CONTEXT,
     MessageText,
     render_message,
 )
+from .storage import SQLiteStorage
 
 _MODE_LABELS = {"wife": "老婆", "husband": "老公", "member": "群友"}
 _SOURCE_TITLES = {
@@ -28,10 +30,22 @@ _SOURCE_TITLES = {
 _COLLECTION_THUMBNAILS = 40
 
 
-class FeatureMixin:
-    """为 CommandRuntime 提供状态、帮助与图鉴查询。"""
+class FeatureHandler:
+    """“我的姻缘”、“姻缘帮助”与“我的图鉴”。"""
 
-    async def _my_status(self, values: Mapping[str, Any]) -> str | RuntimeReply:
+    def __init__(
+        self,
+        storage: SQLiteStorage,
+        status: StatusService,
+        cards: CardService,
+        replies: ReplyBuilder,
+    ) -> None:
+        self.storage = storage
+        self.status = status
+        self.cards = cards
+        self.replies = replies
+
+    async def my_status(self, values: Mapping[str, Any]) -> str | RuntimeReply:
         config = values["config"]
         names = MESSAGE_CONTEXT.get().get("member_names", {})
         actor_name = names.get(values["actor_id"], "群友")
@@ -102,7 +116,7 @@ class FeatureMixin:
             invites.append(f"收到待处理赠送 {status['invites_received']}")
         if invites:
             lines.append(" · ".join(invites))
-        avatar = (await self._avatars([values["actor_id"]], config)).get(
+        avatar = (await self.replies.avatars([values["actor_id"]], config)).get(
             values["actor_id"]
         )
         return await self._feature_reply(
@@ -121,7 +135,7 @@ class FeatureMixin:
             },
         )
 
-    async def _help(self, values: Mapping[str, Any]) -> str | RuntimeReply:
+    async def help(self, values: Mapping[str, Any]) -> str | RuntimeReply:
         config = values["config"]
         keywords = config["commands"]["keywords"]
 
@@ -173,7 +187,7 @@ class FeatureMixin:
             )
         general = [first("my_status"), first("my_collection")]
         if config["display"]["intimacy_rank_enabled"]:
-            general.append(first("rank_intimacy"))
+            general.extend([first("rank_intimacy"), first("rank_my_intimacy")])
         if config["display"]["activity_rank_enabled"]:
             general.append(first("rank_activity"))
         general.append(f"{first('query_affection')} @群友")
@@ -205,7 +219,7 @@ class FeatureMixin:
             {"title": title, "groups": groups, "notes": notes},
         )
 
-    async def _my_collection(self, values: Mapping[str, Any]) -> str | RuntimeReply:
+    async def my_collection(self, values: Mapping[str, Any]) -> str | RuntimeReply:
         config = values["config"]
         names = MESSAGE_CONTEXT.get().get("member_names", {})
         actor_name = names.get(values["actor_id"], "群友")

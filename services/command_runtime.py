@@ -8,6 +8,7 @@ import json
 import time
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from astrbot.api import logger
@@ -20,11 +21,11 @@ from .access import AccessService
 from .admin_permissions import may_set_wife
 from .avatar_cache import AvatarCache
 from .cards import CardService, RenderHtml
-from .command_actions import ActionMixin
-from .command_features import FeatureMixin
-from .command_listing import ListingMixin
+from .command_actions import ActionHandler
+from .command_features import FeatureHandler
+from .command_listing import ListingHandler
 from .command_parser import parse_command
-from .command_replies import ReplyMixin, RuntimeReply
+from .command_replies import ReplyBuilder, RuntimeReply
 from .game_status import StatusService
 from .gameplay import GameplayService
 from .members import reconcile_member_eligibility
@@ -39,9 +40,46 @@ from .storage import SQLiteStorage
 
 # 不属于单一玩法的查询指令：不受玩法开关限制。
 GENERAL_ACTIONS = frozenset({"my_status", "help", "my_collection"})
+# 玩法关闭后仍可查询，并能结束已有关系与邀请。
+MODE_CLOSED_ALLOWED = frozenset(
+    {
+        "list_characters",
+        "list_husband",
+        "list_members",
+        "rank_intimacy",
+        "rank_my_intimacy",
+        "rank_activity",
+        "query_affection",
+        "divorce_character",
+        "divorce_wife",
+        "divorce_husband",
+        "divorce_member",
+        "gift_accept",
+        "gift_reject",
+        "gift_cancel",
+        *GENERAL_ACTIONS,
+    }
+)
+# 回应邀请与管理员设置不受通用冷却限制。
+COOLDOWN_EXEMPT = frozenset({"gift_accept", "gift_reject", "gift_cancel", "set_wife"})
 
 
-class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
+@dataclass(frozen=True, slots=True)
+class _ActionContext:
+    """一条已识别指令在业务操作中共用的身份、周期与幂等信息。"""
+
+    scope_id: int
+    period: Any
+    period_id: str
+    actor_id: str
+    eligible: frozenset[str]
+    revision: str
+    event_key: str
+    payload_hash: str
+    now: int
+
+
+class CommandRuntime:
     """为每条群消息建立配置、成员、统计和玩法上下文。"""
 
     def __init__(
@@ -64,9 +102,24 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
         self.cards = CardService(render_html)
         self.status = StatusService(storage)
         self.avatar_cache = AvatarCache(storage.database_path.parent / "avatars")
+        # 回复、列表、个人查询与关系操作各自持有所需服务，跨组件调用经由属性。
+        self.replies = ReplyBuilder(storage, self.cards, self.avatar_cache)
+        self.listing = ListingHandler(
+            storage, statistics, self.cards, self.avatar_cache, self.replies
+        )
+        self.features = FeatureHandler(storage, self.status, self.cards, self.replies)
+        self.actions = ActionHandler(
+            storage, gameplay, self.status, self.replies, self.listing, self.features
+        )
         self._eligibility: dict[int, tuple[str, frozenset[str]]] = {}
         # 作用域编号与会话标识在运行期很少变化，避免每条消息都写库。
         self._scope_ids: dict[Scope, tuple[int, str]] = {}
+        # 成员快照在缓存期内是同一个对象；配合设置修订号复用名称表与准入集合，
+        # 大群每条消息不必重新遍历全部成员。
+        self._member_views: dict[
+            int,
+            tuple[tuple[Any, ...], tuple[int, int], dict[str, str], frozenset[str]],
+        ] = {}
 
     async def handle_group_message(self, event: Any) -> str | RuntimeReply | None:
         token = MESSAGE_CONTEXT.set({})
@@ -118,16 +171,10 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
             )
             self._scope_ids[scope] = (scope_id, umo)
         set_message_values(scope_id=scope_id)
-        global_config, global_revision = await asyncio.to_thread(
-            self.storage.get_settings
-        )
-        if not self.access.group_allowed(global_config, scope):
+        loaded = await asyncio.to_thread(self._load_scope_state, scope, scope_id, now)
+        if loaded is None:
             return None
-        config, local_revision = await asyncio.to_thread(
-            self.storage.get_settings, scope_id
-        )
-        if not config["enabled"]:
-            return None
+        global_config, global_revision, config, local_revision, period = loaded
 
         bot_ids = self.access.bot_ids(config, scope.self_id)
         members = await self.adapter.group_members(
@@ -137,27 +184,13 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
             bot_ids=bot_ids,
             now=now,
         )
-        names = {
-            member.user_id: member.card or member.nickname or "群友"
-            for member in members
-        }
+        names, eligible = self._member_view(
+            scope_id, members, config, (global_revision, local_revision)
+        )
         set_message_values(
             render=config["render"],
             actor_name=names.get(raw_event.sender_id, "群友"),
             member_names=names,
-        )
-        eligible = {
-            member.user_id
-            for member in members
-            if not member.is_known_bot
-            and self.access.user_allowed(config, member.user_id)
-        }
-        period = await asyncio.to_thread(
-            self.storage.ensure_current_period,
-            scope_id,
-            now,
-            config["reset"]["timezone"],
-            config["reset"]["time"],
         )
         set_message_values(
             reset_at=rules.format_reset(
@@ -267,32 +300,12 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
         names = MESSAGE_CONTEXT.get().get("member_names", {})
         set_message_values(target_name=names.get(command.target_user_id, "群友"))
         mode_config = config["modes"][mode]
-        lifecycle_actions = {
-            "divorce_character",
-            "divorce_wife",
-            "divorce_husband",
-            "divorce_member",
-            "gift_accept",
-            "gift_reject",
-            "gift_cancel",
-        }
-        if not mode_config["enabled"] and command.action not in {
-            "list_characters",
-            "list_husband",
-            "list_members",
-            "rank_intimacy",
-            "rank_activity",
-            "query_affection",
-            *GENERAL_ACTIONS,
-            *lifecycle_actions,
-        }:
+        if not mode_config["enabled"] and command.action not in MODE_CLOSED_ALLOWED:
             return render_message(config, "errors", "mode_closed")
 
         cooldown_seconds = config["commands"]["cooldown_seconds"]
         cooldown_claimed = bool(
-            cooldown_seconds
-            and command.action
-            not in {"gift_accept", "gift_reject", "gift_cancel", "set_wife"}
+            cooldown_seconds and command.action not in COOLDOWN_EXEMPT
         )
         if cooldown_claimed:
             allowed, remaining, replay = await asyncio.to_thread(
@@ -304,7 +317,7 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
                 cooldown_seconds,
                 raw_event.observed_at,
                 str(period["id"]),
-                f"{global_revision}:{local_revision}",
+                revision,
             )
             if replay:
                 return None
@@ -313,134 +326,29 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
                     config, "errors", "command_cooldown", remaining_seconds=remaining
                 )
 
+        ctx = _ActionContext(
+            scope_id=scope_id,
+            period=period,
+            period_id=str(period["id"]),
+            actor_id=raw_event.sender_id,
+            eligible=eligible,
+            revision=revision,
+            event_key=event_key,
+            payload_hash=payload_hash,
+            now=raw_event.observed_at,
+        )
         reply: str | RuntimeReply | None = None
         try:
             if command.action == "set_wife":
-                candidates = await asyncio.to_thread(
-                    self._candidates, scope_id, "wife", mode_config, eligible
-                )
-                matches = [item for item in candidates if command.argument == item.name]
-                if not matches:
-                    matches = [
-                        item for item in candidates if command.argument in item.aliases
-                    ]
-                if not matches:
-                    reply = render_message(
-                        config, "errors", "admin_set_missing", name=command.argument
-                    )
-                elif len(matches) > 1:
-                    reply = render_message(
-                        config, "errors", "admin_set_ambiguous", name=command.argument
-                    )
-                else:
-                    result = await asyncio.to_thread(
-                        self.gameplay.set_wife,
-                        scope_id=scope_id,
-                        period_id=str(period["id"]),
-                        owner_id=raw_event.sender_id,
-                        character_id=matches[0].subject_id,
-                        pool_ids=mode_config["pool_ids"],
-                        event_key=event_key,
-                        payload_hash=payload_hash,
-                        config_revision=revision,
-                        now=raw_event.observed_at,
-                    )
-                    if result.code == "ALREADY_HELD":
-                        reply = render_message(
-                            config, "results", "already_held", name=matches[0].name
-                        )
-                    elif result.code == "NO_CANDIDATE":
-                        reply = render_message(
-                            config,
-                            "errors",
-                            "admin_set_unavailable",
-                            name=matches[0].name,
-                        )
-                    else:
-                        reply = await self._result_reply(
-                            result.code,
-                            {**result.data, "admin_set": True},
-                            "wife",
-                            config,
-                        )
+                reply = await self._set_wife(command, ctx, mode_config, config)
             elif command.action.startswith("draw_"):
-                candidates = await asyncio.to_thread(
-                    self._candidates, scope_id, mode, mode_config, eligible
-                )
-                if command.argument and mode in {"wife", "husband"}:
-                    query = command.argument
-                    exact_id = query.removeprefix("#")
-                    selected = [
-                        item for item in candidates if item.subject_id == exact_id
-                    ]
-                    if not selected and not query.startswith("#"):
-                        selected = [
-                            item
-                            for item in candidates
-                            if query == item.name or query in item.aliases
-                        ]
-                    if not selected:
-                        reply = render_message(config, "errors", "designated_missing")
-                    elif len(selected) > 1:
-                        choices = "\n".join(
-                            f"{item.name} · #{item.subject_id}" for item in selected
-                        )
-                        reply = render_message(
-                            config, "errors", "designated_ambiguous", candidates=choices
-                        )
-                    else:
-                        result = await asyncio.to_thread(
-                            self.gameplay.draw_designated,
-                            scope_id=scope_id,
-                            period_id=str(period["id"]),
-                            mode=mode,
-                            owner_id=raw_event.sender_id,
-                            candidates=selected,
-                            capacity=mode_config["capacity"],
-                            limit=mode_config["designated_limit"],
-                            unique=mode_config["designated_unique"],
-                            pool_ids=mode_config["pool_ids"],
-                            event_key=event_key,
-                            payload_hash=payload_hash,
-                            config_revision=revision,
-                            now=raw_event.observed_at,
-                        )
-                        reply = await self._result_reply(
-                            result.code, result.data, mode, config
-                        )
-                else:
-                    result = await asyncio.to_thread(
-                        self.gameplay.draw,
-                        scope_id=scope_id,
-                        period_id=str(period["id"]),
-                        mode=mode,
-                        owner_id=raw_event.sender_id,
-                        candidates=candidates,
-                        capacity=mode_config["capacity"],
-                        pool_ids=mode_config.get("pool_ids", ()),
-                        weights=config["weights"],
-                        activity_timezone=config["reset"]["timezone"],
-                        eligible_user_ids=eligible,
-                        activity_window_days=config["statistics"][
-                            "activity_window_days"
-                        ],
-                        event_key=event_key,
-                        payload_hash=payload_hash,
-                        config_revision=revision,
-                        now=raw_event.observed_at,
-                    )
-                    data = result.data
-                    if result.code == "DRAWN":
-                        data = await self._draw_facts(
-                            dict(data), scope_id, period, mode, raw_event.sender_id
-                        )
-                    reply = await self._result_reply(result.code, data, mode, config)
+                reply = await self._draw(command, ctx, mode, mode_config, config)
             else:
-                reply = await self._query_or_action(
+                reply = await self.actions.query_or_action(
                     command=command,
                     mode=mode,
                     scope_id=scope_id,
-                    period_id=str(period["id"]),
+                    period_id=ctx.period_id,
                     period=period,
                     actor_id=raw_event.sender_id,
                     group_id=scope.group_id,
@@ -467,6 +375,122 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
                     raw_event.observed_at,
                 )
         return reply
+
+    async def _set_wife(
+        self,
+        command: Any,
+        ctx: _ActionContext,
+        mode_config: Mapping[str, Any],
+        config: Mapping[str, Any],
+    ) -> str | RuntimeReply | None:
+        """管理员直接为自己设置今日老婆；名称不唯一时列出候选。"""
+
+        candidates = await asyncio.to_thread(
+            self._candidates, ctx.scope_id, "wife", mode_config, ctx.eligible
+        )
+        matches = rules.match_candidates(candidates, command.argument)
+        if not matches:
+            return render_message(
+                config, "errors", "admin_set_missing", name=command.argument
+            )
+        if len(matches) > 1:
+            return render_message(
+                config,
+                "errors",
+                "admin_set_ambiguous",
+                name=command.argument,
+                candidates=rules.candidate_choices(matches),
+            )
+        target = matches[0]
+        result = await asyncio.to_thread(
+            self.gameplay.set_wife,
+            scope_id=ctx.scope_id,
+            period_id=ctx.period_id,
+            owner_id=ctx.actor_id,
+            character_id=target.subject_id,
+            pool_ids=mode_config["pool_ids"],
+            event_key=ctx.event_key,
+            payload_hash=ctx.payload_hash,
+            config_revision=ctx.revision,
+            now=ctx.now,
+        )
+        if result.code == "ALREADY_HELD":
+            return render_message(config, "results", "already_held", name=target.name)
+        if result.code == "NO_CANDIDATE":
+            return render_message(
+                config, "errors", "admin_set_unavailable", name=target.name
+            )
+        return await self.replies.result_reply(
+            result.code, {**result.data, "admin_set": True}, "wife", config
+        )
+
+    async def _draw(
+        self,
+        command: Any,
+        ctx: _ActionContext,
+        mode: str,
+        mode_config: Mapping[str, Any],
+        config: Mapping[str, Any],
+    ) -> str | RuntimeReply | None:
+        """普通抽取，或带参数时指定角色。"""
+
+        candidates = await asyncio.to_thread(
+            self._candidates, ctx.scope_id, mode, mode_config, ctx.eligible
+        )
+        if command.argument and mode in {"wife", "husband"}:
+            selected = rules.match_candidates(candidates, command.argument)
+            if not selected:
+                return render_message(config, "errors", "designated_missing")
+            if len(selected) > 1:
+                return render_message(
+                    config,
+                    "errors",
+                    "designated_ambiguous",
+                    candidates=rules.candidate_choices(selected),
+                )
+            result = await asyncio.to_thread(
+                self.gameplay.draw_designated,
+                scope_id=ctx.scope_id,
+                period_id=ctx.period_id,
+                mode=mode,
+                owner_id=ctx.actor_id,
+                candidates=selected,
+                capacity=mode_config["capacity"],
+                limit=mode_config["designated_limit"],
+                unique=mode_config["designated_unique"],
+                pool_ids=mode_config["pool_ids"],
+                event_key=ctx.event_key,
+                payload_hash=ctx.payload_hash,
+                config_revision=ctx.revision,
+                now=ctx.now,
+            )
+            return await self.replies.result_reply(
+                result.code, result.data, mode, config
+            )
+        result = await asyncio.to_thread(
+            self.gameplay.draw,
+            scope_id=ctx.scope_id,
+            period_id=ctx.period_id,
+            mode=mode,
+            owner_id=ctx.actor_id,
+            candidates=candidates,
+            capacity=mode_config["capacity"],
+            pool_ids=mode_config.get("pool_ids", ()),
+            weights=config["weights"],
+            activity_timezone=config["reset"]["timezone"],
+            eligible_user_ids=ctx.eligible,
+            activity_window_days=config["statistics"]["activity_window_days"],
+            event_key=ctx.event_key,
+            payload_hash=ctx.payload_hash,
+            config_revision=ctx.revision,
+            now=ctx.now,
+        )
+        data = result.data
+        if result.code == "DRAWN":
+            data = await self._draw_facts(
+                dict(data), ctx.scope_id, ctx.period, mode, ctx.actor_id
+            )
+        return await self.replies.result_reply(result.code, data, mode, config)
 
     async def _draw_facts(
         self,
@@ -507,6 +531,48 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
         self.adapter.invalidate_all_members()
         self._eligibility.clear()
         self._scope_ids.clear()
+        self._member_views.clear()
+
+    def _load_scope_state(
+        self, scope: Scope, scope_id: int, now: int
+    ) -> tuple[dict[str, Any], int, dict[str, Any], int, Any] | None:
+        """在一次线程切换内读取两级设置并确认当前周期；本群不处理时返回 None。"""
+
+        global_config, global_revision = self.storage.get_settings()
+        if not self.access.group_allowed(global_config, scope):
+            return None
+        config, local_revision = self.storage.get_settings(scope_id)
+        if not config["enabled"]:
+            return None
+        period = self.storage.ensure_current_period(
+            scope_id, now, config["reset"]["timezone"], config["reset"]["time"]
+        )
+        return global_config, global_revision, config, local_revision, period
+
+    def _member_view(
+        self,
+        scope_id: int,
+        members: tuple[Any, ...],
+        config: Mapping[str, Any],
+        revisions: tuple[int, int],
+    ) -> tuple[dict[str, str], frozenset[str]]:
+        """返回成员显示名与可参与玩法的成员；快照和设置未变时复用上次结果。"""
+
+        cached = self._member_views.get(scope_id)
+        if cached is not None and cached[0] is members and cached[1] == revisions:
+            return cached[2], cached[3]
+        names = {
+            member.user_id: member.card or member.nickname or "群友"
+            for member in members
+        }
+        eligible = frozenset(
+            member.user_id
+            for member in members
+            if not member.is_known_bot
+            and self.access.user_allowed(config, member.user_id)
+        )
+        self._member_views[scope_id] = (members, revisions, names, eligible)
+        return names, eligible
 
     def _candidates(
         self,
@@ -515,8 +581,7 @@ class CommandRuntime(ActionMixin, FeatureMixin, ListingMixin, ReplyMixin):
         mode_config: Mapping[str, Any],
         eligible: set[str],
     ) -> list[Candidate]:
-        with self.storage._lock:
-            db = self.storage._connection()
+        with self.storage.read() as db:
             if mode == "member":
                 rows = db.execute(
                     "SELECT user_id,nickname,card FROM members WHERE scope_id=? AND is_present=1",
@@ -648,6 +713,7 @@ def _action_mode(action: str) -> str | None:
     if action in {
         "divorce_character",
         "rank_intimacy",
+        "rank_my_intimacy",
         "rank_activity",
         "query_affection",
         "gift_accept",
