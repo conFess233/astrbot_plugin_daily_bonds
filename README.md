@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="./logo.png" alt="今日姻缘图标" width="128" height="128">
+</p>
+
 <h1 align="center">AstrBot 今日姻缘</h1>
 
 <p align="center">不止有老公/老婆，还有香香软软的群友😋</p>
