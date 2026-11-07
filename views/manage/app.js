@@ -5,7 +5,7 @@ import { initStatusAndMigration } from "./status-migration.js";
 import { applyIcons, icon } from "./icons.js";
 import { toast, busyButton, countUp, flash, nudge, staggerRows, islandPill, openLightbox } from "./motion.js";
 
-import { configLeaves, draftValues, toUiConfig } from "./config-model.js";
+import { REPLY_PATH, configLeaves, draftValues, toUiConfig } from "./config-model.js";
 import { loadDashboard, initDashboard } from "./dashboard.js";
 import { checkCatalogSync, editPool, initCharacterBatch, newPool, openCharacterSheet, removeCatalogItem, renderCharacterImages, renderCharacters, renderPools, setCatalogWide, updateCatalogSyncSelection } from "./catalog-workspace.js";
 import { RENDER_KINDS, apiConfigPayload, assignDraftField, beforeUnload, changeScope, configFeedback, configIsGlobalOnly, describeConfigConflict, dirtyPaths, focusConfigSearch, isConfigDirty, loadScopes, openView, previewDraft, propagateMode, refreshPoolPickers, renderChoice, renderConfigFields, renderDraftDiff, renderRulePreview, renderScopeList, renderTemplatePreview, resolveDraft, saveDraft, searchConfig, selectConfigGroup, setScopeLabel, showConfigError, unifiablePaths, updateConditionalFields, updateConfigSummary, updateReplySelection, validateDraft } from "./config-workspace.js";
@@ -556,7 +556,7 @@ configFields.addEventListener("input", (event) => {
   input.removeAttribute("aria-invalid");
   if (state.unifiedModes && path.startsWith("modes.wife.") && unifiablePaths().includes(path)) propagateMode(path);
   updateDirtyState();
-  if (/^(messages|reply_quote|reply_enabled)\./.test(path)) { clearTimeout(templatePreviewTimer); templatePreviewTimer = setTimeout(renderTemplatePreview, 120); }
+  if (REPLY_PATH.test(path)) { clearTimeout(templatePreviewTimer); templatePreviewTimer = setTimeout(renderTemplatePreview, 120); }
 });
 configFields.addEventListener("change", (event) => {
   const path = event.target.dataset?.configPath;

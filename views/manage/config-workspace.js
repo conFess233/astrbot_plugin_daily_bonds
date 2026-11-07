@@ -1,6 +1,6 @@
 // 配置模块：草稿、条件显示、玩法/消息/高级三类编辑区、改动列表与保存胶囊。
 import { $, CONFIG_HINTS, CONFIG_OPTIONS, FLOAT_CONFIG_PATHS, apiGet, apiPost, configFields, configTabs, fieldCards, finishSave, loadConfig, placeIslandPill, renderFormField, renderFormSync, scopeSelect, setBusy, showNotice, state, submitDraft, updateDirtyState } from "./app.js";
-import { changedPaths, configAt, configLeaves, displayValue, fromUiConfig, isPercentPath, serializeDraft, templateParts, toUiConfig } from "./config-model.js";
+import { REPLY_PATH, changedPaths, configAt, configLeaves, displayValue, fromUiConfig, isPercentPath, isVariantPath, serializeDraft, templateParts, toUiConfig, variantPathOf } from "./config-model.js";
 import { confirmAction } from "./confirm-dialog.js";
 import { dataTable } from "./data-workspace.js";
 import { icon } from "./icons.js";
@@ -86,12 +86,17 @@ export function configFeedback(message, kind = "error") {
 // 配置项所在的配置分类：玩法、消息与关键词或高级。
 function viewOfPath(path) {
   if (path.startsWith("modes.")) return "settings";
-  if (/^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.")) return "replies";
+  if (REPLY_PATH.test(path) || path.startsWith("commands.keywords.")) return "replies";
   return "advanced";
 }
 
 function diffText(path, value) {
   if (value === undefined || value === null) return "继承全局";
+  if (isVariantPath(path)) {
+    const list = JSON.parse(value);
+    if (!list.length) return "（无）";
+    value = `${list.length} 条：${list.join("、")}`;
+  }
   if (typeof value === "boolean") return value ? "开启" : "关闭";
   const choices = CONFIG_OPTIONS[path] || (path.endsWith(".gift_mode") ? [["direct", "直接赠送"], ["confirm", "等待确认"]] : null);
   const choice = choices?.find(([key]) => key === value);
@@ -362,7 +367,7 @@ const CONFIG_LABELS = {
 function configGroup(path) {
   if (path === "schema_version") return "enabled";
   const parts = path.split(".");
-  if (["messages", "reply_quote", "reply_enabled"].includes(parts[0])) return parts.slice(0, 2).join(".");
+  if (REPLY_PATH.test(path)) return parts.slice(0, 2).join(".");
   return parts[0] === "modes" ? parts.slice(0, 2).join(".") : parts[0];
 }
 
@@ -375,6 +380,7 @@ function configLabel(path) {
   const parts = path.split(".");
   if (parts[0] === "reply_enabled") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}启用回复`;
   if (parts[0] === "reply_quote") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}引用消息源`;
+  if (parts[0] === "reply_variants") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}其余回复`;
   if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
   if (parts[0] === "commands" && parts[1] === "keywords") return `${name}关键词`;
@@ -443,7 +449,7 @@ export function refreshPoolPickers() {
 
 function templateHint(path) {
   const fields = state.templateFields[path];
-  const empty = path.startsWith("messages.titles.") ? "留空仅隐藏对应标题或标签。" : "留空或仅填空白则不发送此消息、附图或引用。";
+  const empty = path.startsWith("messages.titles.") ? "留空仅隐藏对应标题或标签。" : "可用右上角的 + 添加多条，发送时随机选一条；全部留空则不发送此消息、附图或引用。";
   if (!fields) return `最多 1000 字符；${empty}模板变量由服务端校验。使用 {{ 和 }} 表示大括号。`;
   const allowed = fields.allowed.map((name) => `{${name}}`).join("、") || "无";
   const required = fields.required.length ? `非空时必填：${fields.required.map((name) => `{${name}}`).join("、")}。` : "";
@@ -455,6 +461,116 @@ function templateHint(path) {
 function writeInputValue(input, value) {
   if (input.type === "checkbox") input.checked = value;
   else input.value = value;
+}
+
+// 同一条回复的多条预设：编辑框仍只显示一个，标题栏的小标签负责切换。
+// 第 1 条是原有的文案编辑框，其余条目放在 reply_variants 配置项里；
+// 条目留空时只留在编辑器内，不写入草稿，所以点 + 不会产生改动。
+const MAX_REPLY_VARIANTS = 20;
+let activeVariant = 0;
+
+function variantParts(path = state.selectedTemplate) {
+  const card = fieldCards.get(variantPathOf(path));
+  return card ? { card, input: card.querySelector("[data-config-path]"), editors: card.querySelector(".variant-editors") } : null;
+}
+
+function renderVariantEditors(card, input) {
+  const editors = card.querySelector(".variant-editors");
+  editors.replaceChildren(...JSON.parse(input.value).map((text) => variantEditor(text, input)));
+}
+
+function variantEditor(text, input) {
+  const editor = document.createElement("textarea");
+  editor.rows = 3;
+  editor.value = text;
+  editor.placeholder = "留空则不参与随机";
+  editor.setAttribute("aria-description", "最多 1000 字符；留空则不参与随机");
+  editor.addEventListener("input", () => { syncVariants(input); renderTemplatePreview(); });
+  return editor;
+}
+
+function syncVariants(input) {
+  const editors = input.closest(".config-field").querySelector(".variant-editors");
+  const value = JSON.stringify([...editors.children].map((editor) => editor.value).filter((text) => text.trim()));
+  if (value === input.value) return;
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+// 恢复继承等外部写入后，按新的值重建编辑框。
+function refreshVariantCard(card, input) {
+  renderVariantEditors(card, input);
+  if (variantParts()?.card === card) showVariant(activeVariant);
+}
+
+function activeReplyEditor() {
+  const path = state.selectedTemplate;
+  return activeVariant > 0 ? variantParts(path).editors.children[activeVariant - 1] : fieldCards.get(path).querySelector("textarea");
+}
+
+function showVariant(index) {
+  const path = state.selectedTemplate;
+  const parts = variantParts(path);
+  const count = parts ? parts.editors.children.length + 1 : 1;
+  activeVariant = Math.min(index, count - 1);
+  fieldCards.get(path).hidden = activeVariant > 0;
+  if (parts) {
+    parts.card.hidden = activeVariant === 0;
+    [...parts.editors.children].forEach((editor, position) => { editor.hidden = position !== activeVariant - 1; });
+  }
+  renderVariantTabs();
+  renderTemplatePreview();
+}
+
+function variantButton(text, label, onClick) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "variant-tab";
+  button.textContent = text;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function renderVariantTabs() {
+  const host = $("#reply-variant-tabs");
+  const parts = variantParts();
+  host.hidden = !parts;
+  host.replaceChildren();
+  if (!parts) return;
+  const count = parts.editors.children.length + 1;
+  if (count > 1) {
+    const remove = variantButton("×", `删除第 ${activeVariant + 1} 条回复`, () => removeVariant(activeVariant));
+    remove.classList.add("variant-remove");
+    host.append(remove);
+    for (let index = 0; index < count; index += 1) {
+      const tab = variantButton(String(index + 1), `编辑第 ${index + 1} 条回复`, () => showVariant(index));
+      tab.setAttribute("aria-pressed", String(index === activeVariant));
+      host.append(tab);
+    }
+  }
+  const add = variantButton("+", count >= MAX_REPLY_VARIANTS ? `最多 ${MAX_REPLY_VARIANTS} 条回复` : "再添加一条回复，发送时随机选一条", addVariant);
+  add.disabled = count >= MAX_REPLY_VARIANTS;
+  host.append(add);
+}
+
+function addVariant() {
+  const { editors, input } = variantParts();
+  editors.append(variantEditor("", input));
+  showVariant(editors.children.length);
+  activeReplyEditor().focus();
+}
+
+function removeVariant(index) {
+  const path = state.selectedTemplate;
+  const { editors, input } = variantParts(path);
+  // 删除第 1 条时由下一条顶上，保证 text 始终是第 1 条。
+  const removed = editors.children[Math.max(index - 1, 0)];
+  if (index === 0) assignDraftField(path, removed.value);
+  removed.remove();
+  syncVariants(input);
+  showVariant(index);
 }
 
 function createConfigField(path, value) {
@@ -474,6 +590,9 @@ function createConfigField(path, value) {
     input = document.createElement("input");
     input.type = "hidden";
     input.value = value.join("\n");
+  } else if (isVariantPath(path)) {
+    input = document.createElement("input");
+    input.type = "hidden";
   } else if (Array.isArray(value)) {
     input = document.createElement("textarea");
     input.rows = Math.min(Math.max(value.length + 1, 2), 5);
@@ -517,6 +636,13 @@ function createConfigField(path, value) {
   labelColumn.append(title, source);
   controls.append(control);
   card.append(labelColumn, controls);
+  if (isVariantPath(path)) {
+    const editors = document.createElement("div");
+    editors.className = "variant-editors";
+    controls.append(editors);
+    control.hidden = true;
+    card.hidden = true;
+  }
   if (isPoolConfig(path)) {
     const picker = document.createElement("div");
     picker.className = "pool-picker";
@@ -546,10 +672,11 @@ function createConfigField(path, value) {
         state.draftValues[path] = displayValue(path, configAt(state.globalConfig, path));
         writeInputValue(input, state.draftValues[path]);
         if (isPoolConfig(path)) renderPoolPicker(card, input);
+        if (isVariantPath(path)) refreshVariantCard(card, input);
       }
       card.classList.toggle("inherited", !toggle.checked);
       updateDirtyState();
-      if (/^(messages|reply_quote|reply_enabled)\./.test(path)) renderTemplatePreview();
+      if (REPLY_PATH.test(path)) renderTemplatePreview();
     });
     override.append(toggle, document.createTextNode("本群覆盖（关闭恢复继承）"));
     controls.append(override);
@@ -563,8 +690,10 @@ function createConfigField(path, value) {
   }
   writeInputValue(input, state.draftValues[path]);
   if (isPoolConfig(path)) renderPoolPicker(card, input);
+  if (isVariantPath(path)) renderVariantEditors(card, input);
   const hint = CONFIG_HINTS[path] ||
     (path.startsWith("messages.") ? templateHint(path) :
+    isVariantPath(path) ? templateHint(path.replace(/^reply_variants\./, "messages.")) :
     path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
     path.startsWith("commands.keywords.") ? "每行一个别名，至少一项。" : "");
   if (hint) {
@@ -876,13 +1005,13 @@ function templateOrder(path) {
 
 function renderRepliesWorkspace() {
   const view = configView("replies");
-  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
+  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><div id="reply-variant-tabs" class="variant-tabs" role="group" aria-label="同一回复的多条预设"></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
   const side = sideSection("replies");
   side.innerHTML = '<div id="reply-preview-panel"><h4>消息预览</h4><p class="preview-label">使用草稿 · 模拟预览，不会实际发送</p><div class="chat-preview"><div class="chat-user">示例用户消息</div><div id="template-preview" class="chat-bubble"></div></div><p class="side-note">演示数据；实际图片、引用和消息样式以 QQ 客户端为准。</p></div>';
   sideSection("advanced").innerHTML = '<div class="notice"><p>群级覆盖只保存改动的字段；“仅全局设置”的项需切到全局配置修改。保存后立即生效，无需重载插件。</p></div>';
   const store = $("#reply-field-store");
   for (const [path, card] of fieldCards) {
-    if (/^(messages|reply_quote|reply_enabled)\./.test(path)) store.append(card);
+    if (REPLY_PATH.test(path)) store.append(card);
     if (path.startsWith("commands.keywords.")) $("#reply-keywords .config-rows").append(card);
   }
   const categories = ["全部", ...TEMPLATE_CATEGORIES];
@@ -902,7 +1031,7 @@ export function assignDraftField(path, raw, inherited = false) {
   const card = fieldCards.get(path); if (!card || state.scopeId !== "global" && configIsGlobalOnly(path)) return false;
   const input = card.querySelector("[data-config-path]");
   if (inherited) { const flag = card.querySelector("[data-override-path]"); if (!flag) return false; flag.checked = false; flag.dispatchEvent(new Event("change", { bubbles: true })); }
-  else { writeInputValue(input, raw); if (isPoolConfig(path)) renderPoolPicker(card, input); input.dispatchEvent(new Event("input", { bubbles: true })); }
+  else { writeInputValue(input, raw); if (isPoolConfig(path)) renderPoolPicker(card, input); if (isVariantPath(path)) refreshVariantCard(card, input); input.dispatchEvent(new Event("input", { bubbles: true })); }
   return true;
 }
 
@@ -927,7 +1056,7 @@ function initReplyBulk() {
     }
     const action = button.dataset.replyBulk; if (!action) return;
     for (const path of state.selectedReplies) {
-      if (action === "inherit") for (const prefix of ["messages.", "reply_enabled.", "reply_quote."]) assignDraftField(path.replace("messages.", prefix), null, true);
+      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote."]) assignDraftField(path.replace("messages.", prefix), null, true);
       else assignDraftField(path.replace("messages.", ["enable", "disable"].includes(action) ? "reply_enabled." : "reply_quote."), ["enable", "quote"].includes(action));
     }
     renderTemplatePreview(); updateReplySelection();
@@ -945,13 +1074,13 @@ function filterTemplates() {
   const search = $("#template-search").value.trim().toLowerCase();
   const category = $("#template-category").value;
   const paths = [...fieldCards.keys()].filter((path) => path.startsWith("messages."));
-  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]}`.toLowerCase().includes(search))
+  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]} ${state.draftValues[variantPathOf(path)] || ""}`.toLowerCase().includes(search))
     .sort((left, right) => templateOrder(left) - templateOrder(right));
   $("#template-total").textContent = `显示 ${visible.length} / 共 ${paths.length} 条`;
   for (const path of visible) {
     const button = document.createElement("button"); button.type = "button"; button.dataset.templatePath = path;
     button.className = "template-item";
-    button.classList.toggle("modified", dirtyPaths().includes(path));
+    button.classList.toggle("modified", dirtyPaths().some((item) => item === path || item === variantPathOf(path)));
     button.setAttribute("aria-pressed", String(path === state.selectedTemplate));
     const name = document.createElement("strong"); name.textContent = configLabel(path);
     const kind = { results: "结果", errors: "错误", notifications: "通知", titles: "标签" }[path.split(".")[1]] || "";
@@ -969,42 +1098,48 @@ function filterTemplates() {
 }
 
 function selectTemplate(path) {
+  if (path !== state.selectedTemplate) activeVariant = 0;
   state.selectedTemplate = path;
   $(".replies-workspace").dataset.directory = "false";
   const store = $("#reply-field-store");
   for (const id of ["reply-editor", "reply-quote"]) for (const card of [...$("#" + id).children]) store.append(card);
   $("#reply-editor").append(fieldCards.get(path));
+  if (variantParts(path)) $("#reply-editor").append(variantParts(path).card);
   for (const prefix of ["reply_enabled.", "reply_quote."]) {
     const optionPath = path.replace(/^messages\./, prefix);
     if (fieldCards.has(optionPath)) $("#reply-quote").append(fieldCards.get(optionPath));
   }
   $("#template-name").textContent = configLabel(path);
   const variables = $("#template-variables"); variables.replaceChildren();
-  const textarea = fieldCards.get(path).querySelector("textarea");
   for (const variable of state.templateFields[path]?.allowed || []) {
     const button = document.createElement("button"); button.type = "button"; button.className = "variable-button"; button.textContent = state.templateFields[path].descriptions?.[variable] ? `{${variable}} · ${state.templateFields[path].descriptions[variable]}` : `{${variable}}`;
     button.addEventListener("click", () => {
+      const textarea = activeReplyEditor();
       textarea.setRangeText(`{${variable}}`, textarea.selectionStart, textarea.selectionEnd, "end");
       textarea.focus(); textarea.dispatchEvent(new Event("input", { bubbles: true }));
     }); variables.append(button);
   }
   if (!variables.children.length) variables.textContent = "本条没有可插入变量。";
   for (const button of document.querySelectorAll("[data-template-path]")) button.setAttribute("aria-pressed", String(button.dataset.templatePath === path));
-  renderTemplatePreview();
+  showVariant(activeVariant);
 }
 
 export function renderTemplatePreview() {
   const path = state.selectedTemplate;
   if (!path || !$("#template-preview")) return;
-  const text = state.draftValues[path];
-  $("#template-count").textContent = `${Array.from(text).length} / 1000 字符`;
+  const variants = variantParts(path);
+  const text = activeVariant > 0 ? activeReplyEditor().value : state.draftValues[path];
+  const total = variants ? variants.editors.children.length + 1 : 1;
+  $("#template-count").textContent = `${Array.from(text).length} / 1000 字符${total > 1 ? ` · 第 ${activeVariant + 1} / ${total} 条，发送时随机选一条` : ""}`;
   const host = $("#template-preview"); host.replaceChildren();
   const metadata = state.templateFields[path];
   if (!metadata) { host.textContent = "模板规则尚未获取，请重新读取配置后预览。"; return; }
   try {
     const parts = templateParts(text, metadata, path);
-    if (!text.trim() || state.draftValues[path.replace(/^messages\./, "reply_enabled.")] === false) {
-      host.textContent = path.startsWith("messages.titles.") ? "空文字，隐藏对应标题或标签" : "此回复不会发送消息、附图或引用"; return;
+    const disabled = state.draftValues[path.replace(/^messages\./, "reply_enabled.")] === false;
+    if (!text.trim() || disabled) {
+      const others = !disabled && variants && [state.draftValues[path], ...[...variants.editors.children].map((editor) => editor.value)].some((item) => item.trim());
+      host.textContent = path.startsWith("messages.titles.") ? "空文字，隐藏对应标题或标签" : others ? "这一条留空，不参与随机" : "此回复不会发送消息、附图或引用"; return;
     }
     if (state.draftValues[path.replace(/^messages\./, "reply_quote.")]) {
       const quote = document.createElement("blockquote"); quote.textContent = "引用：示例用户消息"; host.append(quote);
@@ -1066,7 +1201,7 @@ function renderAdvancedWorkspace() {
     }
   }
   for (const [path, card] of fieldCards) {
-    if (path === "schema_version" || path.startsWith("modes.") || /^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.")) continue;
+    if (path === "schema_version" || path.startsWith("modes.") || REPLY_PATH.test(path) || path.startsWith("commands.keywords.")) continue;
     if (TRIGGER_PATHS.includes(path) || path.startsWith("render.")) continue;
     subsections.get(configGroup(path))?.append(card);
   }
@@ -1130,11 +1265,16 @@ function revealField(path) {
     $(".modes-workspace").dataset.mode = mode;
     for (const button of document.querySelectorAll("[data-mode-choice]")) button.setAttribute("aria-pressed", String(button.dataset.modeChoice === mode));
   }
-  const view = path.startsWith("modes.") ? "settings" : /^(messages|reply_quote|reply_enabled)\./.test(path) || path.startsWith("commands.keywords.") ? "replies" : "advanced";
+  const view = path.startsWith("modes.") ? "settings" : REPLY_PATH.test(path) || path.startsWith("commands.keywords.") ? "replies" : "advanced";
   openView(view);
   if (view === "replies") {
     if (path.startsWith("commands.keywords.")) showReplySection("keywords");
-    else { showReplySection("templates"); selectTemplate(path.replace(/^reply_(?:quote|enabled)\./, "messages.")); }
+    else {
+      showReplySection("templates");
+      selectTemplate(path.replace(/^reply_(?:quote|enabled|variants)\./, "messages."));
+      // 定位文案时回到第 1 条（错误提示显示在那里），定位其余回复时切到第 2 条。
+      showVariant(isVariantPath(path) ? 1 : 0);
+    }
   } else if (view === "advanced") {
     selectConfigGroup(advancedGroup(path));
     if (path.startsWith("render.types.") || path === "render.mode") { state.renderCustom = true; renderFormSync(); }
@@ -1195,7 +1335,10 @@ export async function describeConfigConflict() {
 
 export function validateDraft() {
   const serialized = serializeConfig();
-  for (const [path, fields] of Object.entries(state.templateFields)) templateParts(configAt(serialized.draft, path), fields, path);
+  for (const [path, fields] of Object.entries(state.templateFields)) {
+    templateParts(configAt(serialized.draft, path), fields, path);
+    (configAt(serialized.draft, variantPathOf(path)) || []).forEach((text, index) => templateParts(text, fields, `${path} 第 ${index + 2} 条回复`));
+  }
   return serialized;
 }
 

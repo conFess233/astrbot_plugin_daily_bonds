@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import random
 import string
 from collections.abc import Mapping
 from contextvars import ContextVar
@@ -14,6 +15,8 @@ from typing import Any
 from ..models.errors import ConfigurationError
 
 _FORMATTER = string.Formatter()
+# 每条回复（含 text）最多的预设数量，管理页 + 号使用同一上限。
+MAX_REPLY_VARIANTS = 20
 NAME_FIELDS = {
     "actor_name",
     "owner_name",
@@ -137,9 +140,49 @@ def _fields(template: str, path: str) -> set[str]:
 
 
 def entry_text(entry: Any) -> str:
-    """标题是纯文本，其余文案是 {text, enabled, quote} 对象。"""
+    """标题是纯文本，其余文案是 {text, alternatives, enabled, quote} 对象。"""
 
     return str(entry["text"]) if isinstance(entry, Mapping) else str(entry)
+
+
+def entry_templates(entry: Any) -> list[str]:
+    """返回可发送的全部文案；留空的条目不参与随机。"""
+
+    if not isinstance(entry, Mapping):
+        texts = [entry]
+    else:
+        texts = [entry["text"], *entry.get("alternatives", ())]
+    return [str(text) for text in texts if str(text).strip()]
+
+
+def _validate_template(
+    template: Any, path: str, label: str, section: str, key: str, original: str
+) -> None:
+    if not isinstance(template, str) or len(template) > 1000:
+        raise ConfigurationError(f"{label} 必须是最多 1000 字符的文本，留空则不发送")
+    if not template.strip():
+        return
+    if IMAGE_TOKEN in template:
+        raise ConfigurationError(f"{label} 不允许内部图片标记")
+    if any(ord(char) < 32 and char != "\n" for char in template):
+        raise ConfigurationError(f"{label} 不允许控制字符")
+    fields = _fields(template, label)
+    allowed = (
+        _fields(original, path)
+        | NAME_FIELDS
+        | CONTEXT_FIELDS
+        | EXTRA_FIELDS.get(key, set())
+    )
+    if key in IMAGE_KEYS and section in {"results", "errors"}:
+        allowed |= {"image"} | EXTRA_FIELDS.get(key, set())
+    invalid = fields - allowed
+    if invalid:
+        raise ConfigurationError(f"{label} 含有未知变量：{', '.join(sorted(invalid))}")
+    missing = _REQUIRED.get(path, set()) - fields
+    if section == "results" and key in IMAGE_KEYS and "image" in fields:
+        missing = set()
+    if missing:
+        raise ConfigurationError(f"{label} 缺少必要变量：{', '.join(sorted(missing))}")
 
 
 def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) -> None:
@@ -148,48 +191,22 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
             path = f"messages.{section}.{key}"
             entry = messages[section][key]
             original = entry_text(original_entry)
-            if isinstance(original_entry, Mapping):
-                if not isinstance(entry, Mapping) or set(entry) != set(original_entry):
-                    raise ConfigurationError(
-                        f"{path} 必须包含 {sorted(original_entry)}"
-                    )
-                for flag in set(entry) - {"text"}:
-                    if not isinstance(entry[flag], bool):
-                        raise ConfigurationError(f"{path}.{flag} 必须是布尔值")
-                template = entry["text"]
-            else:
-                template = entry
-            if not isinstance(template, str) or len(template) > 1000:
-                raise ConfigurationError(
-                    f"{path} 必须是最多 1000 字符的文本，留空则不发送"
-                )
-            if not template.strip():
+            if not isinstance(original_entry, Mapping):
+                _validate_template(entry, path, path, section, key, original)
                 continue
-            if IMAGE_TOKEN in template:
-                raise ConfigurationError(f"{path} 不允许内部图片标记")
-            if any(ord(char) < 32 and char != "\n" for char in template):
-                raise ConfigurationError(f"{path} 不允许控制字符")
-            fields = _fields(template, path)
-            allowed = (
-                _fields(original, path)
-                | NAME_FIELDS
-                | CONTEXT_FIELDS
-                | EXTRA_FIELDS.get(key, set())
-            )
-            if key in IMAGE_KEYS and section in {"results", "errors"}:
-                allowed |= {"image"} | EXTRA_FIELDS.get(key, set())
-            invalid = fields - allowed
-            if invalid:
-                raise ConfigurationError(
-                    f"{path} 含有未知变量：{', '.join(sorted(invalid))}"
-                )
-            missing = _REQUIRED.get(path, set()) - fields
-            if section == "results" and key in IMAGE_KEYS and "image" in fields:
-                missing = set()
-            if missing:
-                raise ConfigurationError(
-                    f"{path} 缺少必要变量：{', '.join(sorted(missing))}"
-                )
+            if not isinstance(entry, Mapping) or set(entry) != set(original_entry):
+                raise ConfigurationError(f"{path} 必须包含 {sorted(original_entry)}")
+            for flag in set(entry) - {"text", "alternatives"}:
+                if not isinstance(entry[flag], bool):
+                    raise ConfigurationError(f"{path}.{flag} 必须是布尔值")
+            alternatives = entry["alternatives"]
+            if len(alternatives) > MAX_REPLY_VARIANTS - 1:
+                raise ConfigurationError(f"{path} 最多 {MAX_REPLY_VARIANTS} 条回复")
+            _validate_template(entry["text"], path, path, section, key, original)
+            # 编号与管理页的条目标签一致：text 是第 1 条。
+            for number, template in enumerate(alternatives, start=2):
+                label = f"{path} 第 {number} 条回复"
+                _validate_template(template, path, label, section, key, original)
 
 
 class MessageText(str):
@@ -262,9 +279,10 @@ def render_message(
     entry = config["messages"][section][key]
     if isinstance(entry, Mapping) and not entry.get("enabled", True):
         return MessageText("")
-    template = entry_text(entry)
-    if not template.strip():
+    templates = entry_templates(entry)
+    if not templates:
         return MessageText("")
+    template = random.choice(templates)
     values = {
         "group_name": "本群",
         **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},

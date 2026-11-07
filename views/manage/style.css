@@ -325,6 +325,13 @@ details.config-sub + details.config-sub { margin-top: 10px; }
 #reply-editor textarea { min-height: 150px; }
 #reply-quote { display: grid; gap: 10px; margin-top: 14px; }
 #reply-quote .config-field .lbl label { font-weight: 550; font-size: 13px; }
+.config-field.inherited .ctl > .variant-editors { opacity: .72; }
+.variant-tabs { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; margin-left: auto; }
+.variant-tab { min-width: 26px; height: 26px; padding: 0 6px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--muted); font-size: 12.5px; line-height: 1; cursor: pointer; font-variant-numeric: tabular-nums; }
+.variant-tab:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.variant-tab:disabled { opacity: .5; cursor: not-allowed; }
+.variant-tab[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 650; }
+.variant-remove { margin-right: 6px; border-color: transparent; background: transparent; }
 .variable-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .variable-button { padding: 4px 9px; border: 1px solid transparent; border-radius: 999px; background: var(--accent-soft); color: var(--accent); font-size: 12px; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
 .reply-directory-toggle, .reply-directory-back { display: none; }

@@ -3,6 +3,17 @@ export function isPercentPath(path) {
   return path.endsWith(".steal_probability") || path.endsWith(".force_probability");
 }
 
+// 回复模板相关的叶子路径：文案、启用、引用与同一条回复的其余预设。
+export const REPLY_PATH = /^(messages|reply_quote|reply_enabled|reply_variants)\./;
+
+export function isVariantPath(path) {
+  return path.startsWith("reply_variants.");
+}
+
+export function variantPathOf(path) {
+  return path.replace(/^messages\./, "reply_variants.");
+}
+
 // Keep raw edits (including incomplete numbers) until the shared draft is submitted.
 export function configAt(config, path) {
   return path.split(".").reduce((value, key) => value?.[key], config);
@@ -33,6 +44,8 @@ export function configLeaves(config, prefix = "") {
 }
 
 export function displayValue(path, value) {
+  // 回复文案本身可以换行，不能像普通名单那样按行拼接。
+  if (isVariantPath(path)) return JSON.stringify(value);
   if (Array.isArray(value)) return value.join("\n");
   if (typeof value === "boolean") return value;
   return String(isPercentPath(path) ? value * 100 : value);
@@ -56,7 +69,8 @@ export function serializeDraft(saved, global, values, overridePaths, scoped, flo
     let value = original;
     if (scoped && !overridePaths.has(path)) value = configAt(global, path);
     else if (raw !== displayValue(path, original)) {
-      if (Array.isArray(original)) value = raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
+      if (isVariantPath(path)) value = JSON.parse(raw);
+      else if (Array.isArray(original)) value = raw.split(/\r?\n/).map((item) => item.trim()).filter(Boolean);
       else if (typeof original === "boolean") value = raw;
       else if (typeof original === "number") {
         value = Number(raw);
@@ -96,10 +110,10 @@ export function templateParts(text, fields, path = "模板") {
   return parts;
 }
 
-// 服务端 schema 2 中每条文案是 {text, enabled, quote}；编辑器沿用三类叶子路径：
-// messages.<分类>.<键>、reply_enabled.<分类>.<键>、reply_quote.<分类>.<键>。
+// 服务端 schema 2 中每条文案是 {text, alternatives, enabled, quote}；编辑器沿用四类叶子路径：
+// messages.<分类>.<键>、reply_variants.<分类>.<键>、reply_enabled.<分类>.<键>、reply_quote.<分类>.<键>。
 // 读取时展开，提交前合并，编辑器其余逻辑无需感知结构变化。
-const MESSAGE_FLAGS = { enabled: "reply_enabled", quote: "reply_quote" };
+const MESSAGE_FLAGS = { alternatives: "reply_variants", enabled: "reply_enabled", quote: "reply_quote" };
 
 export function toUiConfig(config) {
   if (!config || typeof config !== "object") return config;
