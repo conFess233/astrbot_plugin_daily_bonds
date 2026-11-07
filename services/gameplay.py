@@ -8,6 +8,7 @@ from collections.abc import Sequence
 
 from ..models.gameplay import BusinessResult, Candidate
 from ..models.scope import Mode
+from . import game_rules as rules
 from .gameplay_base import _candidate_dict, math_probability
 from .gameplay_gift import GiftMixin
 from .statistics import StatisticsService
@@ -27,9 +28,8 @@ class GameplayService(GiftMixin):
         capacity: int,
         pool_ids: Sequence[str] = (),
         weights: dict[str, float] | None = None,
-        activity_full_messages: int
-        | None = None,  # 兼容旧服务调用；此参数不再影响权重。
         activity_window_days: int = 7,
+        activity_enabled: bool = True,
         activity_timezone: str = "Asia/Shanghai",
         eligible_user_ids: set[str] | None = None,
         operation_id: str | None = None,
@@ -38,7 +38,7 @@ class GameplayService(GiftMixin):
         config_revision: str = "",
         now: int,
     ) -> BusinessResult:
-        """抽取一个对象；优先消耗最早生成的补抽资格。"""
+        """抽取一个对象，消耗一次本周期的普通抽取次数。"""
 
         operation_id = operation_id or str(uuid.uuid4())
         with self.storage.transaction() as db:
@@ -68,13 +68,8 @@ class GameplayService(GiftMixin):
                 )
                 return result
 
-            credit = db.execute(
-                """SELECT id FROM redraw_credits WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?
-                   AND state='available' ORDER BY issued_at,id LIMIT 1""",
-                (scope_id, period_id, mode, owner_id),
-            ).fetchone()
             counter = self._counter(db, scope_id, period_id, mode, owner_id)
-            if credit is None and int(counter["normal_draws"]) >= capacity:
+            if rules.normal_draw_remaining(capacity, int(counter["normal_draws"])) < 1:
                 result = BusinessResult(
                     "NO_DRAW_QUOTA", {"held": len(active), "capacity": capacity}
                 )
@@ -119,15 +114,19 @@ class GameplayService(GiftMixin):
                     timezone=activity_timezone,
                     eligible_user_ids=present,
                 )
-                participants = {str(row["user_id"]) for row in rows}
-                participants.update(
-                    str(row[key]) for row in edges for key in ("source_id", "target_id")
-                )
-                available = [
-                    candidate
-                    for candidate in available
-                    if candidate.subject_id in participants
-                ]
+                # 关闭活跃度统计后不再产生活跃记录，不能再要求候选人近期活跃。
+                if activity_enabled:
+                    participants = {str(row["user_id"]) for row in rows}
+                    participants.update(
+                        str(row[key])
+                        for row in edges
+                        for key in ("source_id", "target_id")
+                    )
+                    available = [
+                        candidate
+                        for candidate in available
+                        if candidate.subject_id in participants
+                    ]
                 intimacy = {
                     str(row["target_id"]): int(row["score"])
                     for row in edges
@@ -174,22 +173,15 @@ class GameplayService(GiftMixin):
                 capacity=capacity,
                 now=now,
             )
-            if credit:
-                db.execute(
-                    "UPDATE redraw_credits SET state='consumed',consumed_at=?,consumed_relationship_id=? WHERE id=? AND state='available'",
-                    (now, relationship_id, credit["id"]),
-                )
-            else:
-                db.execute(
-                    "UPDATE daily_counters SET normal_draws=normal_draws+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
-                    (scope_id, period_id, mode, owner_id),
-                )
+            db.execute(
+                "UPDATE daily_counters SET normal_draws=normal_draws+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+                (scope_id, period_id, mode, owner_id),
+            )
             result = BusinessResult(
                 "DRAWN",
                 {
                     "relationship_id": relationship_id,
                     "candidate": _candidate_dict(picked),
-                    "credit_id": credit["id"] if credit else None,
                 },
             )
             self._record(
@@ -288,12 +280,15 @@ class GameplayService(GiftMixin):
                             now=now,
                             ignore_capacity=True,
                         )
+                        db.execute(
+                            "UPDATE relationships SET special_source='admin' WHERE id=?",
+                            (relationship_id,),
+                        )
                         result = BusinessResult(
                             "DRAWN",
                             {
                                 "relationship_id": relationship_id,
                                 "candidate": _candidate_dict(candidate),
-                                "credit_id": None,
                             },
                         )
             self._record(
@@ -330,7 +325,7 @@ class GameplayService(GiftMixin):
         config_revision: str = "",
         now: int,
     ) -> BusinessResult:
-        """指定角色：占用共同持有上限，按独立次数计数，不消耗普通额度或补抽资格。"""
+        """指定角色：占用共同持有上限，按独立次数计数，不消耗普通额度。"""
 
         if (
             mode not in {"wife", "husband"}
@@ -534,6 +529,16 @@ class GameplayService(GiftMixin):
             target_relations = self._owner_relationships(
                 db, scope_id, period_id, mode, target_id
             )
+            held_subjects = {str(row["subject_id"]) for row in actor_relationships}
+            if relation_id is None and subject_id is None:
+                # 不指定对象时只在真正能抢的关系里随机；都不能抢时再由下面报原因。
+                stealable = [
+                    row
+                    for row in target_relations
+                    if row["subject_id"] != actor_id
+                    and row["subject_id"] not in held_subjects
+                ]
+                target_relations = stealable or target_relations
             target_relation = self._choose_owned(
                 target_relations, relation_id, subject_id
             )
@@ -607,6 +612,22 @@ class GameplayService(GiftMixin):
                     event_key,
                     payload_hash,
                 )
+            if target_relation["subject_id"] in held_subjects:
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    actor_id,
+                    "steal",
+                    "ALREADY_HOLDS",
+                    {"relationship_id": target_relation["id"]},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
             if not math_probability(probability):
                 return self._record_result(
                     db,
@@ -663,17 +684,7 @@ class GameplayService(GiftMixin):
                 "UPDATE daily_counters SET stolen_successes=stolen_successes+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
                 (scope_id, period_id, mode, target_id),
             )
-            self._issue_credit(
-                db,
-                scope_id,
-                period_id,
-                mode,
-                target_id,
-                operation_id,
-                "stolen",
-                target_relation["id"],
-                now,
-            )
+            self._return_draw(db, scope_id, period_id, mode, target_id)
             self._invalidate_relation_invites(
                 db, target_relation["id"], now, "relationship_stolen"
             )
@@ -697,6 +708,121 @@ class GameplayService(GiftMixin):
                 payload_hash,
             )
 
+    def force_marry(
+        self,
+        *,
+        scope_id: int,
+        period_id: str,
+        actor_id: str,
+        target_id: str,
+        capacity: int,
+        limit: int,
+        probability: float,
+        event_key: str | None = None,
+        payload_hash: str = "",
+        config_revision: str = "",
+        now: int,
+    ) -> BusinessResult:
+        """强娶没有被任何人持有的群友：按成功率结缘，失败也消耗次数。
+
+        已被人持有的群友要用抢夺；强娶得到的关系同抢来的一样本周期受保护。
+        """
+
+        operation_id = str(uuid.uuid4())
+
+        def finish(code: str, data: dict) -> BusinessResult:
+            return self._record_result(
+                db,
+                operation_id,
+                scope_id,
+                period_id,
+                "member",
+                actor_id,
+                "force",
+                code,
+                data,
+                config_revision,
+                now,
+                event_key,
+                payload_hash,
+            )
+
+        with self.storage.transaction() as db:
+            replay = self._replay(db, scope_id, event_key, payload_hash)
+            if replay:
+                return replay
+            self._current_period(db, scope_id, period_id)
+            available = self._valid_candidates(
+                db,
+                scope_id,
+                period_id,
+                "member",
+                actor_id,
+                [Candidate(target_id, "member", "群友")],
+                (),
+                require_unoccupied=False,
+            )
+            if not available:
+                return finish("INVALID_TARGET", {})
+            picked = available[0]
+            held = self._owner_relationships(
+                db, scope_id, period_id, "member", actor_id, None
+            )
+            if any(row["subject_id"] == target_id for row in held):
+                return finish("ALREADY_HOLDS", {"candidate": _candidate_dict(picked)})
+            if len(held) >= capacity:
+                return finish("CAPACITY_FULL", {"relationships": held})
+            counter = self._counter(db, scope_id, period_id, "member", actor_id)
+            if int(counter["force_attempts"]) >= limit:
+                return finish("FORCE_LIMIT", {})
+            holder = db.execute(
+                "SELECT owner_id FROM relationships WHERE scope_id=? AND period_id=? AND mode='member' AND subject_id=? AND state='active' LIMIT 1",
+                (scope_id, period_id, target_id),
+            ).fetchone()
+            if holder is not None:
+                return finish(
+                    "FORCE_TARGET_TAKEN",
+                    {
+                        "candidate": _candidate_dict(picked),
+                        "owner_id": str(holder["owner_id"]),
+                    },
+                )
+            if not math_probability(probability):
+                return finish("INVALID_PROBABILITY", {})
+            success = self.chooser.random() < probability
+            db.execute(
+                "UPDATE daily_counters SET force_attempts=force_attempts+1 WHERE scope_id=? AND period_id=? AND mode='member' AND user_id=?",
+                (scope_id, period_id, actor_id),
+            )
+            if not success:
+                return finish(
+                    "FORCE_FAILED",
+                    {"candidate": _candidate_dict(picked), "probability": probability},
+                )
+            relationship_id = self.storage.create_relationship(
+                scope_id=scope_id,
+                period_id=period_id,
+                mode="member",
+                owner_id=actor_id,
+                subject_kind="member",
+                subject_id=target_id,
+                snapshot_id=self._snapshot(db, picked, now),
+                capacity=capacity,
+                now=now,
+                slot_kind="steal",
+            )
+            db.execute(
+                "UPDATE relationships SET special_source='force' WHERE id=?",
+                (relationship_id,),
+            )
+            return finish(
+                "FORCED",
+                {
+                    "relationship_id": relationship_id,
+                    "candidate": _candidate_dict(picked),
+                },
+            )
+
     def divorce(
         self,
         *,
@@ -713,7 +839,7 @@ class GameplayService(GiftMixin):
         config_revision: str = "",
         now: int,
     ) -> BusinessResult:
-        """主动解除一段指定关系，并发放来源唯一的补抽资格。"""
+        """主动解除一段指定关系，并返还一次普通抽取。"""
 
         operation_id = operation_id or str(uuid.uuid4())
         with self.storage.transaction() as db:
@@ -784,17 +910,7 @@ class GameplayService(GiftMixin):
                 "UPDATE daily_counters SET divorces=divorces+1 WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
                 (scope_id, period_id, mode, owner_id),
             )
-            self._issue_credit(
-                db,
-                scope_id,
-                period_id,
-                mode,
-                owner_id,
-                operation_id,
-                "divorce",
-                relationship["id"],
-                now,
-            )
+            self._return_draw(db, scope_id, period_id, mode, owner_id)
             self._invalidate_relation_invites(
                 db, relationship["id"], now, "relationship_divorced"
             )

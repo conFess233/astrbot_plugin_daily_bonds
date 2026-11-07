@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.profile { display: flex; gap: 20px; align-items: flex-start; }
+.portrait, .portrait-empty {
+  flex: 0 0 220px;
+  width: 220px;
+  aspect-ratio: 3 / 4;
+  border-radius: 12px;
+  object-fit: cover;
+  background: var(--primary-soft);
+}
+.portrait-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  font-size: 56px;
+  font-weight: 800;
+}
+.facts { flex: 1; min-width: 0; }
+.fact { padding: 9px 0; border-bottom: 1px solid var(--seg-off); }
+.fact:last-child { border-bottom: 0; }
+.fact .value { margin-top: 2px; font-size: 16px; overflow-wrap: anywhere; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header"><h1>{{ title | e }}</h1></div>
+  <div class="card-body">
+    <div class="profile">
+      {% if image %}<img class="portrait" src="{{ image }}">{% else %}<div class="portrait-empty">{{ name[:1] | e }}</div>{% endif %}
+      <div class="facts">
+        {% for fact in facts %}
+        <div class="fact">
+          <div class="muted">{{ fact.label | e }}</div>
+          <div class="value">{{ fact.value | e }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

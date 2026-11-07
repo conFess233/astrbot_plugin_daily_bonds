@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
+from datetime import datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .statistics import StatisticsService
 from .storage import SQLiteStorage
@@ -12,6 +15,92 @@ from .storage import SQLiteStorage
 class AdminQueryService:
     def __init__(self, storage: SQLiteStorage) -> None:
         self.storage = storage
+
+    def dashboard(
+        self, scope_id: int | None, *, days: int, timezone: str, now: int
+    ) -> dict[str, Any]:
+        """看板数据：操作次数来自操作记录，最长等于历史保留天数；角色热度为累计。"""
+
+        zone = ZoneInfo(timezone)
+        today = datetime.fromtimestamp(now, zone).date()
+        dates = [today - timedelta(days=offset) for offset in range(days - 1, -1, -1)]
+        since = int(
+            datetime(
+                dates[0].year, dates[0].month, dates[0].day, tzinfo=zone
+            ).timestamp()
+        )
+        where = "" if scope_id is None else " AND scope_id=?"
+        params = (since,) if scope_id is None else (since, scope_id)
+        with self.storage.read() as db:
+            results = db.execute(
+                f"""SELECT result_code,COUNT(*) AS amount,COUNT(DISTINCT actor_id) AS actors
+                    FROM operation_log WHERE created_at>=? AND actor_type='qq'{where}
+                    GROUP BY result_code""",
+                params,
+            ).fetchall()
+            actors = db.execute(
+                f"SELECT COUNT(DISTINCT actor_id) FROM operation_log WHERE created_at>=? AND actor_type='qq'{where}",
+                params,
+            ).fetchone()[0]
+            # 按小时聚合后再换算成本地日期，夏令时切换日也能正确归属。
+            hours = db.execute(
+                f"""SELECT created_at/3600 AS hour,COUNT(*) AS amount FROM operation_log
+                    WHERE created_at>=? AND result_code IN ('DRAWN','DESIGNATED_DRAWN','FORCED'){where}
+                    GROUP BY hour""",
+                params,
+            ).fetchall()
+            collection_where = "" if scope_id is None else "WHERE e.scope_id=?"
+            characters = db.execute(
+                f"""SELECT COALESCE(c.name,e.character_id) AS name,SUM(e.times) AS times
+                    FROM collection_entries e LEFT JOIN characters c ON c.id=e.character_id
+                    {collection_where} GROUP BY e.character_id
+                    ORDER BY times DESC,name LIMIT 10""",
+                () if scope_id is None else (scope_id,),
+            ).fetchall()
+            groups = (
+                db.execute(
+                    """SELECT s.group_id,COUNT(*) AS amount FROM operation_log o
+                       JOIN scopes s ON s.id=o.scope_id
+                       WHERE o.created_at>=? AND o.actor_type='qq'
+                       GROUP BY o.scope_id ORDER BY amount DESC,s.group_id LIMIT 10""",
+                    (since,),
+                ).fetchall()
+                if scope_id is None
+                else []
+            )
+        amounts = {str(row["result_code"]): int(row["amount"]) for row in results}
+        by_date: Counter[str] = Counter()
+        for row in hours:
+            local = datetime.fromtimestamp(int(row["hour"]) * 3600, zone).date()
+            by_date[local.isoformat()] += int(row["amount"])
+        return {
+            "days": days,
+            "timezone": timezone,
+            "totals": {
+                "draws": sum(by_date.values()),
+                "active_users": int(actors),
+                "steal_success": amounts.get("STOLEN", 0),
+                "steal_attempts": amounts.get("STOLEN", 0)
+                + amounts.get("STEAL_FAILED", 0),
+                "force_success": amounts.get("FORCED", 0),
+                "force_attempts": amounts.get("FORCED", 0)
+                + amounts.get("FORCE_FAILED", 0),
+                "gifts": amounts.get("GIFTED", 0) + amounts.get("GIFT_ACCEPTED", 0),
+                "divorces": amounts.get("DIVORCED", 0),
+            },
+            "trend": [
+                {"date": item.isoformat(), "draws": by_date.get(item.isoformat(), 0)}
+                for item in dates
+            ],
+            "characters": [
+                {"name": str(row["name"]), "value": int(row["times"])}
+                for row in characters
+            ],
+            "groups": [
+                {"name": f"群 {row['group_id']}", "value": int(row["amount"])}
+                for row in groups
+            ],
+        }
 
     def relationships(
         self,
@@ -49,7 +138,7 @@ class AdminQueryService:
             )
             rows = db.execute(
                 f"""SELECT r.id,r.period_id,r.mode,r.owner_id,r.subject_kind,r.subject_id,r.slot_kind,
-                           CASE r.slot_kind WHEN 'steal' THEN '抢夺' WHEN 'designated' THEN '指定' ELSE '普通' END AS slot_label,
+                           CASE WHEN r.special_source='admin' THEN '管理员设置' WHEN r.special_source='force' THEN '强娶' WHEN r.slot_kind='steal' THEN '抢夺' WHEN r.slot_kind='designated' THEN '指定' ELSE '普通' END AS slot_label,
                            r.state,r.acquired_at,r.ended_at,
                            r.end_reason,r.version,ss.name AS snapshot_name,ss.source_revision,p.starts_at,p.ends_at,
                            COALESCE((SELECT GROUP_CONCAT(si.media_hash,char(31)) FROM snapshot_images si WHERE si.snapshot_id=ss.id),'') AS image_hashes
@@ -104,10 +193,6 @@ class AdminQueryService:
                     (scope_id, period_id, mode, user_id),
                 ).fetchone()[0]
             )
-            credits = db.execute(
-                "SELECT reason,state,COUNT(*) AS amount FROM redraw_credits WHERE scope_id=? AND period_id=? AND mode=? AND user_id=? GROUP BY reason,state",
-                (scope_id, period_id, mode, user_id),
-            ).fetchall()
             sent = int(
                 db.execute(
                     "SELECT COUNT(*) FROM gift_invites WHERE scope_id=? AND period_id=? AND sender_id=? AND state='pending'",
@@ -134,10 +219,6 @@ class AdminQueryService:
                 "last_steal_at": None,
             }
         )
-        credit_rows = [dict(row) for row in credits]
-        available = sum(
-            int(row["amount"]) for row in credit_rows if row["state"] == "available"
-        )
         capacity = int(settings["capacity"])
         designated_limit = int(settings.get("designated_limit", 0))
         counter_value.update(
@@ -153,8 +234,6 @@ class AdminQueryService:
                 "normal_quota_remaining": max(
                     0, capacity - int(counter_value["normal_draws"])
                 ),
-                "available_redraw_credits": available,
-                "redraw_credits": credit_rows,
                 "pending_invites_sent": sent,
                 "pending_invites_received": received,
             }

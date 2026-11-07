@@ -297,6 +297,98 @@ class CatalogAdminService:
         )
         return response
 
+    def batch_characters(
+        self, payload: Mapping[str, Any], *, actor: str, now: int
+    ) -> dict[str, Any]:
+        """批量启用、停用角色，或把角色加入、移出一个角色池。"""
+
+        ids = self._string_list(
+            payload.get("ids", []), "角色", maximum=500, item_max=64, unique=True
+        )
+        action = payload.get("action")
+        if not ids:
+            raise ValueError("请至少选择一个角色。")
+        if action not in {"enable", "disable", "add_pool", "remove_pool"}:
+            raise ValueError("批量操作类型无效。")
+        data: dict[str, Any] = {"ids": ids, "action": action}
+        if action in {"add_pool", "remove_pool"}:
+            data["pool_id"] = self._identifier(payload.get("pool_id"), "角色池 ID")
+        request_id = self._request_id(payload.get("request_id"))
+        return self._mutate(
+            "character/batch",
+            request_id,
+            actor,
+            data,
+            now,
+            lambda db: self._batch_characters(db, data, actor, request_id, now),
+        )
+
+    def _batch_characters(
+        self, db: Any, data: dict[str, Any], actor: str, request_id: str, now: int
+    ) -> dict[str, Any]:
+        marks = ",".join("?" for _ in data["ids"])
+        rows = db.execute(
+            f"SELECT id,gender,enabled FROM characters WHERE deleted_at IS NULL AND id IN ({marks})",
+            data["ids"],
+        ).fetchall()
+        if len(rows) != len(data["ids"]):
+            raise ValueError("所选角色不存在或已被删除，请刷新列表。")
+        action = data["action"]
+        updated = 0
+        mismatched: list[str] = []
+        if action in {"enable", "disable"}:
+            enabled = int(action == "enable")
+            changed = [row["id"] for row in rows if int(row["enabled"]) != enabled]
+            for character_id in changed:
+                db.execute(
+                    "UPDATE characters SET enabled=?,revision=revision+1 WHERE id=?",
+                    (enabled, character_id),
+                )
+            updated = len(changed)
+        else:
+            pool = db.execute(
+                "SELECT mode FROM pools WHERE id=? AND deleted_at IS NULL",
+                (data["pool_id"],),
+            ).fetchone()
+            if pool is None:
+                raise ValueError("角色池不存在或已删除。")
+            expected = "female" if pool["mode"] == "wife" else "male"
+            for row in rows:
+                if action == "add_pool":
+                    if row["gender"] not in (expected, "unspecified"):
+                        mismatched.append(str(row["id"]))
+                        continue
+                    updated += db.execute(
+                        "INSERT OR IGNORE INTO pool_members(pool_id,character_id) VALUES(?,?)",
+                        (data["pool_id"], row["id"]),
+                    ).rowcount
+                else:
+                    updated += db.execute(
+                        "DELETE FROM pool_members WHERE pool_id=? AND character_id=?",
+                        (data["pool_id"], row["id"]),
+                    ).rowcount
+            if updated:
+                db.execute(
+                    "UPDATE pools SET revision=revision+1 WHERE id=?",
+                    (data["pool_id"],),
+                )
+        self._audit(
+            db,
+            actor,
+            f"character.batch.{action}",
+            "character",
+            data.get("pool_id", "*"),
+            request_id,
+            "",
+            {"count": len(data["ids"]), "updated": updated},
+            now,
+        )
+        return {
+            "updated": updated,
+            "unchanged": len(rows) - updated - len(mismatched),
+            "mismatched": mismatched,
+        }
+
     def save_pool(
         self, payload: Mapping[str, Any], *, actor: str, now: int
     ) -> dict[str, Any]:

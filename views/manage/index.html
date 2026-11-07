@@ -40,6 +40,23 @@
         <div id="overview-cards" class="stats" aria-live="polite"></div>
         <div class="layout">
           <div class="main">
+            <section id="dashboard-card" class="card card-pad">
+              <div class="card-title"><div><h3>数据看板</h3><p id="dashboard-note">抽取、抢夺和强娶的趋势。</p></div>
+                <div id="dashboard-days" class="segmented" role="group" aria-label="统计天数">
+                  <button type="button" data-days="7" aria-pressed="false">7 天</button>
+                  <button type="button" data-days="14" aria-pressed="true">14 天</button>
+                  <button type="button" data-days="30" aria-pressed="false">30 天</button>
+                </div>
+              </div>
+              <div id="dashboard-tiles" class="stats dashboard-tiles"></div>
+              <h4 class="dashboard-heading">每日成功抽取次数</h4>
+              <div id="dashboard-trend" class="trend-chart"></div>
+              <details class="dashboard-table"><summary>查看数据表</summary><div id="dashboard-table"></div></details>
+              <div class="dashboard-columns">
+                <div><h4 class="dashboard-heading">最受欢迎的角色（累计结缘次数）</h4><div id="dashboard-characters" class="rank-bars"></div></div>
+                <div id="dashboard-groups-wrap"><h4 class="dashboard-heading">最活跃的群（操作次数）</h4><div id="dashboard-groups" class="rank-bars"></div></div>
+              </div>
+            </section>
             <section class="card card-pad">
               <div class="card-title"><div><h3>当前周期</h3><p id="overview-updated" role="status"></p></div></div>
               <p id="period-summary" class="period-summary"></p>
@@ -106,7 +123,7 @@
           <div id="catalog-layout" class="layout">
             <div class="main">
               <section class="card card-pad catalog-list-card">
-                <div class="card-title"><div><h3>角色</h3><p id="character-summary">点击角色在右侧编辑；编辑不会改写既有关系快照。</p></div><button id="new-character-top" class="btn btn-ghost btn-sm" type="button">新建角色</button></div>
+                <div class="card-title"><div><h3>角色</h3><p id="character-summary">点击角色在右侧编辑；编辑不会改写既有关系快照。</p></div><div class="actions"><button id="batch-mode" class="btn btn-ghost btn-sm" type="button" aria-pressed="false">批量操作</button><button id="new-character-top" class="btn btn-ghost btn-sm" type="button">新建角色</button></div></div>
                 <div id="pool-filter" class="pool-chips" role="group" aria-label="按角色池筛选"></div>
                 <div class="catalog-filters">
                   <input id="character-search" type="search" placeholder="搜索名称、别名或 ID" aria-label="搜索角色" />
@@ -122,6 +139,18 @@
                   </select>
                 </div>
                 <div id="pool-overview" class="pool-overview" hidden></div>
+                <div id="batch-bar" class="batch-bar" hidden>
+                  <span id="batch-count" class="batch-count" role="status">未选择角色</span>
+                  <button id="batch-all" class="btn btn-ghost btn-sm" type="button">全选本页</button>
+                  <button id="batch-clear" class="btn btn-ghost btn-sm" type="button">清除选择</button>
+                  <span class="batch-actions">
+                    <button class="btn btn-tonal btn-sm" type="button" data-batch="enable">启用</button>
+                    <button class="btn btn-tonal btn-sm" type="button" data-batch="disable">停用</button>
+                    <select id="batch-pool" aria-label="选择角色池"></select>
+                    <button class="btn btn-tonal btn-sm" type="button" data-batch="add_pool">加入</button>
+                    <button class="btn btn-tonal btn-sm" type="button" data-batch="remove_pool">移出</button>
+                  </span>
+                </div>
                 <div id="character-list" class="character-grid" aria-live="polite"></div>
                 <div class="list-pagination" aria-label="角色列表分页">
                   <button id="character-prev" class="btn btn-ghost btn-sm" type="button" disabled>上一页</button>
@@ -249,7 +278,7 @@
               <div class="card-title"><div><h3>管理员纠错</h3><p>先预览差异再提交；会检查目标、理由及配置版本。</p></div></div>
               <div class="form-grid">
                 <label class="field"><span>操作类型</span><select id="correction-action">
-                  <option value="relationship_end">解除指定关系</option><option value="credit_grant">补发抽取资格</option>
+                  <option value="relationship_end">解除指定关系</option>
                   <option value="intimacy_set">设置有向亲密度</option><option value="activity_set">设置活跃度时间桶</option>
                   <option value="counter_reset">重置指定日计数</option>
                 </select></label>
@@ -263,7 +292,7 @@
               <pre id="correction-result" class="query-result" aria-live="polite">尚未预览。</pre>
             </section>
             <section class="card card-pad correction-card">
-              <div class="card-title"><div><h3>重置当前周期数据</h3><p>作用于所选群；历史、统计、补抽资格和待处理赠送均保留。点击后先显示影响范围。</p></div></div>
+              <div class="card-title"><div><h3>重置当前周期数据</h3><p>作用于所选群；历史、统计和待处理赠送均保留。点击后先显示影响范围。</p></div></div>
               <div class="actions">
                 <label class="inline-field"><span>玩法</span><select id="period-reset-mode"><option value="wife">老婆</option><option value="husband">老公</option><option value="member">娶群友</option><option value="all">全部玩法</option></select></label>
                 <div class="actions end">

@@ -50,16 +50,15 @@ FIELD_DESCRIPTIONS = {
     "title": "当前列表或排行标题",
     "count": "列表或排行记录总数",
     "lines": "已排版的排行内容",
-    "amount": "重启后失效的赠送邀请数量",
     "invite_ids": "已超时赠送邀请的编号列表",
     "details": "成员资格变化导致结束的关系或邀请明细",
     "owner_id": "原持有者 QQ 号（兼容旧文案，默认不展示）",
     "days": "活跃度统计窗口天数",
-    "score": "当前记录的亲密度或有向好感度数值",
+    "score": "当前记录的亲密度数值",
     "messages": "统计窗口内的消息数量",
     "active_days": "统计窗口内有发言的天数",
-    "forward_score": "发起者对目标群员的好感度",
-    "reverse_score": "目标群员对发起者的好感度",
+    "forward_score": "发起者对目标群员的亲密度",
+    "reverse_score": "目标群员对发起者的亲密度",
 }
 MESSAGE_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
     "daily_bonds_reply", default=MappingProxyType({})
@@ -81,9 +80,11 @@ IMAGE_KEYS = {
     "my_status",
     "help",
     "my_collection",
+    "character_info",
+    "group_stats",
+    "force_success",
     "designated_wife",
     "designated_husband",
-    "designated_drawn",
     "capacity_full",
     "capacity_full_single_wife",
     "capacity_full_single_husband",
@@ -97,7 +98,7 @@ IMAGE_KEYS = {
     "list_empty",
 }
 EXTRA_FIELDS = {
-    "member_redraw": {"owner_id"},
+    "member_removed": {"owner_id"},
     "owner_ineligible": {"owner_id"},
     "capacity_full": {"name"},
     "capacity_full_single_wife": {"name", "names"},
@@ -107,6 +108,7 @@ EXTRA_FIELDS = {
     "rank_activity": {"title", "lines", "count", "days", "group_name", "群名"},
     "rank_group_intimacy": {"group_name", "群名"},
     "query_affection": {"name", "target_name", "forward_score", "reverse_score"},
+    "group_stats": {"group_name", "群名", "days"},
 }
 _REQUIRED = {
     "messages.results.draw_wife": {"name"},

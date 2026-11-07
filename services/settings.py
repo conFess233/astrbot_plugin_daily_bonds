@@ -46,6 +46,7 @@ _ACTIONS = (
     "steal_wife",
     "steal_husband",
     "steal_member",
+    "force_member",
     "gift_wife",
     "gift_husband",
     "gift_member",
@@ -66,6 +67,8 @@ _ACTIONS = (
     "my_status",
     "help",
     "my_collection",
+    "character_info",
+    "group_stats",
 )
 
 
@@ -169,6 +172,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "statistics.poke_active_points": (0, 100000),
         "statistics.poke_passive_points": (0, 100000),
         "statistics.activity_window_days": (1, 365),
+        "statistics.intimacy_decay_percent": (0, 100),
+        "statistics.intimacy_decay_idle_days": (0, 365),
         "display.page_size": (1, 100),
         "display.rank_merge_rows": (1, 100),
         "members.cache_ttl_seconds": (0, 86400),
@@ -224,8 +229,18 @@ def validate_config(config: Mapping[str, Any]) -> None:
                 raise ConfigurationError(f"modes.{mode}.pool_ids 必须是字符串数组")
             if len(pools) != len(set(pools)):
                 raise ConfigurationError(f"modes.{mode}.pool_ids 不可重复")
-        elif "pool_ids" in current:
-            raise ConfigurationError("member 玩法不支持 pool_ids")
+        else:
+            if "pool_ids" in current:
+                raise ConfigurationError("member 玩法不支持 pool_ids")
+            _integer(config, "modes.member.force_limit", 0, 100)
+            for field in (
+                "force_probability",
+                "force_intimacy_bonus",
+                "force_probability_max",
+            ):
+                _finite_number(config, f"modes.member.{field}")
+                if not 0 <= current[field] <= 1:
+                    raise ConfigurationError(f"modes.member.{field} 必须在 0～1 之间")
 
     resource_ranges = {
         "http_timeout_seconds": (1, 120),

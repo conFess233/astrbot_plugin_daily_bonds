@@ -317,118 +317,69 @@ class GameplayBase:
             raise StorageError("请求的周期已结束或不属于当前群。")
         return row
 
-    def _issue_credit(
-        self,
-        db: sqlite3.Connection,
-        scope_id: int,
-        period_id: str,
-        mode: Mode,
-        user_id: str,
-        operation_id: str,
-        reason: str,
-        relation_id: str,
-        now: int,
+    @staticmethod
+    def _return_draw(
+        db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, user_id: str
     ) -> None:
-        source_id = f"{operation_id}:{relation_id}"
+        """失去关系后返还一次普通抽取；计数已为 0 时本来就还能抽。"""
+
         db.execute(
-            "INSERT OR IGNORE INTO redraw_credits(id,scope_id,period_id,mode,user_id,source_operation_id,reason,state,issued_at) VALUES(?,?,?,?,?,?,?,'available',?)",
-            (
-                str(uuid.uuid4()),
-                scope_id,
-                period_id,
-                mode,
-                user_id,
-                source_id,
-                reason,
-                now,
-            ),
+            "UPDATE daily_counters SET normal_draws=MAX(0,normal_draws-1) WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+            (scope_id, period_id, mode, user_id),
         )
 
     def _invalidate_relation_invites(
         self, db: sqlite3.Connection, relation_id: str, now: int, reason: str
     ) -> None:
+        """关系变动使待确认赠送作废，并通知双方，避免接收者白等。"""
+
+        invites = db.execute(
+            """SELECT i.id,i.scope_id,i.sender_id,i.recipient_id,s.umo,sn.name,r.subject_id,r.subject_kind
+               FROM gift_invites i JOIN scopes s ON s.id=i.scope_id
+               JOIN relationships r ON r.id=i.relationship_id
+               JOIN subject_snapshots sn ON sn.id=r.snapshot_id
+               WHERE i.relationship_id=? AND i.state='pending'""",
+            (relation_id,),
+        ).fetchall()
+        if not invites:
+            return
         db.execute(
             "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason=? WHERE relationship_id=? AND state='pending'",
             (now, reason, relation_id),
         )
-
-    def _outbox(
-        self,
-        db: sqlite3.Connection,
-        scope_id: int,
-        dedupe_key: str,
-        umo: str,
-        payload: dict[str, Any],
-        now: int,
-    ) -> None:
-        if payload.get("kind") in {"gift_invite", "gift_invite_final"}:
-            invite = db.execute(
-                "SELECT * FROM gift_invites WHERE scope_id=? AND id=?",
-                (scope_id, payload["invite_id"]),
-            ).fetchone()
-            if invite:
-                config, _ = self.storage.get_settings(scope_id)
-                names = {
-                    str(row["user_id"]): row["card"] or row["nickname"] or "群友"
-                    for row in db.execute(
-                        "SELECT user_id,card,nickname FROM members WHERE scope_id=?",
-                        (scope_id,),
-                    )
-                }
-                relation = db.execute(
-                    "SELECT r.subject_id,r.subject_kind,s.name FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id WHERE r.scope_id=? AND r.id=?",
-                    (scope_id, invite["relationship_id"]),
-                ).fetchone()
-                subject = (
-                    names.get(str(relation["subject_id"]), "群友")
-                    if relation and relation["subject_kind"] == "member"
-                    else relation["name"]
-                    if relation
-                    else "对象"
+        for invite in invites:
+            scope_id = int(invite["scope_id"])
+            config, _ = self.storage.get_settings(scope_id)
+            names = {
+                str(row["user_id"]): str(row["card"] or row["nickname"] or "群友")
+                for row in db.execute(
+                    "SELECT user_id,card,nickname FROM members WHERE scope_id=?",
+                    (scope_id,),
                 )
-                state = payload.get("state", "pending")
-                key = (
-                    "invite_created"
-                    if state == "pending"
-                    else "gift_accepted"
-                    if state == "accepted"
-                    else "invite_" + state
-                )
-                text = render_message(
-                    config,
-                    "results",
-                    key,
-                    actor_name=names.get(
-                        str(
-                            invite["sender_id"]
-                            if state in {"pending", "cancelled"}
-                            else invite["recipient_id"]
-                        ),
-                        "群友",
-                    ),
-                    sender_name=names.get(str(invite["sender_id"]), "群友"),
-                    recipient_name=names.get(str(invite["recipient_id"]), "群友"),
-                    subject_name=subject,
-                    name=subject,
-                    invite_id=invite["id"],
-                    accept_keyword=config["commands"]["keywords"]["gift_accept"][0],
-                )
-                if not text.strip():
-                    return
-                payload["text"] = (
-                    text if state == "pending" else f"赠送邀请 {invite['id']}：{text}"
-                )
-        db.execute(
-            "INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at) VALUES(?,?,?,?,?,'pending',?)",
-            (
-                str(uuid.uuid4()),
-                scope_id,
-                dedupe_key,
-                umo,
-                json.dumps(payload, ensure_ascii=False),
-                now,
-            ),
-        )
+            }
+            text = render_message(
+                config,
+                "notifications",
+                "invite_relationship_changed",
+                sender_name=names.get(str(invite["sender_id"]), "群友"),
+                recipient_name=names.get(str(invite["recipient_id"]), "群友"),
+                subject_name=names.get(str(invite["subject_id"]), "群友")
+                if invite["subject_kind"] == "member"
+                else str(invite["name"]),
+            )
+            if not text.strip():
+                continue
+            db.execute(
+                "INSERT OR IGNORE INTO notification_outbox(id,scope_id,dedupe_key,umo,payload_json,state,created_at) VALUES(?,?,?,?,?,'pending',?)",
+                (
+                    str(uuid.uuid4()),
+                    scope_id,
+                    f"invite-changed:{invite['id']}",
+                    str(invite["umo"]),
+                    json.dumps({"text": str(text)}, ensure_ascii=False),
+                    now,
+                ),
+            )
 
     def _replay(
         self,

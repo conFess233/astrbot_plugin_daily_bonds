@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from typing import Any
 
 from ..models.command import ParsedCommand
+from ..models.gameplay import Candidate
 from . import game_rules as rules
 from .command_features import FeatureHandler
 from .command_listing import ListingHandler
@@ -48,11 +50,12 @@ class ActionHandler:
         actor_id: str,
         target_id: str | None,
         mode_config: Mapping[str, Any],
+        prefix: str = "steal",
     ) -> float:
         """亲密度加成为 0 时直接使用基础成功率，避免多余查询。"""
 
-        base = float(mode_config["steal_probability"])
-        bonus = float(mode_config["steal_intimacy_bonus"])
+        base = float(mode_config[f"{prefix}_probability"])
+        bonus = float(mode_config[f"{prefix}_intimacy_bonus"])
         if not bonus or not target_id:
             return base
         intimacy = await asyncio.to_thread(
@@ -62,7 +65,7 @@ class ActionHandler:
             target_id=target_id,
         )
         return rules.steal_probability(
-            base, bonus, float(mode_config["steal_probability_max"]), intimacy
+            base, bonus, float(mode_config[f"{prefix}_probability_max"]), intimacy
         )
 
     async def query_or_action(self, **values: Any) -> str | RuntimeReply | None:
@@ -88,6 +91,10 @@ class ActionHandler:
             return await self.features.help(values)
         if command.action == "my_collection":
             return await self.features.my_collection(values)
+        if command.action == "character_info":
+            return await self.features.character_info(values)
+        if command.action == "group_stats":
+            return await self.features.group_stats(values)
         mode = values["mode"]
         mode_config = values["config"]["modes"][mode]
         config = values["config"]
@@ -102,12 +109,48 @@ class ActionHandler:
             recipient_name=names.get(target_id, "群友"),
             target_name=names.get(target_id, "群友"),
         )
+        if command.action == "force_member":
+            if not mode_config["force_limit"]:
+                return render_message(config, "errors", "force_disabled")
+            if (
+                not target_id
+                or target_id == actor_id
+                or target_id not in values["eligible"]
+            ):
+                return render_message(config, "errors", "force_target_required")
+            set_message_values(subject_name=names.get(target_id, "群友"))
+            result = await asyncio.to_thread(
+                self.gameplay.force_marry,
+                scope_id=values["scope_id"],
+                period_id=values["period_id"],
+                actor_id=actor_id,
+                target_id=target_id,
+                capacity=mode_config["capacity"],
+                limit=mode_config["force_limit"],
+                probability=await self._steal_probability(
+                    values["scope_id"], actor_id, target_id, mode_config, "force"
+                ),
+                event_key=values["event_key"],
+                payload_hash=values["payload_hash"],
+                config_revision=values["revision"],
+                now=values["now"],
+            )
+            if result.data.get("owner_id"):
+                set_message_values(
+                    owner_name=names.get(str(result.data["owner_id"]), "群友")
+                )
+            reply = await self.replies.result_reply(
+                result.code, result.data, mode, config
+            )
+            if result.code == "FORCED":
+                return await self._with_mutual(reply, values, mode, actor_id, target_id)
+            return reply
         if command.action.startswith("steal_"):
             if not mode_config["steal_enabled"]:
                 return render_message(config, "errors", "steal_disabled")
             if not target_id or target_id not in values["eligible"]:
                 return render_message(config, "errors", "steal_target_required")
-            relation_id = await asyncio.to_thread(
+            relation_id, matches = await asyncio.to_thread(
                 self._resolve_relation,
                 values["scope_id"],
                 values["period_id"],
@@ -116,7 +159,16 @@ class ActionHandler:
                 command.argument,
             )
             if command.argument and relation_id is None:
-                return render_message(config, "errors", "steal_relation_ambiguous")
+                return (
+                    render_message(
+                        config,
+                        "errors",
+                        "steal_relation_ambiguous",
+                        candidates=_choices(matches),
+                    )
+                    if matches
+                    else render_message(config, "errors", "steal_relation_missing")
+                )
             if relation_id:
                 relation = await asyncio.to_thread(
                     self.replies.relationship_display, relation_id
@@ -143,9 +195,14 @@ class ActionHandler:
                 config_revision=values["revision"],
                 now=values["now"],
             )
-            return await self.replies.result_reply(
+            reply = await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
+            if result.code == "STOLEN":
+                return await self._with_mutual(
+                    reply, values, mode, actor_id, str(result.data["subject_id"])
+                )
+            return reply
         if command.action.startswith("gift_") and command.action not in {
             "gift_accept",
             "gift_reject",
@@ -155,16 +212,24 @@ class ActionHandler:
                 return render_message(config, "errors", "gift_disabled")
             if not target_id or target_id not in values["eligible"]:
                 return render_message(config, "errors", "gift_target_required")
-            relation_id = await asyncio.to_thread(
+            relation_id, matches = await asyncio.to_thread(
                 self._resolve_relation,
                 values["scope_id"],
                 values["period_id"],
                 mode,
                 actor_id,
                 command.argument,
+                require_choice=True,
             )
+            if relation_id is None and matches:
+                return render_message(
+                    config,
+                    "errors",
+                    "gift_relation_ambiguous",
+                    candidates=_choices(matches),
+                )
             if command.argument and relation_id is None:
-                return render_message(config, "errors", "gift_relation_ambiguous")
+                return render_message(config, "errors", "gift_relation_missing")
             if relation_id:
                 relation = await asyncio.to_thread(
                     self.replies.relationship_display, relation_id
@@ -190,13 +255,18 @@ class ActionHandler:
                 now=values["now"],
             )
             accept_keyword = values["config"]["commands"]["keywords"]["gift_accept"][0]
-            return await self.replies.result_reply(
+            reply = await self.replies.result_reply(
                 result.code,
                 result.data,
                 mode,
                 values["config"],
                 accept_keyword=accept_keyword,
             )
+            if result.code == "GIFTED":
+                return await self._with_mutual(
+                    reply, values, mode, target_id, str(result.data["subject_id"])
+                )
+            return reply
         if command.action in {
             "divorce_character",
             "divorce_wife",
@@ -313,20 +383,59 @@ class ActionHandler:
                 config_revision=values["revision"],
                 now=values["now"],
             )
-            return await self.replies.result_reply(
+            reply = await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
+            if result.code == "GIFT_ACCEPTED" and relation:
+                return await self._with_mutual(
+                    reply, values, mode, actor_id, str(relation["subject_id"])
+                )
+            return reply
         return None
 
-    def _divorce_matches(
+    async def _with_mutual(
         self,
-        scope_id: int,
-        period_id: str,
+        reply: str | RuntimeReply,
+        values: Mapping[str, Any],
+        mode: str,
         owner_id: str,
-        modes: tuple[str, ...],
-        query: str | None,
-        target_user_id: str | None,
-    ) -> list[dict[str, str]]:
+        subject_id: str,
+    ) -> str | RuntimeReply:
+        """抢夺或赠送促成双向奔赴时，在回复后追加一行提示。"""
+
+        if mode != "member" or not isinstance(reply, RuntimeReply):
+            return reply
+        if not reply.text.strip() or not await asyncio.to_thread(
+            self.status.is_mutual,
+            scope_id=values["scope_id"],
+            period_id=values["period_id"],
+            owner_id=owner_id,
+            subject_id=subject_id,
+        ):
+            return reply
+        names = MESSAGE_CONTEXT.get().get("member_names", {})
+        notice = render_message(
+            values["config"],
+            "results",
+            "mutual_formed",
+            owner_name=names.get(owner_id, "群友"),
+            subject_name=names.get(subject_id, "群友"),
+        )
+        if not notice.strip():
+            return reply
+        return replace(
+            reply,
+            text=MessageText(
+                f"{reply.text}\n{notice}",
+                quote_source=getattr(reply.text, "quote_source", False),
+            ),
+        )
+
+    def _owned_rows(
+        self, scope_id: int, period_id: str, owner_id: str, modes: tuple[str, ...]
+    ) -> list[dict[str, Any]]:
+        """当前关系及其可匹配的名称；群友用当前名片和昵称，旧名字仍可匹配。"""
+
         marks = ",".join("?" for _ in modes)
         with self.storage.read() as db:
             rows = db.execute(
@@ -341,61 +450,94 @@ class ActionHandler:
                     ORDER BY r.acquired_at,r.id""",
                 (scope_id, period_id, owner_id, *modes),
             ).fetchall()
-        matches: list[dict[str, str]] = []
-        normalized = query.removeprefix("#") if query else None
-        for row in rows:
-            if target_user_id is not None:
-                selected = (
-                    row["mode"] == "member" and str(row["subject_id"]) == target_user_id
-                )
-            elif query is None:
-                selected = row["slot_kind"] == "normal"
-            else:
-                names = {str(row["name"]), *json.loads(row["aliases_json"])}
-                if row["mode"] == "member":
-                    names.update(
-                        str(row[key]) for key in ("nickname", "card") if row[key]
+        return [
+            {
+                "id": str(row["id"]),
+                "mode": str(row["mode"]),
+                "subject_id": str(row["subject_id"]),
+                "slot_kind": str(row["slot_kind"]),
+                "name": str(row["card"] or row["nickname"] or row["name"]),
+                "aliases": tuple(
+                    filter(
+                        None,
+                        (
+                            *json.loads(row["aliases_json"]),
+                            row["name"],
+                            row["card"],
+                            row["nickname"],
+                        ),
                     )
-                selected = str(row["subject_id"]) == normalized or query in names
-            if selected:
-                matches.append(
-                    {
-                        key: str(row[key])
-                        for key in ("id", "mode", "subject_id", "name", "slot_kind")
-                    }
-                )
+                ),
+            }
+            for row in rows
+        ]
+
+    @staticmethod
+    def _match_rows(rows: list[dict[str, Any]], query: str) -> list[dict[str, Any]]:
+        """与指定角色相同的匹配规则：短 ID、忽略大小写，最后按包含匹配。"""
+
+        candidates = {
+            row["subject_id"]: Candidate(
+                row["subject_id"], "character", row["name"], row["aliases"]
+            )
+            for row in rows
+        }
+        matched = {
+            item.subject_id
+            for item in rules.match_candidates(list(candidates.values()), query)
+        }
+        return [row for row in rows if row["subject_id"] in matched]
+
+    def _divorce_matches(
+        self,
+        scope_id: int,
+        period_id: str,
+        owner_id: str,
+        modes: tuple[str, ...],
+        query: str | None,
+        target_user_id: str | None,
+    ) -> list[dict[str, Any]]:
+        rows = self._owned_rows(scope_id, period_id, owner_id, modes)
+        if target_user_id is not None:
+            matches = [
+                row
+                for row in rows
+                if row["mode"] == "member" and row["subject_id"] == target_user_id
+            ]
+        elif query is None:
+            matches = rows
+        else:
+            matches = self._match_rows(rows, query)
+        # 优先普通关系；只剩受保护关系时留一条，由调用方回复“受保护”。
         normal = [item for item in matches if item["slot_kind"] == "normal"]
         return normal or matches[:1]
 
     def _resolve_relation(
-        self, scope_id: int, period_id: str, mode: str, owner_id: str, query: str | None
-    ) -> str | None:
-        with self.storage.read() as db:
-            rows = db.execute(
-                """SELECT r.id,r.subject_id,r.slot_kind,s.name,s.aliases_json FROM relationships r
-                   JOIN subject_snapshots s ON s.id=r.snapshot_id
-                   WHERE r.scope_id=? AND r.period_id=? AND r.mode=? AND r.owner_id=? AND r.state='active'
-                   ORDER BY r.acquired_at,r.id""",
-                (scope_id, period_id, mode, owner_id),
-            ).fetchall()
-        if not query:
-            return None
-        normalized = query.removeprefix("#")
-        matches = [
-            row
-            for row in rows
-            if str(row["subject_id"]) == normalized
-            or query == str(row["name"])
-            or query in json.loads(row["aliases_json"])
-        ]
+        self,
+        scope_id: int,
+        period_id: str,
+        mode: str,
+        owner_id: str,
+        query: str | None,
+        *,
+        require_choice: bool = False,
+    ) -> tuple[str | None, list[dict[str, Any]]]:
+        """返回唯一选中的关系；不唯一时 ID 为空，并附上供用户选择的候选。
+
+        抢夺不写对象时随机，赠送（`require_choice`）则要求有多段时明确指定。
+        受保护的关系也能被选中，由玩法事务回复“受保护”。
+        """
+
+        rows = self._owned_rows(scope_id, period_id, owner_id, (mode,))
+        if not query and not require_choice:
+            return None, []
+        matches = self._match_rows(rows, query) if query else rows
         normal = [row for row in matches if row["slot_kind"] == "normal"]
-        return (
-            str(normal[0]["id"])
-            if len(normal) == 1
-            else str(matches[0]["id"])
-            if matches and not normal
-            else None
-        )
+        if len(normal) == 1:
+            return normal[0]["id"], []
+        if normal:
+            return None, normal
+        return (matches[0]["id"], []) if query and matches else (None, [])
 
     def _single_pending_invite(
         self, scope_id: int, actor_id: str, action: str
@@ -409,3 +551,9 @@ class ActionHandler:
         if len(rows) > 1:
             return "multiple"
         return str(rows[0]["id"]) if rows else None
+
+
+def _choices(rows: list[dict[str, Any]]) -> str:
+    """歧义提示中的候选列表：每行“名称 · #ID”。"""
+
+    return "\n".join(f"{row['name']} · #{row['subject_id']}" for row in rows)

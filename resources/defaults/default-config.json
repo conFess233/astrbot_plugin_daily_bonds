@@ -42,6 +42,9 @@
       "steal_member": [
         "抢群友"
       ],
+      "force_member": [
+        "强娶"
+      ],
       "gift_wife": [
         "送老婆"
       ],
@@ -102,6 +105,12 @@
       ],
       "my_collection": [
         "我的图鉴"
+      ],
+      "character_info": [
+        "角色信息"
+      ],
+      "group_stats": [
+        "本群统计"
       ]
     }
   },
@@ -162,7 +171,11 @@
       "divorce_enabled": true,
       "divorce_limit": 1,
       "steal_intimacy_bonus": 0.0,
-      "steal_probability_max": 0.9
+      "steal_probability_max": 0.9,
+      "force_limit": 1,
+      "force_probability": 0.2,
+      "force_intimacy_bonus": 0.001,
+      "force_probability_max": 0.8
     }
   },
   "statistics": {
@@ -172,7 +185,9 @@
     "mention_passive_points": 1,
     "poke_active_points": 2,
     "poke_passive_points": 1,
-    "activity_window_days": 7
+    "activity_window_days": 7,
+    "intimacy_decay_percent": 0,
+    "intimacy_decay_idle_days": 7
   },
   "weights": {
     "base": 1.0,
@@ -208,37 +223,42 @@
         "quote": false
       },
       "capacity_full": {
-        "text": "持有名额已满：{names}。可以先发送“离婚”解除一段普通关系。",
+        "text": "持有名额已满：{names}。",
         "enabled": true,
         "quote": false
       },
       "relationship_locked": {
-        "text": "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
+        "text": "抢来的和指定的关系本周期受保护，不能主动解除或赠送。",
         "enabled": true,
         "quote": false
       },
       "steal_slot_locked": {
-        "text": "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
+        "text": "对方这段关系是抢来的或指定的，本周期受保护，不能抢夺。",
         "enabled": true,
         "quote": false
       },
       "capacity_full_single_wife": {
-        "text": "你今日已有老婆{names}啦，{reset_at} 重置后再来吧。",
+        "text": "你本周期已有老婆{names}啦，{reset_at} 重置后再来吧。",
         "enabled": true,
         "quote": false
       },
       "capacity_full_single_husband": {
-        "text": "你今日已有老公{names}啦，{reset_at} 重置后再来吧。",
+        "text": "你本周期已有老公{names}啦，{reset_at} 重置后再来吧。",
         "enabled": true,
         "quote": false
       },
       "no_draw_quota": {
-        "text": "今天的普通抽取次数已用完，{reset_at} 重置；离婚可获得一次补抽资格。",
+        "text": "本周期的普通抽取次数已用完，{reset_at} 重置。",
         "enabled": true,
         "quote": false
       },
       "no_candidate": {
         "text": "当前没有可抽取的对象：角色可能都已被持有，或对应角色池没有可用角色。",
+        "enabled": true,
+        "quote": false
+      },
+      "no_candidate_member": {
+        "text": "当前没有可娶的群友：需要有人近期发言或有亲密度记录，且本周期未被他人娶走。",
         "enabled": true,
         "quote": false
       },
@@ -248,17 +268,52 @@
         "quote": false
       },
       "stolen": {
-        "text": "{actor_name}从{owner_name}处抢到了{subject_name}。",
+        "text": "{actor_name}从{owner_name}处抢到了{subject_name}，{owner_name}可以再次抽取。",
+        "enabled": true,
+        "quote": false
+      },
+      "force_success": {
+        "text": "{actor_name}强娶了{name}！{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "force_failed": {
+        "text": "{actor_name}强娶{subject_name}失败了。",
+        "enabled": true,
+        "quote": false
+      },
+      "force_limit": {
+        "text": "本周期强娶次数已用完，{reset_at} 重置。",
+        "enabled": true,
+        "quote": false
+      },
+      "force_target_taken": {
+        "text": "{subject_name}已经被{owner_name}娶走了，不能强娶；可以试试抢夺。",
+        "enabled": true,
+        "quote": false
+      },
+      "already_holds": {
+        "text": "你已持有{subject_name}，不能再抢夺。",
         "enabled": true,
         "quote": false
       },
       "divorced": {
-        "text": "{actor_name}与{subject_name}的关系已解除，获得一次补抽资格。",
+        "text": "{actor_name}与{subject_name}的关系已解除，可以再次抽取。",
         "enabled": true,
         "quote": false
       },
       "gifted": {
         "text": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
+        "enabled": true,
+        "quote": false
+      },
+      "recipient_full": {
+        "text": "{recipient_name}的持有名额已满，暂时不能接收赠送。",
+        "enabled": true,
+        "quote": false
+      },
+      "recipient_holds": {
+        "text": "{recipient_name}已持有{subject_name}，不能重复接收。",
         "enabled": true,
         "quote": false
       },
@@ -283,17 +338,17 @@
         "quote": false
       },
       "invite_expired": {
-        "text": "赠送邀请已过期",
+        "text": "赠送邀请已过期。",
         "enabled": true,
         "quote": false
       },
       "invite_invalidated": {
-        "text": "赠送邀请已失效",
+        "text": "赠送邀请已失效。",
         "enabled": true,
         "quote": false
       },
       "invite_not_owned": {
-        "text": "你无权处理这条邀请",
+        "text": "你无权处理这条邀请。",
         "enabled": true,
         "quote": false
       },
@@ -308,7 +363,7 @@
         "quote": false
       },
       "target_protected": {
-        "text": "该持有者本周期已受抢夺保护",
+        "text": "该持有者本周期已受抢夺保护。",
         "enabled": true,
         "quote": false
       },
@@ -323,42 +378,42 @@
         "quote": false
       },
       "invalid_target": {
-        "text": "目标无效",
+        "text": "目标无效。",
         "enabled": true,
         "quote": false
       },
       "no_target_relationship": {
-        "text": "目标没有可抢夺的关系",
+        "text": "目标没有可抢夺的关系。",
         "enabled": true,
         "quote": false
       },
       "mode_disabled": {
-        "text": "这个玩法当前已关闭",
+        "text": "这个玩法当前已关闭。",
         "enabled": true,
         "quote": false
       },
       "invalid_probability": {
-        "text": "抢夺概率配置无效",
+        "text": "抢夺概率配置无效。",
         "enabled": true,
         "quote": false
       },
       "invalid_timeout": {
-        "text": "赠送超时配置无效",
+        "text": "赠送超时配置无效。",
         "enabled": true,
         "quote": false
       },
       "invite_already_pending": {
-        "text": "该关系已有待处理赠送邀请，编号 {invite_id}",
+        "text": "该关系已有待处理赠送邀请，编号 {invite_id}。",
         "enabled": true,
         "quote": false
       },
       "invite_limit": {
-        "text": "待处理赠送邀请已达上限 {limit}",
+        "text": "待处理赠送邀请已达上限 {limit}。",
         "enabled": true,
         "quote": false
       },
       "invite_invalid": {
-        "text": "赠送邀请已无效",
+        "text": "赠送邀请已无效。",
         "enabled": true,
         "quote": false
       },
@@ -389,16 +444,6 @@
       },
       "designated_occupied": {
         "text": "该角色已有关系，当前开启了指定角色独占。",
-        "enabled": true,
-        "quote": false
-      },
-      "designated_drawn": {
-        "text": "指定成功：{name}{image}",
-        "enabled": true,
-        "quote": false
-      },
-      "designated_relationship_locked": {
-        "text": "指定得到的关系当天受保护，不能抢夺、赠送或主动解除。",
         "enabled": true,
         "quote": false
       },
@@ -443,12 +488,17 @@
         "quote": false
       },
       "already_held": {
-        "text": "你今天已持有 {name}。",
+        "text": "你本周期已持有 {name}。",
         "enabled": true,
         "quote": false
       },
       "draw_member_mutual": {
         "text": "{actor_name}和{name}双向奔赴啦！{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "mutual_formed": {
+        "text": "{owner_name}和{subject_name}双向奔赴啦！",
         "enabled": true,
         "quote": false
       },
@@ -463,6 +513,16 @@
         "quote": false
       },
       "my_collection": {
+        "text": "{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "character_info": {
+        "text": "{lines}{image}",
+        "enabled": true,
+        "quote": false
+      },
+      "group_stats": {
         "text": "{lines}{image}",
         "enabled": true,
         "quote": false
@@ -500,7 +560,22 @@
         "quote": false
       },
       "steal_relation_ambiguous": {
-        "text": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。",
+        "text": "该持有者有多段匹配的关系，请写明名称或 #ID：\n{candidates}",
+        "enabled": true,
+        "quote": false
+      },
+      "steal_relation_missing": {
+        "text": "该持有者没有匹配的关系，请检查名称或 #ID。",
+        "enabled": true,
+        "quote": false
+      },
+      "force_disabled": {
+        "text": "本群当前不允许强娶。",
+        "enabled": true,
+        "quote": false
+      },
+      "force_target_required": {
+        "text": "请 @ 一位当前群内且允许参与的其他成员。",
         "enabled": true,
         "quote": false
       },
@@ -515,7 +590,12 @@
         "quote": false
       },
       "gift_relation_ambiguous": {
-        "text": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
+        "text": "你有多段可赠送的关系，请写明要送出哪一段：\n{candidates}",
+        "enabled": true,
+        "quote": false
+      },
+      "gift_relation_missing": {
+        "text": "你没有匹配的关系；发送“我的姻缘”查看当前关系。",
         "enabled": true,
         "quote": false
       },
@@ -584,6 +664,16 @@
         "enabled": true,
         "quote": false
       },
+      "character_info_missing": {
+        "text": "未找到本群角色池内的角色；请检查名称、别名或 ID。",
+        "enabled": true,
+        "quote": false
+      },
+      "character_info_ambiguous": {
+        "text": "匹配到多个角色，请使用明确 ID：\n{candidates}",
+        "enabled": true,
+        "quote": false
+      },
       "affection_target_required": {
         "text": "请 @ 一位当前群内且允许参与的其他成员。",
         "enabled": true,
@@ -611,20 +701,20 @@
       }
     },
     "notifications": {
-      "restart_invalidated": {
-        "text": "AstrBot 已重启，{amount} 条待处理赠送邀请已失效。",
-        "enabled": true
-      },
       "invite_expired": {
         "text": "以下赠送邀请已超时：{invite_ids}",
         "enabled": true
       },
-      "member_reconcile": {
-        "text": "成员资格变化，以下关系或邀请已结束：{details}",
+      "invite_relationship_changed": {
+        "text": "{sender_name}赠送给{recipient_name}的{subject_name}已不可接受：这段关系发生了变化，邀请失效。",
         "enabled": true
       },
-      "member_redraw": {
-        "text": "{name}（持有人 {owner_name} 获得补抽资格）",
+      "member_removed": {
+        "text": "{name}（持有人 {owner_name} 可以再次抽取）",
+        "enabled": true
+      },
+      "member_reconcile": {
+        "text": "成员资格变化，以下关系或邀请已结束：{details}",
         "enabled": true
       },
       "owner_ineligible": {
@@ -639,12 +729,12 @@
     "titles": {
       "list_wife": "老婆列表",
       "list_husband": "老公列表",
-      "list_member": "群友配偶列表",
+      "list_member": "群友列表",
       "existing": "已有关系",
       "rank_intimacy": "{name}与群友的亲密度排行",
-      "rank_group_intimacy": "{群名}的亲密度排行",
-      "rank_activity": "{群名}的活跃度排行",
-      "query_affection": "{name}与{target_name}的好感度",
+      "rank_group_intimacy": "{group_name}的亲密度排行",
+      "rank_activity": "{group_name}的活跃度排行",
+      "query_affection": "{name}与{target_name}的亲密度",
       "page": "{title} 第 {page}/{pages} 页",
       "empty": "暂无记录。",
       "rank_summary": "{title}（共 {count}）",
@@ -660,7 +750,12 @@
       "member": "群友",
       "status": "{name}的今日姻缘",
       "help": "今日姻缘 · 指令帮助",
-      "collection": "{name}的图鉴"
+      "collection": "{name}的图鉴",
+      "admin_slot": "管理员设置",
+      "mutual": "双向奔赴",
+      "force_slot": "强娶",
+      "character_info": "角色信息 · {name}",
+      "group_stats": "{group_name}的姻缘统计"
     }
   },
   "history": {

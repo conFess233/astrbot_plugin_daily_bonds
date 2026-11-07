@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from ..models.errors import StorageError
 from ..models.scope import Scope
-from .config_upgrade import is_legacy, upgrade_config
+from .config_upgrade import is_legacy, refresh_superseded_messages, upgrade_config
 from .settings import (
     SCOPE_OVERRIDABLE,
     default_config,
@@ -26,7 +26,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 15
+_SCHEMA_VERSION = 17
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -106,6 +106,12 @@ class SQLiteStorage:
             if self.connection is not None:
                 self.connection.close()
                 self.connection = None
+
+    def optimize(self) -> None:
+        """大批删除后更新查询规划统计。删除腾出的页留在库内，由后续写入复用。"""
+
+        with self._lock:
+            self._connection().execute("PRAGMA optimize")
 
     @contextmanager
     def read(self) -> Iterator[sqlite3.Connection]:
@@ -400,10 +406,6 @@ class SQLiteStorage:
                     (int(current["ends_at"]), scope_id, current["id"]),
                 )
                 db.execute(
-                    "UPDATE redraw_credits SET state='expired' WHERE scope_id=? AND period_id=? AND state='available'",
-                    (scope_id, current["id"]),
-                )
-                db.execute(
                     "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='period_end' WHERE scope_id=? AND period_id=? AND state='pending'",
                     (now, scope_id, current["id"]),
                 )
@@ -559,9 +561,11 @@ class SQLiteStorage:
             migration_dir / "013_relationship_sources.sql",
             migration_dir / "014_v2_settings_collection.sql",
             migration_dir / "015_split_intimacy_rank.sql",
+            migration_dir / "016_cleanup_and_decay.sql",
+            migration_dir / "017_remove_redraw_credits.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
-        hooks = {14: _upgrade_settings_v2}
+        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17}
         variants = [_checksum_variants(path) for path in migration_files]
         # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
         checksums = [lf for lf, _crlf in variants]
@@ -735,6 +739,33 @@ def _checksum_variants(path: Path) -> tuple[str, str]:
         hashlib.sha256(data).hexdigest(),
         hashlib.sha256(data.replace(b"\n", b"\r\n")).hexdigest(),
     )
+
+
+def _upgrade_v17(connection: sqlite3.Connection, _from_version: int) -> None:
+    """未用的补抽资格折算为返还次数后删表；刷新已保存配置里的文案。
+
+    已保存配置里删除废弃文案，仍是旧默认值的文案换成当前默认值。
+    """
+
+    if connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='redraw_credits'"
+    ).fetchone():
+        connection.execute(
+            """UPDATE daily_counters SET normal_draws=MAX(0,normal_draws-(
+                 SELECT COUNT(*) FROM redraw_credits c WHERE c.state='available'
+                 AND c.scope_id=daily_counters.scope_id AND c.period_id=daily_counters.period_id
+                 AND c.mode=daily_counters.mode AND c.user_id=daily_counters.user_id))"""
+        )
+        connection.execute("DROP TABLE redraw_credits")
+    for row in connection.execute(
+        "SELECT scope_key,value_json FROM settings"
+    ).fetchall():
+        value = json.loads(row["value_json"])
+        if refresh_superseded_messages(value):
+            connection.execute(
+                "UPDATE settings SET value_json=? WHERE scope_key=?",
+                (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+            )
 
 
 def _upgrade_settings_v2(connection: sqlite3.Connection, from_version: int) -> None:

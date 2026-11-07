@@ -22,8 +22,7 @@ export function dataTable(records, columns) {
 }
 
 export const correctionExamples = {
-  relationship_end: '{"relationship_id":"关系 ID","compensation":0}',
-  credit_grant: '{"mode":"member","user_id":"QQ号","quantity":1}',
+  relationship_end: '{"relationship_id":"关系 ID"}',
   intimacy_set: '{"source_id":"QQ号","target_id":"QQ号","score":0}',
   activity_set: '{"user_id":"QQ号","observed_second":1780000000,"message_count":0}',
   counter_reset: '{"mode":"member","user_id":"QQ号","fields":["normal_draws"]}',
@@ -41,9 +40,9 @@ function periodResetSummary(plan) {
   const scope = state.scopes.find((item) => String(item.id) === String(plan.scope_id));
   const group = scope ? `群 ${scope.group_id}` : `群作用域 ${plan.scope_id}`;
   if (plan.action === "period_reset_relations") {
-    return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将结束 ${plan.before.active_relationships} 段关系（普通 ${plan.before.normal_relationships}，抢夺槽位 ${plan.before.steal_slot_relationships}，指定槽位 ${plan.before.designated_relationships || 0}）。\n保留 ${plan.before.pending_invites_retained} 个待处理赠送、每日计数、补抽资格、历史和统计。`;
+    return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将结束 ${plan.before.active_relationships} 段关系（普通 ${plan.before.normal_relationships}，抢夺槽位 ${plan.before.steal_slot_relationships}，指定槽位 ${plan.before.designated_relationships || 0}）。\n保留 ${plan.before.pending_invites_retained} 个待处理赠送、每日计数、历史和统计。`;
   }
-  return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将清零 ${plan.before.counter_rows} 条每日计数记录（含普通抽取、指定抽取与抢夺计数）。\n保留关系、补抽资格、待处理赠送、历史和统计。`;
+  return `${group} · ${mode}\n当前周期：${plan.before.period_id}\n将清零 ${plan.before.counter_rows} 条每日计数记录（含普通抽取、指定抽取与抢夺计数）。\n保留关系、待处理赠送、历史和统计。`;
 }
 
 export async function previewPeriodReset(action) {

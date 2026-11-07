@@ -16,6 +16,7 @@ _COUNTERS = {
     "normal_draws",
     "designated_draws",
     "steal_attempts",
+    "force_attempts",
     "stolen_successes",
     "divorces",
 }
@@ -32,7 +33,6 @@ class AdminCorrectionService:
         action = payload.get("action")
         if action not in {
             "relationship_end",
-            "credit_grant",
             "intimacy_set",
             "activity_set",
             "counter_reset",
@@ -224,20 +224,7 @@ class AdminCorrectionService:
             relationship_id = self._text(
                 payload.get("relationship_id"), "relationship_id", 128
             )
-            compensation = payload.get("compensation", 0)
-            if (
-                isinstance(compensation, bool)
-                or not isinstance(compensation, int)
-                or not 0 <= compensation <= 10
-            ):
-                raise ValueError("compensation 必须在 0 到 10 之间。")
-            return {"relationship_id": relationship_id, "compensation": compensation}
-        if action == "credit_grant":
-            return {
-                "user_id": self._text(payload.get("user_id"), "user_id", 128),
-                "mode": self._mode(payload.get("mode")),
-                "quantity": self._integer(payload.get("quantity"), "quantity", 1, 10),
-            }
+            return {"relationship_id": relationship_id}
         if action == "intimacy_set":
             source = self._text(payload.get("source_id"), "source_id", 128)
             target = self._text(payload.get("target_id"), "target_id", 128)
@@ -317,11 +304,10 @@ class AdminCorrectionService:
                     "pending_invites_retained": invite_count,
                     "normal_draws_unchanged": True,
                     "designated_draws_unchanged": True,
-                    "redraw_credits_unchanged": True,
                 }
             else:
                 rows = db.execute(
-                    f"""SELECT mode,user_id,normal_draws,designated_draws,steal_attempts,stolen_successes,divorces,last_steal_at
+                    f"""SELECT mode,user_id,normal_draws,designated_draws,steal_attempts,force_attempts,stolen_successes,divorces,last_steal_at
                          FROM daily_counters WHERE scope_id=? AND period_id=?{mode_sql} ORDER BY mode,user_id""",
                     params,
                 ).fetchall()
@@ -334,7 +320,6 @@ class AdminCorrectionService:
                     "period_id": period,
                     "counter_rows_reset": len(rows),
                     "relationships_unchanged": True,
-                    "redraw_credits_unchanged": True,
                 }
             return f"{period}:{mode}", before, after
         if action == "relationship_end":
@@ -356,27 +341,9 @@ class AdminCorrectionService:
                 "state": "ended",
                 "ended_at": now,
                 "end_reason": reason,
-                "compensation": spec["compensation"],
                 "invalidated_invites": pending_invites,
             }
             return str(row["id"]), before, after
-        if action == "credit_grant":
-            period = self._current_period(db, scope_id)
-            target = f"{period}:{spec['mode']}:{spec['user_id']}"
-            before = {
-                "available_credits": self._credit_count(
-                    db, scope_id, period, spec["mode"], spec["user_id"]
-                )
-            }
-            return (
-                target,
-                before,
-                {
-                    "period_id": period,
-                    "quantity": spec["quantity"],
-                    "available_credits": before["available_credits"] + spec["quantity"],
-                },
-            )
         if action == "intimacy_set":
             row = db.execute(
                 "SELECT score,updated_at FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id=?",
@@ -405,7 +372,7 @@ class AdminCorrectionService:
             )
         period = self._current_period(db, scope_id)
         row = db.execute(
-            "SELECT normal_draws,designated_draws,steal_attempts,stolen_successes,divorces FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+            "SELECT normal_draws,designated_draws,steal_attempts,force_attempts,stolen_successes,divorces FROM daily_counters WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
             (scope_id, period, spec["mode"], spec["user_id"]),
         ).fetchone()
         before = {
@@ -434,7 +401,6 @@ class AdminCorrectionService:
         revision: str,
         now: int,
     ) -> None:
-        operation_id = str(uuid.uuid4())
         if action == "period_reset_relations":
             mode_sql = "" if spec["mode"] == "all" else " AND mode=?"
             params = (
@@ -455,7 +421,7 @@ class AdminCorrectionService:
                 else (scope_id, after["period_id"], spec["mode"])
             )
             db.execute(
-                f"""UPDATE daily_counters SET normal_draws=0,designated_draws=0,steal_attempts=0,stolen_successes=0,divorces=0,last_steal_at=NULL
+                f"""UPDATE daily_counters SET normal_draws=0,designated_draws=0,steal_attempts=0,force_attempts=0,stolen_successes=0,divorces=0,last_steal_at=NULL
                     WHERE scope_id=? AND period_id=?{mode_sql}""",
                 params,
             )
@@ -472,32 +438,6 @@ class AdminCorrectionService:
             db.execute(
                 "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='relationship-ended' WHERE relationship_id=? AND state='pending'",
                 (now, spec["relationship_id"]),
-            )
-            if spec["compensation"]:
-                row = db.execute(
-                    "SELECT period_id,mode,owner_id FROM relationships WHERE id=?",
-                    (spec["relationship_id"],),
-                ).fetchone()
-                self._issue_credits(
-                    db,
-                    scope_id,
-                    row["period_id"],
-                    row["mode"],
-                    row["owner_id"],
-                    spec["compensation"],
-                    operation_id,
-                    now,
-                )
-        elif action == "credit_grant":
-            self._issue_credits(
-                db,
-                scope_id,
-                after["period_id"],
-                spec["mode"],
-                spec["user_id"],
-                spec["quantity"],
-                operation_id,
-                now,
             )
         elif action == "intimacy_set":
             db.execute(
@@ -535,31 +475,6 @@ class AdminCorrectionService:
                     (scope_id, period, spec["mode"], spec["user_id"]),
                 )
 
-    @staticmethod
-    def _issue_credits(
-        db: sqlite3.Connection,
-        scope_id: int,
-        period_id: str,
-        mode: str,
-        user_id: str,
-        quantity: int,
-        operation_id: str,
-        now: int,
-    ) -> None:
-        for index in range(quantity):
-            db.execute(
-                "INSERT INTO redraw_credits(id,scope_id,period_id,mode,user_id,source_operation_id,reason,state,issued_at) VALUES(?,?,?,?,?,?,'admin_grant','available',?)",
-                (
-                    str(uuid.uuid4()),
-                    scope_id,
-                    period_id,
-                    mode,
-                    user_id,
-                    f"{operation_id}:{index}",
-                    now,
-                ),
-            )
-
     def _config_revision(self, scope_id: int) -> str:
         _global, global_revision = self.storage.get_settings()
         _scope, scope_revision = self.storage.get_settings(scope_id)
@@ -573,17 +488,6 @@ class AdminCorrectionService:
         if row is None:
             raise ValueError("该作用域没有当前周期。")
         return str(row["id"])
-
-    @staticmethod
-    def _credit_count(
-        db: sqlite3.Connection, scope_id: int, period_id: str, mode: str, user_id: str
-    ) -> int:
-        return int(
-            db.execute(
-                "SELECT COUNT(*) FROM redraw_credits WHERE scope_id=? AND period_id=? AND mode=? AND user_id=? AND state='available'",
-                (scope_id, period_id, mode, user_id),
-            ).fetchone()[0]
-        )
 
     @staticmethod
     def _rows_hash(rows: list[sqlite3.Row]) -> str:

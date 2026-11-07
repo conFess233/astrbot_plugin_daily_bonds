@@ -1,7 +1,7 @@
 // 用户今日状态、回复形式预览与版本迁移。只通过 textContent 写入服务端文本。
 
 const MODE_LABELS = { wife: "老婆", husband: "老公", member: "群友" };
-const SOURCE_LABELS = { draw: "抽取", designated: "指定", gift: "赠送", steal: "抢夺" };
+const SOURCE_LABELS = { draw: "抽取", designated: "指定", gift: "赠送", steal: "抢夺", admin: "管理员设置", force: "强娶" };
 const REPORT_SOURCES = { database: "升级迁移", host_config: "旧版原生配置导入", manual_import: "手动导入" };
 
 function element(tag, text, className) {
@@ -45,13 +45,16 @@ export function initStatusAndMigration({ apiGet, apiPost, apiUpload, confirmActi
         const facts = [SOURCE_LABELS[relation.source] || relation.source];
         if (relation.protected) facts.push("受保护");
         if (relation.streak >= 2) facts.push(`连续 ${relation.streak} 天`);
+        if (relation.mutual) facts.push("双向奔赴");
         list.append(element("li", `${relation.name}（${facts.join(" · ")}）`));
       }
       if (!item.relationships.length) list.append(element("li", "还没有关系"));
-      const quota = [`普通抽取剩 ${item.normal_remaining} 次`, `补抽资格 ${item.credits}`];
+      const quota = [`普通抽取剩 ${item.normal_remaining} 次`];
       if (item.designated_limit) quota.push(`指定剩 ${item.designated_remaining} 次`);
       if (item.steal_enabled) quota.push(item.steal_remaining === null ? "抢夺不限次数" : `抢夺剩 ${item.steal_remaining} 次`);
       if (item.steal_ready_in) quota.push(`抢夺冷却 ${item.steal_ready_in} 秒`);
+      if (item.force_limit) quota.push(`强娶剩 ${item.force_remaining} 次`);
+      if (item.divorce_enabled) quota.push(item.divorce_remaining === null ? "离婚不限次数" : `离婚剩 ${item.divorce_remaining} 次`);
       block.append(list, element("p", quota.join(" · "), "facts"));
       return block;
     });

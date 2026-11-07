@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+/*THEME*/
+.tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+.tile { padding: 12px; border-radius: 12px; background: var(--primary-soft); }
+.tile .value { margin-top: 2px; font-size: 22px; font-weight: 800; }
+.section { margin-bottom: 18px; }
+.section:last-child { margin-bottom: 0; }
+.section h2 { margin: 0 0 6px; font-size: 16px; }
+.line { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--seg-off); }
+.line:last-child { border-bottom: 0; }
+.line .rank { color: var(--primary); font-weight: 800; margin-right: 8px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-header"><h1>{{ title | e }}</h1></div>
+  <div class="card-body">
+    <div class="tiles">
+      {% for tile in tiles %}
+      <div class="tile"><div class="muted">{{ tile.label | e }}</div><div class="value">{{ tile.value | e }}</div></div>
+      {% endfor %}
+    </div>
+    {% for section in sections %}
+    <div class="section">
+      <h2>{{ section.title | e }}</h2>
+      {% for row in section.rows %}
+      <div class="line"><span class="ellipsis"><span class="rank">{{ loop.index }}</span>{{ row.name | e }}</span><span class="muted">{{ row.value | e }}</span></div>
+      {% else %}
+      <div class="empty">{{ empty_text | e }}</div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  <div class="footer">今日姻缘</div>
+</div>
+</body>
+</html>

@@ -29,7 +29,6 @@ class GiftMixin(GameplayBase):
         timeout_seconds: int = 60,
         pending_limit: int = 20,
         gift_enabled: bool = True,
-        recipient_umo: str | None = None,
         operation_id: str | None = None,
         event_key: str | None = None,
         payload_hash: str = "",
@@ -134,8 +133,8 @@ class GiftMixin(GameplayBase):
                     mode,
                     sender_id,
                     "gift",
-                    "CAPACITY_FULL",
-                    {"relationships": recipient_relations},
+                    "RECIPIENT_FULL",
+                    {},
                     config_revision,
                     now,
                     event_key,
@@ -152,6 +151,25 @@ class GiftMixin(GameplayBase):
                     "gift",
                     "INVALID_TARGET",
                     {},
+                    config_revision,
+                    now,
+                    event_key,
+                    payload_hash,
+                )
+            if any(
+                row["subject_id"] == relationship["subject_id"]
+                for row in recipient_relations
+            ):
+                return self._record_result(
+                    db,
+                    operation_id,
+                    scope_id,
+                    period_id,
+                    mode,
+                    sender_id,
+                    "gift",
+                    "RECIPIENT_HOLDS",
+                    {"relationship_id": relationship["id"]},
                     config_revision,
                     now,
                     event_key,
@@ -266,21 +284,6 @@ class GiftMixin(GameplayBase):
                     expires_at,
                 ),
             )
-            if recipient_umo:
-                self._outbox(
-                    db,
-                    scope_id,
-                    f"gift-invite:{invite_id}",
-                    recipient_umo,
-                    {
-                        "kind": "gift_invite",
-                        "invite_id": invite_id,
-                        "sender_id": sender_id,
-                        "recipient_id": recipient_id,
-                        "text": f"收到来自群友 {sender_id} 的赠送邀请，编号 {invite_id}；请在发起邀请的群内按消息提示处理。",
-                    },
-                    now,
-                )
             return self._record_result(
                 db,
                 operation_id,
@@ -315,7 +318,6 @@ class GiftMixin(GameplayBase):
         gift_enabled: bool,
         sender_allowed: bool,
         recipient_allowed: bool,
-        recipient_umo: str | None = None,
         operation_id: str | None = None,
         event_key: str | None = None,
         payload_hash: str = "",
@@ -426,20 +428,22 @@ class GiftMixin(GameplayBase):
                         and relation["subject_id"] == invite["recipient_id"]
                     ):
                         state, reason = "invalidated", "self_relationship"
-                    elif (
-                        len(
-                            self._owner_relationships(
-                                db,
-                                scope_id,
-                                period_id,
-                                invite["mode"],
-                                invite["recipient_id"],
-                                None,
-                            )
+                    else:
+                        recipient_relations = self._owner_relationships(
+                            db,
+                            scope_id,
+                            period_id,
+                            invite["mode"],
+                            invite["recipient_id"],
+                            None,
                         )
-                        >= capacity
-                    ):
-                        state, reason = "invalidated", "recipient_full"
+                        if len(recipient_relations) >= capacity:
+                            state, reason = "invalidated", "recipient_full"
+                        elif any(
+                            row["subject_id"] == relation["subject_id"]
+                            for row in recipient_relations
+                        ):
+                            state, reason = "invalidated", "recipient_holds"
             updated = db.execute(
                 "UPDATE gift_invites SET state=?,finalized_at=?,reason=? WHERE id=? AND state='pending'",
                 (state, now, reason, invite_id),
@@ -458,27 +462,6 @@ class GiftMixin(GameplayBase):
                 db.execute(
                     "UPDATE gift_invites SET result_relationship_id=? WHERE id=?",
                     (new_relationship_id, invite_id),
-                )
-            elif recipient_umo:
-                final_text = {
-                    "cancelled": "已取消",
-                    "rejected": "已拒绝",
-                    "expired": "已过期",
-                    "invalidated": "已失效",
-                }.get(state, "已处理")
-                self._outbox(
-                    db,
-                    scope_id,
-                    f"gift-final:{invite_id}",
-                    recipient_umo,
-                    {
-                        "kind": "gift_invite_final",
-                        "invite_id": invite_id,
-                        "state": state,
-                        "reason": reason,
-                        "text": f"赠送邀请 {invite_id} {final_text}。",
-                    },
-                    now,
                 )
             result_code = (
                 "GIFT_ACCEPTED"

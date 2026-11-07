@@ -11,6 +11,8 @@ from itertools import pairwise
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from astrbot.api import logger
+
 from ..models.errors import StorageError
 from .storage import SQLiteStorage
 
@@ -239,36 +241,6 @@ class StatisticsService:
             )
         ]
 
-    def member_scores(
-        self,
-        scope_id: int,
-        actor_id: str,
-        candidate_ids: Sequence[str],
-        now: int,
-        window_days: int,
-    ) -> tuple[dict[str, int], dict[str, int]]:
-        """读取一个一致性短事务内的有向亲密度与滚动活跃度。"""
-
-        ids = tuple(dict.fromkeys(candidate_ids))
-        if not ids:
-            return {}, {}
-        marks = ",".join("?" for _ in ids)
-        with self.storage.transaction(immediate=False) as db:
-            edges = db.execute(
-                f"SELECT target_id,score FROM intimacy_edges WHERE scope_id=? AND source_id=? AND target_id IN ({marks})",
-                (scope_id, actor_id, *ids),
-            ).fetchall()
-            buckets = db.execute(
-                f"""SELECT user_id,SUM(message_count) AS messages FROM activity_seconds
-                    WHERE scope_id=? AND user_id IN ({marks}) AND observed_second>? AND observed_second<=?
-                    GROUP BY user_id""",
-                (scope_id, *ids, now - window_days * 86400, now),
-            ).fetchall()
-        return (
-            {row["target_id"]: int(row["score"]) for row in edges},
-            {row["user_id"]: int(row["messages"]) for row in buckets},
-        )
-
     def _apply(
         self,
         *,
@@ -292,7 +264,12 @@ class StatisticsService:
                 ).fetchone()
                 if prior:
                     if prior["payload_hash"] != payload_hash:
-                        raise StorageError("统计事件键发生载荷冲突。")
+                        # 统计不值得中断整条消息：记录后跳过，指令照常处理。
+                        logger.warning(
+                            "今日姻缘：统计事件键 %s 的载荷与已记录的不同，跳过计分。",
+                            event_key,
+                        )
+                        return False
                     if prior["stats_applied"]:
                         return False
                 else:
@@ -369,4 +346,15 @@ def _event_identity(raw: Mapping[str, Any], prefix: str, now: int) -> tuple[str,
             separators=(",", ":"),
         )
         event_id = hashlib.sha256(source.encode("utf-8")).hexdigest()
-    return f"{prefix}:{event_id}", digest
+    return event_key_for(prefix, event_id, raw), digest
+
+
+def event_key_for(prefix: str, event_id: Any, raw: Mapping[str, Any]) -> str:
+    """事件键带上事件时间：OneBot 的 message_id 会循环复用，单靠 ID 会撞上旧消息。"""
+
+    timestamp = raw.get("time")
+    return (
+        f"{prefix}:{event_id}:{timestamp}"
+        if timestamp is not None
+        else f"{prefix}:{event_id}"
+    )

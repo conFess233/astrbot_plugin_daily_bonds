@@ -7,8 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
+import json
 import math
+import os
+import shutil
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -36,6 +40,10 @@ _RANK_ROWS_PER_COLUMN = 10
 # 全群亲密度按对合并后只展示前 50 对，一张图放下。
 PAIR_LIMIT = 50
 _PAIR_TOP = 3
+# 一次回复分成多张卡片时同时渲染的张数。
+_RENDER_CONCURRENCY = 3
+# 帮助等固定内容卡片的缓存张数（按群配置不同会有多张）。
+_CARD_CACHE_LIMIT = 32
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +112,34 @@ def _template(name: str) -> str:
     theme = (TEMPLATE_DIR / "theme.css").read_text(encoding="utf-8")
     source = (TEMPLATE_DIR / name).read_text(encoding="utf-8")
     return source.replace("/*THEME*/", theme)
+
+
+def _cached_card(cache_dir: Path, digest: str) -> Path | None:
+    for path in cache_dir.glob(f"{digest}.*"):
+        if path.is_file():
+            try:
+                os.utime(path)  # 按最近使用时间淘汰
+            except OSError:
+                pass
+            return path
+    return None
+
+
+def _store_card(rendered: Path, cache_dir: Path, digest: str) -> Path:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    target = cache_dir / f"{digest}{rendered.suffix or '.jpg'}"
+    temporary = target.with_name(f".{target.name}.tmp")
+    shutil.copyfile(rendered, temporary)
+    os.replace(temporary, target)
+    rendered.unlink(missing_ok=True)
+    cards = sorted(
+        (path for path in cache_dir.iterdir() if path.is_file() and path != target),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for stale in cards[_CARD_CACHE_LIMIT - 1 :]:
+        stale.unlink(missing_ok=True)
+    return target
 
 
 class CardService:
@@ -177,46 +213,86 @@ class CardService:
         per_card = self.page_capacity(max_rows=max_rows, ranking=ranking)
         chunks = [rows[i : i + per_card] for i in range(0, len(rows), per_card)] or [()]
         header = await asyncio.to_thread(data_uri, header_avatar_path, 160)
-        paths: list[Path] = []
-        try:
-            for index, chunk in enumerate(chunks, start=1):
-                page_label = f"分图 {index}/{len(chunks)}" if len(chunks) > 1 else ""
-                if rows and rows[0].pair_scores is not None:
-                    name, data = "affection.html", await self._affection(title, chunk)
-                elif ranking:
-                    name = "ranking.html"
-                    data = {
-                        "title": title,
-                        "subtitle": " · ".join(filter(None, (subtitle, page_label))),
-                        "range_label": range_label,
-                        "header_avatar": header,
-                        "empty_text": empty_text,
-                        "rows": await asyncio.to_thread(self._rank_rows, chunk),
-                        "columns": _RANK_COLUMNS,
-                        "rows_per_column": max(
-                            1,
-                            min(
-                                _RANK_ROWS_PER_COLUMN,
-                                math.ceil(len(chunk) / _RANK_COLUMNS),
+        jobs: list[tuple[str, dict[str, Any]]] = []
+        for index, chunk in enumerate(chunks, start=1):
+            page_label = f"分图 {index}/{len(chunks)}" if len(chunks) > 1 else ""
+            if rows and rows[0].pair_scores is not None:
+                jobs.append(("affection.html", await self._affection(title, chunk)))
+            elif ranking:
+                jobs.append(
+                    (
+                        "ranking.html",
+                        {
+                            "title": title,
+                            "subtitle": " · ".join(
+                                filter(None, (subtitle, page_label))
                             ),
-                        ),
-                    }
-                else:
-                    name = "list.html"
-                    data = {
-                        "title": title,
-                        "subtitle": subtitle,
-                        "page_label": page_label,
-                        "header": {"avatar": header, "name": header_name},
-                        "empty_text": empty_text,
-                        "rows": await asyncio.to_thread(self._list_rows, chunk),
-                    }
-                paths.append(await self.render_template(name, data))
-        except BaseException:
+                            "range_label": range_label,
+                            "header_avatar": header,
+                            "empty_text": empty_text,
+                            "rows": await asyncio.to_thread(self._rank_rows, chunk),
+                            "columns": _RANK_COLUMNS,
+                            "rows_per_column": max(
+                                1,
+                                min(
+                                    _RANK_ROWS_PER_COLUMN,
+                                    math.ceil(len(chunk) / _RANK_COLUMNS),
+                                ),
+                            ),
+                        },
+                    )
+                )
+            else:
+                jobs.append(
+                    (
+                        "list.html",
+                        {
+                            "title": title,
+                            "subtitle": subtitle,
+                            "page_label": page_label,
+                            "header": {"avatar": header, "name": header_name},
+                            "empty_text": empty_text,
+                            "rows": await asyncio.to_thread(self._list_rows, chunk),
+                        },
+                    )
+                )
+        # 多张卡片同时请求 t2i，限制并发以免压垮渲染服务。
+        limit = asyncio.Semaphore(_RENDER_CONCURRENCY)
+
+        async def render_one(name: str, data: dict[str, Any]) -> Path:
+            async with limit:
+                return await self.render_template(name, data)
+
+        results = await asyncio.gather(
+            *(render_one(name, data) for name, data in jobs), return_exceptions=True
+        )
+        paths = [result for result in results if isinstance(result, Path)]
+        failure = next(
+            (result for result in results if isinstance(result, BaseException)), None
+        )
+        if failure is not None:
             for path in paths:
                 path.unlink(missing_ok=True)
-            raise
+            raise failure
         return tuple(paths)
+
+    async def render_cached(
+        self, name: str, data: Mapping[str, Any], cache_dir: Path
+    ) -> Path:
+        """渲染内容只由配置决定的卡片（如帮助），相同内容复用上次的图片。
+
+        返回的文件属于缓存，调用方发送后不得删除。
+        """
+
+        payload = json.dumps(
+            [_template(name), data], ensure_ascii=False, sort_keys=True, default=str
+        )
+        digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
+        cached = await asyncio.to_thread(_cached_card, cache_dir, digest)
+        if cached is not None:
+            return cached
+        rendered = await self.render_template(name, data)
+        return await asyncio.to_thread(_store_card, rendered, cache_dir, digest)
 
     @staticmethod
     def _list_rows(rows: Sequence[CardRow]) -> list[dict[str, Any]]:
@@ -241,6 +317,7 @@ class CardService:
                     .removeprefix("[")
                     .removesuffix("]"),
                     "tone": row.tone,
+                    "badge": row.badge,
                     "source": source,
                     "image": data_uri(row.image_path, 240),
                     "avatar": data_uri(row.avatar_path, 96),

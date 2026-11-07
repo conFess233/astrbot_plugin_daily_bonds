@@ -20,38 +20,20 @@ class NotificationService:
         self.context = context
         self.storage = storage
 
-    async def invalidate_pending_on_restart(self, now: int) -> int:
-        return await asyncio.to_thread(self._invalidate_pending_on_restart, now)
+    async def recover_on_restart(self) -> int:
+        return await asyncio.to_thread(self._recover_on_restart)
 
-    def _invalidate_pending_on_restart(self, now: int) -> int:
+    def _recover_on_restart(self) -> int:
+        """重载前正在发送的通知结果未知，标记出来不再重发。
+
+        待处理的赠送邀请保留：过期时间已持久化，超时的由维护循环照常结束并通知，
+        接受时也会重新校验周期和关系，重载本身不必让邀请失效。
+        """
+
         with self.storage.transaction() as db:
-            groups = db.execute(
-                "SELECT scope_id,umo,COUNT(*) AS amount FROM gift_invites i JOIN scopes s ON s.id=i.scope_id WHERE i.state='pending' GROUP BY scope_id,umo"
-            ).fetchall()
-            db.execute(
-                "UPDATE gift_invites SET state='invalidated',finalized_at=?,reason='restart' WHERE state='pending'",
-                (now,),
-            )
-            for row in groups:
-                scope_id = int(row["scope_id"])
-                config = self.storage.get_settings(scope_id)[0]
-                self._queue(
-                    db,
-                    scope_id,
-                    str(row["umo"]),
-                    f"restart:{row['scope_id']}:{uuid.uuid4().hex}",
-                    render_message(
-                        config,
-                        "notifications",
-                        "restart_invalidated",
-                        amount=int(row["amount"]),
-                    ),
-                    now,
-                )
-            db.execute(
+            return db.execute(
                 "UPDATE notification_outbox SET state='unknown',error_summary='发送中断于插件重载' WHERE state='sending'"
-            )
-        return sum(int(row["amount"]) for row in groups)
+            ).rowcount
 
     async def expire_due(self, now: int) -> int:
         return await asyncio.to_thread(self._expire_due, now)

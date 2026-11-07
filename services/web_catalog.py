@@ -84,6 +84,28 @@ class CatalogRoutes:
         except StorageError as exc:
             return self._catalog_storage_error(exc)
 
+    async def batch_characters(self):
+        username, denied = self._authorize()
+        if denied:
+            return denied
+        payload = await request.json(default={})
+        if not isinstance(payload, dict):
+            return self._error("INVALID_BODY", "请求内容必须是 JSON 对象。", 400)
+        try:
+            data = await asyncio.to_thread(
+                self.catalog.batch_characters,
+                payload,
+                actor=username,
+                now=int(time.time()),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": payload.get("request_id")}
+            )
+        except (ValueError, TypeError) as exc:
+            return self._error("CATALOG_INVALID", str(exc), 400)
+        except StorageError as exc:
+            return self._catalog_storage_error(exc)
+
     async def character_delete_preview(self):
         return await self._delete_preview("character")
 

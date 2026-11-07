@@ -107,6 +107,10 @@ def parse_command(
             "steal_wife",
             "steal_husband",
             "steal_member",
+            "force_member",
+            "gift_wife",
+            "gift_husband",
+            "gift_member",
             "query_affection",
         }:
             return None
@@ -114,7 +118,7 @@ def parse_command(
     if action == "query_affection" and (
         sum(part.kind == "at" for part in parts) + int(leading_target is not None) != 1
     ):
-        raise CommandSyntaxError("好感度查询需要一段真实的 @ 消息。")
+        raise CommandSyntaxError("亲密度查询需要一段真实的 @ 消息。")
     return _parse_action(action, suffix)
 
 
@@ -198,6 +202,7 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
         "steal_wife",
         "steal_husband",
         "steal_member",
+        "force_member",
         "gift_wife",
         "gift_husband",
         "gift_member",
@@ -210,7 +215,14 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
         raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
     if action in {"draw_wife", "draw_husband"}:
         return ParsedCommand(action, argument=suffix or None)
-    if action in {"draw_member", "my_status", "help"}:
+    if action == "force_member":
+        target, _argument = _target_and_argument(suffix, optional_argument=False)
+        return ParsedCommand(action, target_user_id=target)
+    if action == "character_info":
+        if not suffix or len(suffix) > 80:
+            raise CommandSyntaxError("请填写 1～80 字符的角色名、别名或 #ID。")
+        return ParsedCommand(action, argument=suffix)
+    if action in {"draw_member", "my_status", "help", "group_stats"}:
         _no_suffix(action, suffix)
         return ParsedCommand(action)
     if action == "my_collection":
@@ -221,7 +233,7 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
     if action == "query_affection":
         target, rest = _leading_at(suffix)
         if target is None or rest:
-            raise CommandSyntaxError("好感度查询只接受一名 @ 用户，不接受其他参数。")
+            raise CommandSyntaxError("亲密度查询只接受一名 @ 用户，不接受其他参数。")
         return ParsedCommand(action, target_user_id=target)
     if action in {
         "list_characters",
@@ -272,12 +284,18 @@ def _target_and_argument(
 ) -> tuple[str, str | None]:
     target, rest = _leading_at(suffix)
     if target is None:
-        match = re.match(r"^(.+?)\s+<@([0-9]+)>(?:\s+(.*))?$", suffix)
-        if match:
-            target, rest = match.group(2), (match.group(3) or "")
-        else:
+        match = re.match(r"^(.+?)\s*<@([0-9]+)>\s*(.*)$", suffix)
+        if not match:
             raise CommandSyntaxError("请通过原始 @消息段 指定目标用户。")
+        before, after = match.group(1).strip(), match.group(3).strip()
+        if before and after:
+            raise CommandSyntaxError("@目标前后只能写一处对象名称或 ID。")
+        target, rest = match.group(2), before or after
     argument = rest.strip() or None
+    # 群友玩法可以用第二个 @ 指定对象。
+    second_at = re.fullmatch(r"<@([0-9]+)>", argument or "")
+    if second_at:
+        argument = second_at.group(1)
     if argument is not None and (
         "<@" in argument or "<UNSUPPORTED_SEGMENT>" in argument
     ):
@@ -288,10 +306,10 @@ def _target_and_argument(
 
 
 def _leading_at(suffix: str) -> tuple[str | None, str]:
-    match = re.match(r"^<@([0-9]+)>(?:\s+(.*))?$", suffix)
+    match = re.match(r"^<@([0-9]+)>\s*(.*)$", suffix)
     if not match:
         return None, suffix
-    return match.group(1), (match.group(2) or "").strip()
+    return match.group(1), match.group(2).strip()
 
 
 def _no_suffix(action: str, suffix: str) -> None:

@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import shutil
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from .avatar_cache import _prune_files
 from .storage import SQLiteStorage
+
+# 分批删除每批的行数：单批足够快，不会长时间占用写锁。
+DELETE_BATCH_SIZE = 5000
+# 只用于统计去重的事件记录保留时长；重放通常在几分钟内发生。
+STATS_DEDUPE_SECONDS = 2 * 86400
 
 
 class RetentionService:
@@ -19,47 +25,48 @@ class RetentionService:
         self.data_root = data_root
 
     def prune(self, now: int) -> dict[str, int]:
-        with self.storage._lock:
-            global_config, _ = self.storage.get_settings()
-            history_days = int(global_config["history"]["retention_days"])
-            dedupe_days = int(global_config["resources"]["dedupe_retention_days"])
+        global_config, _ = self.storage.get_settings()
+        history_days = int(global_config["history"]["retention_days"])
+        dedupe_days = int(global_config["resources"]["dedupe_retention_days"])
+        with self.storage.read() as db:
             scope_ids = [
-                int(row["id"])
-                for row in self.storage._connection()
-                .execute("SELECT id FROM scopes")
-                .fetchall()
+                int(row["id"]) for row in db.execute("SELECT id FROM scopes").fetchall()
             ]
-            activity_days = int(global_config["statistics"]["activity_window_days"])
-            for scope_id in scope_ids:
-                config, _ = self.storage.get_settings(scope_id)
-                activity_days = max(
-                    activity_days, int(config["statistics"]["activity_window_days"])
-                )
+        activity_days = int(global_config["statistics"]["activity_window_days"])
+        scope_statistics: dict[int, Mapping[str, Any]] = {}
+        for scope_id in scope_ids:
+            config, _ = self.storage.get_settings(scope_id)
+            scope_statistics[scope_id] = config["statistics"]
+            activity_days = max(
+                activity_days, int(config["statistics"]["activity_window_days"])
+            )
 
-            history_cutoff = now - history_days * 86400
-            dedupe_cutoff = now - dedupe_days * 86400
-            activity_cutoff = now - (max(history_days, activity_days) + 1) * 86400
-            cooldown_cutoff = now - 86400
-            deleted: dict[str, int] = {}
+        history_cutoff = now - history_days * 86400
+        dedupe_cutoff = now - dedupe_days * 86400
+        stats_dedupe_cutoff = max(dedupe_cutoff, now - STATS_DEDUPE_SECONDS)
+        activity_cutoff = now - (max(history_days, activity_days) + 1) * 86400
+        cooldown_cutoff = now - 86400
+        deleted: dict[str, int] = {}
+        deleted["intimacy_decay"] = self._decay_intimacy(scope_statistics, now)
+        # 每条消息都会写入的大表分批删除，批间释放写锁，消息处理不必等整次清理。
+        deleted["activity_seconds"] = self._delete_batched(
+            "activity_seconds", "observed_second<=?", (activity_cutoff,)
+        )
+        deleted["activity_pokes"] = self._delete_batched(
+            "activity_pokes", "observed_second<=?", (activity_cutoff,)
+        )
+        # 只用于统计去重的记录很快就不会再被重放；指令记录按配置保留，用于重放返回原结果。
+        deleted["processed_events"] = self._delete_batched(
+            "processed_events",
+            "observed_at<=? AND command_operation_id IS NULL",
+            (stats_dedupe_cutoff,),
+        ) + self._delete_batched("processed_events", "observed_at<=?", (dedupe_cutoff,))
+        # 删除媒体记录与删除文件之间不能插入新的上传，否则会删掉刚被引用的文件。
+        with self.storage._lock:
             media_paths: list[str] = []
             expired_jobs: list[tuple[str, str]] = []
             tracked_job_ids: set[str] = set()
             with self.storage.transaction() as db:
-                deleted["activity_seconds"] = self._delete(
-                    db,
-                    "DELETE FROM activity_seconds WHERE observed_second<=?",
-                    (activity_cutoff,),
-                )
-                deleted["activity_pokes"] = self._delete(
-                    db,
-                    "DELETE FROM activity_pokes WHERE observed_second<=?",
-                    (activity_cutoff,),
-                )
-                deleted["processed_events"] = self._delete(
-                    db,
-                    "DELETE FROM processed_events WHERE observed_at<=?",
-                    (dedupe_cutoff,),
-                )
                 deleted["cooldowns"] = self._delete(
                     db,
                     "DELETE FROM cooldowns WHERE last_command_at<=?",
@@ -111,17 +118,10 @@ class RetentionService:
                     "DELETE FROM gift_invites WHERE state<>'pending' AND finalized_at IS NOT NULL AND finalized_at<=?",
                     (history_cutoff,),
                 )
-                deleted["redraw_credits"] = self._delete(
-                    db,
-                    """DELETE FROM redraw_credits WHERE issued_at<=? AND period_id IN
-                       (SELECT id FROM periods WHERE state='closed')""",
-                    (history_cutoff,),
-                )
                 deleted["relationships"] = self._delete(
                     db,
                     """DELETE FROM relationships WHERE state='ended' AND ended_at<=? AND period_id IN
                        (SELECT id FROM periods WHERE state='closed')
-                       AND NOT EXISTS (SELECT 1 FROM redraw_credits c WHERE c.consumed_relationship_id=relationships.id)
                        AND NOT EXISTS (SELECT 1 FROM gift_invites i WHERE i.relationship_id=relationships.id)""",
                     (history_cutoff,),
                 )
@@ -143,7 +143,6 @@ class RetentionService:
                     """DELETE FROM periods WHERE state='closed' AND ends_at<=?
                        AND NOT EXISTS (SELECT 1 FROM relationships r WHERE r.period_id=periods.id)
                        AND NOT EXISTS (SELECT 1 FROM daily_counters d WHERE d.period_id=periods.id)
-                       AND NOT EXISTS (SELECT 1 FROM redraw_credits c WHERE c.period_id=periods.id)
                        AND NOT EXISTS (SELECT 1 FROM gift_invites i WHERE i.period_id=periods.id)
                        AND NOT EXISTS (SELECT 1 FROM operation_log o WHERE o.period_id=periods.id AND o.created_at>?)""",
                     (history_cutoff, history_cutoff),
@@ -172,11 +171,12 @@ class RetentionService:
                 expired_jobs, tracked_job_ids, history_cutoff
             )
             self._remove_media_files(media_paths)
-            deleted["avatar_cache"] = _prune_files(
-                self.data_root / "avatars",
-                int(global_config["resources"]["avatar_cache_max_entries"]),
-            )
-            return deleted
+        deleted["avatar_cache"] = _prune_files(
+            self.data_root / "avatars",
+            int(global_config["resources"]["avatar_cache_max_entries"]),
+        )
+        self.storage.optimize()
+        return deleted
 
     def _remove_expired_job_artifacts(
         self,
@@ -258,6 +258,72 @@ class RetentionService:
             return True
         except OSError:
             return False
+
+    def _decay_intimacy(
+        self, scope_statistics: Mapping[int, Mapping[str, Any]], now: int
+    ) -> int:
+        """按各群生效配置衰减亲密度；返回被清零删除的记录数。
+
+        每个群记录上次衰减时间，停机或清理失败多日后按经过的整天数一次补齐；
+        关闭衰减期间时间照常前移，重新开启时不追溯。
+        """
+
+        removed = 0
+        for scope_id, statistics in scope_statistics.items():
+            percent = int(statistics["intimacy_decay_percent"])
+            idle_days = int(statistics["intimacy_decay_idle_days"])
+            with self.storage.transaction() as db:
+                row = db.execute(
+                    "SELECT decayed_at FROM intimacy_decay WHERE scope_id=?",
+                    (scope_id,),
+                ).fetchone()
+                if row is None:
+                    db.execute(
+                        "INSERT INTO intimacy_decay(scope_id,decayed_at) VALUES(?,?)",
+                        (scope_id, now),
+                    )
+                    continue
+                days = (now - int(row["decayed_at"])) // 86400
+                if days < 1:
+                    continue
+                db.execute(
+                    "UPDATE intimacy_decay SET decayed_at=decayed_at+? WHERE scope_id=?",
+                    (days * 86400, scope_id),
+                )
+                if percent <= 0:
+                    continue
+                # 向下取整：每次至少减 1 分，小分值也会逐渐归零；加一个极小量抵消浮点误差。
+                db.execute(
+                    """UPDATE intimacy_edges SET score=CAST(score*?+1e-9 AS INTEGER)
+                       WHERE scope_id=? AND updated_at<=?""",
+                    (
+                        (1 - percent / 100) ** days,
+                        scope_id,
+                        now - idle_days * 86400,
+                    ),
+                )
+                removed += self._delete(
+                    db,
+                    "DELETE FROM intimacy_edges WHERE scope_id=? AND score=0",
+                    (scope_id,),
+                )
+        return removed
+
+    def _delete_batched(
+        self, table: str, condition: str, parameters: tuple[Any, ...]
+    ) -> int:
+        total = 0
+        while True:
+            with self.storage.transaction() as db:
+                count = self._delete(
+                    db,
+                    f"DELETE FROM {table} WHERE rowid IN "
+                    f"(SELECT rowid FROM {table} WHERE {condition} LIMIT ?)",
+                    (*parameters, DELETE_BATCH_SIZE),
+                )
+            total += count
+            if count < DELETE_BATCH_SIZE:
+                return total
 
     @staticmethod
     def _delete(

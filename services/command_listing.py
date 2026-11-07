@@ -346,7 +346,7 @@ class ListingHandler:
     def _relationship_rows(self, scope_id: int, period_id: str, mode: str):
         with self.storage.read() as db:
             rows = db.execute(
-                """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,r.acquisition_kind,r.source_owner_id,s.id AS snapshot_id,s.name,s.subject_kind,
+                """SELECT r.mode,r.owner_id,r.subject_id,r.slot_kind,r.acquisition_kind,r.special_source,r.source_owner_id,s.id AS snapshot_id,s.name,s.subject_kind,
                           (SELECT GROUP_CONCAT(mb.relative_path,'|') FROM snapshot_images si
                            JOIN media_blobs mb ON mb.hash=si.media_hash WHERE si.snapshot_id=s.id) AS image_paths
                    FROM relationships r JOIN subject_snapshots s ON s.id=r.snapshot_id
@@ -385,13 +385,21 @@ class ListingHandler:
         rows, members = await asyncio.to_thread(
             self._relationship_rows, scope_id, period_id, mode
         )
+        pairs = {(str(row["owner_id"]), str(row["subject_id"])) for row in rows}
+        mutual_label = render_message(config, "titles", "mutual")
         for row in rows:
+            row["mutual"] = (
+                mode == "member"
+                and (str(row["subject_id"]), str(row["owner_id"])) in pairs
+            )
             kind = row.get("acquisition_kind", "draw")
             source_id = str(row.get("source_owner_id") or "")
             source_name = members.get(source_id, "群友")
             key = {"gift": "gift_slot", "steal": "steal_slot"}.get(kind, "normal_slot")
             if row.get("slot_kind") == "designated":
                 key = "designated_slot"
+            if row.get("special_source"):
+                key = f"{row['special_source']}_slot"
             row["source_label"] = (
                 "["
                 + render_message(config, "titles", key, owner_name=source_name)
@@ -412,6 +420,7 @@ class ListingHandler:
                     )
         entries = [
             f"{row['source_label']} {members.get(str(row['owner_id']), '群友')} → {row['name']}"
+            + (f" [{mutual_label}]" if row["mutual"] else "")
             for row in rows
         ]
         title = render_message(config, "titles", f"list_{mode}")
@@ -477,6 +486,7 @@ class ListingHandler:
             CardRow(
                 primary=f"{members.get(str(row['owner_id']), '群友')} → {row['name']}",
                 secondary=row["source_label"],
+                badge=mutual_label if row["mutual"] else "",
                 source_label_parts=row["source_parts"],
                 source_avatar_path=avatars.get(str(row.get("source_owner_id") or "")),
                 source_user_id=str(row.get("source_owner_id") or ""),

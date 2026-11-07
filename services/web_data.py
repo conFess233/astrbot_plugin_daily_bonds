@@ -14,6 +14,27 @@ from ..models.errors import StorageError
 class DataRoutes:
     """按群查询关系、配额、统计与操作记录。"""
 
+    async def dashboard(self):
+        _, denied = self._authorize()
+        if denied:
+            return denied
+        try:
+            scope_id = self._query_scope_id()
+            days = self._query_integer("days", 14, 1, 90)
+            config, _ = self.storage.get_settings(scope_id)
+            data = await asyncio.to_thread(
+                self.queries.dashboard,
+                scope_id,
+                days=days,
+                timezone=config["reset"]["timezone"],
+                now=int(time.time()),
+            )
+            return json_response(
+                {"ok": True, "data": data, "request_id": str(uuid.uuid4())}
+            )
+        except (ValueError, StorageError) as exc:
+            return self._error("INVALID_QUERY", str(exc), 400)
+
     async def overview(self):
         _, denied = self._authorize()
         if denied:

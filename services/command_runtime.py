@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import sqlite3
 import time
 import uuid
 from collections.abc import Mapping
@@ -35,11 +36,13 @@ from .message_templates import (
     set_message_values,
 )
 from .onebot import OneBotAdapter, mentioned_user_ids
-from .statistics import StatisticsService
+from .statistics import StatisticsService, event_key_for
 from .storage import SQLiteStorage
 
 # 不属于单一玩法的查询指令：不受玩法开关限制。
-GENERAL_ACTIONS = frozenset({"my_status", "help", "my_collection"})
+GENERAL_ACTIONS = frozenset(
+    {"my_status", "help", "my_collection", "character_info", "group_stats"}
+)
 # 玩法关闭后仍可查询，并能结束已有关系与邀请。
 MODE_CLOSED_ALLOWED = frozenset(
     {
@@ -227,29 +230,6 @@ class CommandRuntime:
                 now=raw_event.observed_at,
             )
             return None
-        stats_enabled = bool(
-            config["statistics"]["intimacy_enabled"]
-            or config["statistics"]["activity_enabled"]
-        )
-        if stats_enabled:
-            await asyncio.to_thread(
-                self.statistics.record_message,
-                scope_id=scope_id,
-                raw_event=raw_event.raw,
-                sender_id=raw_event.sender_id,
-                mentioned_ids=mentioned_user_ids(raw_event.segments),
-                eligible_user_ids=eligible,
-                bot_ids=bot_ids,
-                intimacy_enabled=config["statistics"]["intimacy_enabled"],
-                activity_enabled=config["statistics"]["activity_enabled"],
-                active_points=config["statistics"]["mention_active_points"],
-                timezone=config["reset"]["timezone"],
-                passive_points=config["statistics"]["mention_passive_points"],
-                now=raw_event.observed_at,
-            )
-        if raw_event.sender_id not in eligible:
-            return None
-
         prefixes = list(config["commands"]["extra_prefixes"])
         if config["commands"]["allow_host_prefix"]:
             try:
@@ -267,6 +247,8 @@ class CommandRuntime:
                     for prefix in host_prefix
                     if isinstance(prefix, str) and prefix
                 )
+        syntax_error: CommandSyntaxError | None = None
+        command = None
         try:
             command = parse_command(
                 raw_event.segments,
@@ -280,8 +262,42 @@ class CommandRuntime:
                 allow_prefix=True,
             )
         except CommandSyntaxError as exc:
+            syntax_error = exc
+        stats_enabled = bool(
+            config["statistics"]["intimacy_enabled"]
+            or config["statistics"]["activity_enabled"]
+        )
+        if stats_enabled:
+            try:
+                await asyncio.to_thread(
+                    self.statistics.record_message,
+                    scope_id=scope_id,
+                    raw_event=raw_event.raw,
+                    sender_id=raw_event.sender_id,
+                    # 指令里的 @ 是操作目标，不是互动：只计活跃度，不加亲密度。
+                    mentioned_ids=()
+                    if command is not None or syntax_error is not None
+                    else mentioned_user_ids(raw_event.segments),
+                    eligible_user_ids=eligible,
+                    bot_ids=bot_ids,
+                    intimacy_enabled=config["statistics"]["intimacy_enabled"],
+                    activity_enabled=config["statistics"]["activity_enabled"],
+                    active_points=config["statistics"]["mention_active_points"],
+                    timezone=config["reset"]["timezone"],
+                    passive_points=config["statistics"]["mention_passive_points"],
+                    now=raw_event.observed_at,
+                )
+            except StorageError:
+                # 统计失败只丢这一条计分，不影响后面的指令。
+                logger.warning("今日姻缘：记录消息统计失败。", exc_info=True)
+        if raw_event.sender_id not in eligible:
+            return None
+
+        if syntax_error is not None:
             event.should_call_llm(True)
-            return render_message(config, "errors", "syntax_error", detail=str(exc))
+            return render_message(
+                config, "errors", "syntax_error", detail=str(syntax_error)
+            )
         if command is None:
             return None
         # 已识别为本插件指令：即使回复被关闭或事件重放而不发送，也不让唤醒消息
@@ -353,7 +369,8 @@ class CommandRuntime:
                     actor_id=raw_event.sender_id,
                     group_id=scope.group_id,
                     group_name=await self.adapter.group_name(scope)
-                    if command.action in {"rank_intimacy", "rank_activity"}
+                    if command.action
+                    in {"rank_intimacy", "rank_activity", "group_stats"}
                     else "",
                     config=config,
                     revision=revision,
@@ -364,6 +381,12 @@ class CommandRuntime:
                 )
         except (StorageError, ValueError) as exc:
             reply = render_message(config, "errors", "operation_error", detail=str(exc))
+        except sqlite3.Error:
+            # 兜底：约束错误不把内部信息发到群里，但也不让指令没有回复。
+            logger.exception("今日姻缘：指令处理遇到数据库错误。")
+            reply = render_message(
+                config, "errors", "operation_error", detail="操作未完成，请稍后再试。"
+            )
         finally:
             if cooldown_claimed and not (
                 isinstance(reply, RuntimeReply) and reply.starts_cooldown
@@ -420,9 +443,14 @@ class CommandRuntime:
             return render_message(
                 config, "errors", "admin_set_unavailable", name=target.name
             )
-        return await self.replies.result_reply(
-            result.code, {**result.data, "admin_set": True}, "wife", config
+        data = await self._draw_facts(
+            {**result.data, "admin_set": True},
+            ctx.scope_id,
+            ctx.period,
+            "wife",
+            ctx.actor_id,
         )
+        return await self.replies.result_reply(result.code, data, "wife", config)
 
     async def _draw(
         self,
@@ -464,9 +492,12 @@ class CommandRuntime:
                 config_revision=ctx.revision,
                 now=ctx.now,
             )
-            return await self.replies.result_reply(
-                result.code, result.data, mode, config
-            )
+            data = result.data
+            if result.code == "DESIGNATED_DRAWN":
+                data = await self._draw_facts(
+                    dict(data), ctx.scope_id, ctx.period, mode, ctx.actor_id
+                )
+            return await self.replies.result_reply(result.code, data, mode, config)
         result = await asyncio.to_thread(
             self.gameplay.draw,
             scope_id=ctx.scope_id,
@@ -480,6 +511,7 @@ class CommandRuntime:
             activity_timezone=config["reset"]["timezone"],
             eligible_user_ids=ctx.eligible,
             activity_window_days=config["statistics"]["activity_window_days"],
+            activity_enabled=config["statistics"]["activity_enabled"],
             event_key=ctx.event_key,
             payload_hash=ctx.payload_hash,
             config_revision=ctx.revision,
@@ -731,4 +763,9 @@ def _event_key(raw: Mapping[str, Any]) -> tuple[str, str]:
     )
     digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
     message_id = str(raw.get("message_id") or "")
-    return (f"message:{message_id}" if message_id else f"message-hash:{digest}"), digest
+    key = (
+        event_key_for("message", message_id, raw)
+        if message_id
+        else f"message-hash:{digest}"
+    )
+    return key, digest

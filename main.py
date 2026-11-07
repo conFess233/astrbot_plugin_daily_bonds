@@ -73,12 +73,11 @@ class DailyBondsPlugin(Star):
             self._web_manager = web_manager
             notifications = NotificationService(self.context, storage)
             retention = RetentionService(storage, data_dir)
-            stale_invites = await notifications.invalidate_pending_on_restart(
-                int(time.time())
-            )
-            if stale_invites:
-                logger.info(
-                    "今日姻缘：重载时将 %d 条待处理赠送邀请标记为失效。", stale_invites
+            interrupted = await notifications.recover_on_restart()
+            if interrupted:
+                logger.warning(
+                    "今日姻缘：%d 条通知在上次重载时发送中断，结果未知，不再重发。",
+                    interrupted,
                 )
             self._runtime = CommandRuntime(
                 context=self.context,

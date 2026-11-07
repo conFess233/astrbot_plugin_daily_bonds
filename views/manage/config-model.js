@@ -1,3 +1,8 @@
+// 管理页按百分比显示、配置里存 0～1 的字段。
+export function isPercentPath(path) {
+  return path.endsWith(".steal_probability") || path.endsWith(".force_probability");
+}
+
 // Keep raw edits (including incomplete numbers) until the shared draft is submitted.
 export function configAt(config, path) {
   return path.split(".").reduce((value, key) => value?.[key], config);
@@ -30,7 +35,7 @@ export function configLeaves(config, prefix = "") {
 export function displayValue(path, value) {
   if (Array.isArray(value)) return value.join("\n");
   if (typeof value === "boolean") return value;
-  return String(path.endsWith(".steal_probability") ? value * 100 : value);
+  return String(isPercentPath(path) ? value * 100 : value);
 }
 
 export function draftValues(config) {
@@ -56,10 +61,10 @@ export function serializeDraft(saved, global, values, overridePaths, scoped, flo
       else if (typeof original === "number") {
         value = Number(raw);
         if (!raw.trim() || !Number.isFinite(value) ||
-            (Number.isInteger(original) && !floatPaths.has(path) && !path.endsWith(".steal_probability") && !Number.isInteger(value))) {
+            (Number.isInteger(original) && !floatPaths.has(path) && !isPercentPath(path) && !Number.isInteger(value))) {
           throw new Error(`${path} 必须填写有效数字。`);
         }
-        if (path.endsWith(".steal_probability")) value /= 100;
+        if (isPercentPath(path)) value /= 100;
       } else value = raw;
     }
     setConfigAt(draft, path, structuredClone(value));

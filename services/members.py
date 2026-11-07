@@ -1,4 +1,4 @@
-"""将新鲜群成员快照同步到当期关系和补抽资格。"""
+"""将新鲜群成员快照同步到当期关系。"""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ def reconcile_member_eligibility(
     eligible_user_ids: AbstractSet[str],
     now: int,
 ) -> int:
-    """解除失去参与资格者相关的关系，并为仍合资格的失配偶持有人补偿一次。"""
+    """解除失去参与资格者相关的关系；对象退群时返还持有人一次普通抽取。"""
 
     with storage.transaction() as db:
         config, _revision = storage.get_settings(scope_id)
@@ -63,19 +63,10 @@ def reconcile_member_eligibility(
             )
             if reason == "member_removed":
                 operation_id = f"member-removed:{row['id']}"
+                # 对象退群后持有人可以再抽一次。
                 db.execute(
-                    """INSERT OR IGNORE INTO redraw_credits(
-                           id,scope_id,period_id,mode,user_id,source_operation_id,reason,state,issued_at
-                       ) VALUES(?,?,?,?,?,?,'member_removed','available',?)""",
-                    (
-                        str(uuid.uuid4()),
-                        scope_id,
-                        period_id,
-                        row["mode"],
-                        owner_id,
-                        operation_id,
-                        now,
-                    ),
+                    "UPDATE daily_counters SET normal_draws=MAX(0,normal_draws-1) WHERE scope_id=? AND period_id=? AND mode=? AND user_id=?",
+                    (scope_id, period_id, row["mode"], owner_id),
                 )
                 db.execute(
                     """INSERT OR IGNORE INTO operation_log(
@@ -103,7 +94,7 @@ def reconcile_member_eligibility(
                     render_message(
                         config,
                         "notifications",
-                        "member_redraw",
+                        "member_removed",
                         name=row["name"],
                         owner_id=owner_id,
                         owner_name=owner_name,

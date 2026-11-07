@@ -65,7 +65,44 @@ _REMOVED_RESOURCES = {
 }
 _QUOTABLE = {"results", "errors"}
 # 单一容量模型下不会再出现的结果文案。
-_REMOVED_MESSAGES = {"results.steal_slot_full", "results.designated_slot_full"}
+_REMOVED_MESSAGES = {
+    "results.steal_slot_full",
+    "results.designated_slot_full",
+    "results.designated_drawn",
+    "results.designated_relationship_locked",
+    "notifications.restart_invalidated",
+    "notifications.member_redraw",
+}
+# 0.2.2 的默认文案：删除补抽并统一术语后改写；自定义文案保留。
+SUPERSEDED_MESSAGES = {
+    "results.capacity_full": "持有名额已满：{names}。可以先发送“离婚”解除一段普通关系。",
+    "results.relationship_locked": "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
+    "results.steal_slot_locked": "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
+    "results.capacity_full_single_wife": "你今日已有老婆{names}啦，{reset_at} 重置后再来吧。",
+    "results.capacity_full_single_husband": "你今日已有老公{names}啦，{reset_at} 重置后再来吧。",
+    "results.no_draw_quota": "今天的普通抽取次数已用完，{reset_at} 重置；离婚可获得一次补抽资格。",
+    "results.divorced": "{actor_name}与{subject_name}的关系已解除，获得一次补抽资格。",
+    "results.stolen": "{actor_name}从{owner_name}处抢到了{subject_name}。",
+    "results.invite_expired": "赠送邀请已过期",
+    "results.invite_invalidated": "赠送邀请已失效",
+    "results.invite_not_owned": "你无权处理这条邀请",
+    "results.target_protected": "该持有者本周期已受抢夺保护",
+    "results.invalid_target": "目标无效",
+    "results.no_target_relationship": "目标没有可抢夺的关系",
+    "results.mode_disabled": "这个玩法当前已关闭",
+    "results.invalid_probability": "抢夺概率配置无效",
+    "results.invalid_timeout": "赠送超时配置无效",
+    "results.invite_already_pending": "该关系已有待处理赠送邀请，编号 {invite_id}",
+    "results.invite_limit": "待处理赠送邀请已达上限 {limit}",
+    "results.invite_invalid": "赠送邀请已无效",
+    "results.already_held": "你今天已持有 {name}。",
+    "errors.steal_relation_ambiguous": "该持有者没有唯一匹配的配偶；请使用准确名称或 #ID。",
+    "errors.gift_relation_ambiguous": "你没有唯一匹配的配偶；请使用准确名称或 #ID。",
+    "titles.list_member": "群友配偶列表",
+    "titles.rank_group_intimacy": "{群名}的亲密度排行",
+    "titles.rank_activity": "{群名}的活跃度排行",
+    "titles.query_affection": "{name}与{target_name}的好感度",
+}
 
 
 def _defaults() -> dict[str, Any]:
@@ -218,3 +255,37 @@ def _current_default(
     if isinstance(current, Mapping):
         return str(current["text"])
     return str(current) if current is not None else text
+
+
+def refresh_superseded_messages(value: dict[str, Any]) -> bool:
+    """就地删除废弃文案并替换仍是旧默认值的文案；返回是否有改动。"""
+
+    messages = value.get("messages")
+    if not isinstance(messages, dict):
+        return False
+    defaults = _defaults()["messages"]
+    changed = False
+    for path in _REMOVED_MESSAGES:
+        section, key = path.split(".", 1)
+        entries = messages.get(section)
+        if isinstance(entries, dict) and key in entries:
+            del entries[key]
+            changed = True
+    for path, old in SUPERSEDED_MESSAGES.items():
+        section, key = path.split(".", 1)
+        entries = messages.get(section)
+        if not isinstance(entries, dict):
+            continue
+        entry = entries.get(key)
+        current = defaults[section][key]
+        if isinstance(entry, dict) and entry.get("text") == old:
+            entry["text"] = current["text"]
+            changed = True
+        elif entry == old:
+            entries[key] = current
+            changed = True
+    for section in [name for name, entries in messages.items() if entries == {}]:
+        del messages[section]
+    if messages == {}:
+        del value["messages"]
+    return changed

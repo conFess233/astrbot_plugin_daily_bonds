@@ -18,12 +18,6 @@ def normal_draw_remaining(capacity: int, normal_draws: int) -> int:
     return max(0, capacity - normal_draws)
 
 
-def can_draw(*, held: int, capacity: int, normal_draws: int, credits: int) -> bool:
-    """有空余持有名额，且还有普通次数或补抽资格。"""
-
-    return held < capacity and (credits > 0 or normal_draws < capacity)
-
-
 def limit_remaining(limit: int, used: int) -> int | None:
     """上限为 0 表示不限次数，返回 None。"""
 

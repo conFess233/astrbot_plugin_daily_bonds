@@ -83,6 +83,13 @@ class WebManager(
             ("status/user", self.user_status, ["GET"], "Read a user's daily status"),
             ("render/preview", self.render_preview, ["GET"], "Preview reply forms"),
             ("overview", self.overview, ["GET"], "Today Bonds overview"),
+            ("dashboard", self.dashboard, ["GET"], "Gameplay trends and rankings"),
+            (
+                "characters/batch",
+                self.batch_characters,
+                ["POST"],
+                "Enable, disable or re-pool several characters",
+            ),
             ("scopes", self.scopes, ["GET"], "Today Bonds scopes"),
             ("config", self.get_config, ["GET"], "Read Today Bonds configuration"),
             (

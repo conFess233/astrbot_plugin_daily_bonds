@@ -202,7 +202,7 @@ class ReplyBuilder:
                 starts_cooldown=False,
                 fallback_text=card.fallback_text,
             )
-        if code in {"DRAWN", "DESIGNATED_DRAWN"} and IMAGE_TOKEN in text:
+        if code in {"DRAWN", "DESIGNATED_DRAWN", "FORCED"} and IMAGE_TOKEN in text:
             item = await asyncio.to_thread(
                 self.relationship_display, str(data["relationship_id"])
             )
@@ -223,6 +223,7 @@ class ReplyBuilder:
             "DESIGNATED_DRAWN",
             "STEAL_FAILED",
             "STOLEN",
+            "FORCE_FAILED",
             "DIVORCED",
             "GIFTED",
             "INVITE_CREATED",
@@ -248,6 +249,8 @@ class ReplyBuilder:
         source = (
             "管理员设置"
             if data.get("admin_set")
+            else "强娶"
+            if code == "FORCED"
             else "指定"
             if code == "DESIGNATED_DRAWN"
             else "抽取"
@@ -360,6 +363,13 @@ class ReplyBuilder:
                 else f"draw_{mode}",
                 name=data["candidate"]["name"],
             )
+        if code == "FORCED":
+            return render_message(
+                config,
+                "results",
+                "force_success",
+                name=data["candidate"]["name"],
+            )
         if code == "INVITE_CREATED":
             return render_message(
                 config,
@@ -376,6 +386,8 @@ class ReplyBuilder:
                 config, "results", "capacity_full", names=names, name=names
             )
         key = code.lower()
+        if code == "NO_CANDIDATE" and mode == "member":
+            key = "no_candidate_member"
         if key in config["messages"]["results"]:
             available_at = data.get("available_at")
             return render_message(

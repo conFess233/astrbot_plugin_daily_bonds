@@ -162,11 +162,74 @@ function characterCard(item, list) {
   info.append(name, id, tags, pools);
   button.append(coverFrame(item), info);
   if (item.aliases?.length) button.title = `别名：${item.aliases.join("、")}`;
+  if (batch.active) {
+    const selected = batch.selected.has(item.id);
+    button.classList.toggle("selected", selected);
+    button.setAttribute("aria-pressed", String(selected));
+  }
   button.addEventListener("click", () => {
+    if (batch.active) {
+      const selected = !batch.selected.has(item.id);
+      if (selected) batch.selected.add(item.id); else batch.selected.delete(item.id);
+      button.classList.toggle("selected", selected);
+      button.setAttribute("aria-pressed", String(selected));
+      renderBatchBar();
+      return;
+    }
     for (const other of list.querySelectorAll(".character-card")) other.setAttribute("aria-pressed", String(other === button));
     loadCharacter(item.id).catch((error) => showNotice(error.message, "error"));
   });
   return button;
+}
+
+// 批量操作：选择跨页和跨筛选保留，退出批量模式时清空。
+const batch = { active: false, selected: new Set() };
+
+function renderBatchBar() {
+  $("#batch-bar").hidden = !batch.active;
+  const mode = $("#batch-mode");
+  mode.setAttribute("aria-pressed", String(batch.active));
+  mode.textContent = batch.active ? "退出批量" : "批量操作";
+  const count = batch.selected.size;
+  $("#batch-count").textContent = count ? `已选 ${count} 个角色` : "点击角色进行选择";
+  for (const button of document.querySelectorAll("[data-batch]")) button.disabled = !count;
+  const select = $("#batch-pool");
+  const current = select.value;
+  select.replaceChildren(...state.pools.map((pool) => new Option(`${pool.name}（${MODE_LABELS[pool.mode] || pool.mode}）`, pool.id)));
+  if (state.pools.some((pool) => pool.id === current)) select.value = current;
+}
+
+async function runBatch(action) {
+  const ids = [...batch.selected];
+  const poolAction = action === "add_pool" || action === "remove_pool";
+  const pool = state.pools.find((item) => item.id === $("#batch-pool").value);
+  if (poolAction && !pool) { showNotice("请先新建角色池。", "error"); return; }
+  const result = await apiPost("characters/batch", { ids, action, ...(poolAction ? { pool_id: pool.id } : {}), request_id: crypto.randomUUID() });
+  const { updated, unchanged, mismatched } = result.data;
+  const parts = [`已更新 ${updated} 个`];
+  if (unchanged) parts.push(`${unchanged} 个无需改动`);
+  if (mismatched.length) parts.push(`${mismatched.length} 个性别与角色池不符，未加入`);
+  showNotice(`${parts.join("，")}。`, mismatched.length ? "warning" : "success");
+  batch.selected.clear();
+  await loadCatalog();
+  const editing = $("#character-id");
+  if (editing.readOnly && ids.includes(editing.value)) await loadCharacter(editing.value);
+}
+
+export function initCharacterBatch() {
+  $("#batch-mode").addEventListener("click", () => {
+    batch.active = !batch.active;
+    batch.selected.clear();
+    renderCharacters();
+  });
+  $("#batch-all").addEventListener("click", () => {
+    for (const item of state.characters) batch.selected.add(item.id);
+    renderCharacters();
+  });
+  $("#batch-clear").addEventListener("click", () => { batch.selected.clear(); renderCharacters(); });
+  for (const button of document.querySelectorAll("[data-batch]")) {
+    button.addEventListener("click", () => runBatch(button.dataset.batch).catch((error) => showNotice(error.message, "error")));
+  }
 }
 
 function poolChip(label, value, count) {
@@ -240,6 +303,7 @@ function renderPoolOverview() {
 export function renderCharacters() {
   renderPoolFilter();
   renderPoolOverview();
+  renderBatchBar();
   const list = $("#character-list");
   list.replaceChildren();
   for (const item of state.characters) list.append(characterCard(item, list));

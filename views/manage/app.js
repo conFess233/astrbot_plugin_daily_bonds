@@ -6,7 +6,8 @@ import { applyIcons, icon } from "./icons.js";
 import { toast, busyButton, countUp, flash, nudge, staggerRows, islandPill, openLightbox } from "./motion.js";
 
 import { configLeaves, draftValues, toUiConfig } from "./config-model.js";
-import { checkCatalogSync, editPool, newPool, openCharacterSheet, removeCatalogItem, renderCharacterImages, renderCharacters, renderPools, setCatalogWide, updateCatalogSyncSelection } from "./catalog-workspace.js";
+import { loadDashboard, initDashboard } from "./dashboard.js";
+import { checkCatalogSync, editPool, initCharacterBatch, newPool, openCharacterSheet, removeCatalogItem, renderCharacterImages, renderCharacters, renderPools, setCatalogWide, updateCatalogSyncSelection } from "./catalog-workspace.js";
 import { RENDER_KINDS, apiConfigPayload, assignDraftField, beforeUnload, changeScope, configFeedback, configIsGlobalOnly, describeConfigConflict, dirtyPaths, focusConfigSearch, isConfigDirty, loadScopes, openView, previewDraft, propagateMode, refreshPoolPickers, renderChoice, renderConfigFields, renderDraftDiff, renderRulePreview, renderScopeList, renderTemplatePreview, resolveDraft, saveDraft, searchConfig, selectConfigGroup, setScopeLabel, showConfigError, unifiablePaths, updateConditionalFields, updateConfigSummary, updateReplySelection, validateDraft } from "./config-workspace.js";
 import { QUERY_COLUMNS, clearPeriodResetPlan, correctionExamples, dataTable, previewPeriodReset, renderImportPreview, renderMaintenanceJob, renderRestoreScopeMappings } from "./data-workspace.js";
 
@@ -191,6 +192,7 @@ export const CONFIG_OPTIONS = {
 export const FLOAT_CONFIG_PATHS = new Set([
   "weights.base", "weights.per_intimacy_point", "weights.maximum",
   "weights.activity_floor",
+  "modes.member.force_intimacy_bonus", "modes.member.force_probability_max",
   ...["wife", "husband", "member"].flatMap((mode) => [`modes.${mode}.steal_intimacy_bonus`, `modes.${mode}.steal_probability_max`]),
 ]);
 export const CONFIG_HINTS = {
@@ -211,6 +213,14 @@ export const CONFIG_HINTS = {
   "modes.husband.divorce_limit": "0 表示不限次数。",
   "modes.member.divorce_limit": "0 表示不限次数。",
   "reset.time": "使用 HH:mm 格式；旧周期结束后生效。",
+  "modes.member.force_limit": "0～100；0 关闭强娶。失败也消耗次数，不占普通抽取次数。",
+  "modes.member.force_probability": "单次强娶的基础成功率。",
+  "modes.member.force_intimacy_bonus": "0～1；成功率 = 基础成功率 + 你对对方的亲密度 × 此值。默认 0.001，即 100 点亲密度加 10%。0 关闭加成。",
+  "modes.member.force_probability_max": "0～1；只限制加成后的成功率，基础成功率更高时以基础成功率为准。",
+  "statistics.intimacy_decay_percent": "0～100；0 关闭。每天一次按比例扣减（向下取整，每次至少减 1 分），减到 0 的记录删除。影响排行、抢夺加成和娶群友权重。",
+  "statistics.intimacy_decay_idle_days": "0～365；只衰减这么多天内没有新互动（@ 或戳一戳）的记录，0 表示全部衰减。",
+  "weights.base": "娶群友时每位候选人的权重 = min(最大权重, 基础权重 + 你对对方的亲密度 × 每点亲密度增加权重) × 活跃系数。",
+  "weights.activity_floor": "(0,1]；活跃系数 = 此值 + (1 − 此值) × 对方在活跃度窗口内的活跃天数 ÷ 窗口天数，窗口内每天都活跃时为 1。",
   "display.rank_merge_rows": "1～100；列表每张卡片最多显示的行数，排行每张最多 50 行（5 列）；超出时分成多张。",
   "render.mode": "卡片由 AstrBot 的 t2i 服务渲染，会把群名片、头像和角色图发送到该服务；选择纯文本则不发送。渲染失败时自动改发文字。",
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
@@ -290,6 +300,7 @@ async function loadOverview() {
   }
   $("#overview-refresh").disabled = true;
   $("#overview-updated").textContent = "正在读取统计…";
+  loadDashboard(scopeId);
   try {
     const result = await apiGet("overview", scopeId ? { scope_id: scopeId } : {});
     if (sequence !== overviewLoadSequence) return;
@@ -1164,6 +1175,8 @@ initBatchImages({ apiGet, apiPost, apiUpload, showNotice,
   },
 });
 
+initDashboard();
+initCharacterBatch();
 initStatusAndMigration({ apiGet, apiPost, apiUpload, confirmAction, showNotice });
 
 await bridge.ready();
