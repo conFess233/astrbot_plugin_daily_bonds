@@ -292,6 +292,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
     _validate_llm(config)
     _validate_sentiment(config)
     _enum(config, "render.mode", {"card", "text"})
+    _boolean(config, "render.quote_default")
     for kind in RENDER_TYPES:
         _enum(config, f"render.types.{kind}", {"inherit", "card", "text"})
     batch = config["batch_import"]

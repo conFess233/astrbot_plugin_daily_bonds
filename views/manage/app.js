@@ -264,6 +264,7 @@ export const CONFIG_HINTS = {
   "sentiment.global_buffer_max_messages": "100～100000；所有群合计的暂存上限，超出时先删最久没有新消息的群。",
   "sentiment.context_messages": "0～50；每批附带的上一批末尾消息条数，只作上下文，不重复计分。",
   "sentiment.message_max_chars": "20～1000；每条消息暂存和发送的最大字数。",
+  "render.quote_default": "开启后，结果和报错回复默认引用触发它的那条消息；单条回复可在「回复模板」里改成“引用”或“不引用”。",
   "render.mode": "卡片由 AstrBot 的 t2i 服务渲染，会把群名片、头像和角色图发送到该服务；选择纯文本则不发送。渲染失败时自动改发文字。",
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
     [`render.types.${kind}`, "跟随默认形式，或为这一类回复单独选择卡片或纯文本。"])),

@@ -213,7 +213,7 @@
         "text": "{actor_name}娶到{role}：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -221,7 +221,7 @@
         "text": "{actor_name}娶到群友：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -229,55 +229,55 @@
         "text": "持有名额已满：{names}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "divorce_locked": {
         "text": "{subject_name}是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能离婚；{reset_at} 重置后恢复。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "gift_locked": {
         "text": "这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能转送。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "steal_slot_locked": {
         "text": "{target_name}的这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能抢。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "capacity_full_single": {
         "text": "你本周期已有{role}{names}啦，{reset_at} 重置后再来吧。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "no_draw_quota": {
         "text": "本周期的普通抽取次数已用完，{reset_at} 重置。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "no_candidate": {
         "text": "当前没有可抽取的对象：角色可能都已被持有，或对应角色池没有可用角色。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "no_candidate_member": {
         "text": "当前没有可娶的群友：需要有人近期发言或有亲密度记录，且本周期未被他人娶走。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "steal_failed": {
         "text": "{actor_name}抢夺失败，{subject_name}仍属于{owner_name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -285,7 +285,7 @@
         "text": "{actor_name}从{owner_name}处抢到了{subject_name}，{owner_name}可以再次抽取。",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -293,7 +293,7 @@
         "text": "{actor_name}强娶了{name}！{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -301,7 +301,7 @@
         "text": "{actor_name}强娶{subject_name}失败了。",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -309,31 +309,31 @@
         "text": "本周期{action}次数已用完，{reset_at} 重置。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "force_already_holds": {
         "text": "你已经娶了{subject_name}啦。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "force_target_taken": {
         "text": "{subject_name}刚被{owner_name}娶走，请重新强娶一次。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "already_holds": {
         "text": "你已持有{subject_name}，不能再抢夺。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "divorced": {
         "text": "{actor_name}与{subject_name}的关系已解除，可以再次抽取。",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -341,7 +341,7 @@
         "text": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -349,25 +349,25 @@
         "text": "{recipient_name}的持有名额已满，暂时不能接收赠送。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "recipient_holds": {
         "text": "{recipient_name}已持有{subject_name}，不能重复接收。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_created": {
         "text": "{sender_name}邀请{recipient_name}接受{subject_name}，编号 {invite_id}；接收者可发送“{accept_keyword} {invite_id}”。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "gift_accepted": {
         "text": "{recipient_name}接受了{sender_name}赠送的{subject_name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -375,67 +375,67 @@
         "text": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_cancelled": {
         "text": "{actor_name}已取消向{recipient_name}赠送{subject_name}的邀请。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_invalid": {
         "text": "这条赠送邀请已失效。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_not_owned": {
         "text": "你无权处理这条邀请。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "steal_cooldown": {
         "text": "抢夺冷却中，请在 {remaining_seconds} 秒后再试。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "target_protected": {
         "text": "{owner_name}本周期已经被抢过了，受保护，换个人试试。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "relationship_not_found": {
         "text": "你本周期没有可以送出的{role}；发送“我的姻缘”查看当前关系。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "no_target_relationship": {
         "text": "{target_name}本周期没有能抢的{role}。{hint}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_already_pending": {
         "text": "该关系已有待处理赠送邀请，编号 {invite_id}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_limit": {
         "text": "待处理赠送邀请已达上限 {limit}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "designated": {
         "text": "{actor_name}指定{role}：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -443,67 +443,67 @@
         "text": "该角色已有关系，当前开启了指定角色独占。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "list_wife": {
         "text": "{title}（共 {count}）\n{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "list_husband": {
         "text": "{title}（共 {count}）\n{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "list_member": {
         "text": "{title}（共 {count}）\n{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "rank_intimacy": {
         "text": "{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "rank_my_intimacy": {
         "text": "{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "rank_activity": {
         "text": "{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "query_affection": {
         "text": "{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "admin_set_wife": {
         "text": "{actor_name}设置今日老婆：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "already_held": {
         "text": "你本周期已持有 {name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "draw_member_mutual": {
         "text": "{actor_name}和{name}双向奔赴啦！{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -511,7 +511,7 @@
         "text": "{owner_name}和{subject_name}双向奔赴啦！",
         "alternatives": [],
         "enabled": true,
-        "quote": false,
+        "quote": "default",
         "llm": false,
         "llm_prompt": ""
       },
@@ -519,31 +519,31 @@
         "text": "{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "help": {
         "text": "{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "my_collection": {
         "text": "{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "character_info": {
         "text": "{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "group_stats": {
         "text": "{lines}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       }
     },
     "errors": {
@@ -551,103 +551,103 @@
         "text": "{feature}当前已关闭。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "command_cooldown": {
         "text": "指令冷却中，请在 {remaining_seconds} 秒后重试。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "relation_ambiguous": {
         "text": "找到多段匹配的关系，请写明名称或 #ID：\n{candidates}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "relation_missing": {
         "text": "没有找到叫这个名字的关系；发送“我的姻缘”查看当前关系。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "target_required": {
         "text": "请在指令后面 @ 一位群友。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "target_invalid": {
         "text": "不能选{target_name}：{reason}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "divorce_relation_missing": {
         "text": "没有找到可以离婚的关系；发送“我的姻缘”查看你当前的关系。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_multiple": {
         "text": "你有多条待处理赠送，请在命令后填写邀请编号。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_none": {
         "text": "没有可处理的待赠送邀请。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "invite_invalid_id": {
         "text": "邀请编号无效或不属于当前群。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "activity_disabled": {
         "text": "活跃度统计已关闭；当前保留历史排行。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "page_out_of_range": {
         "text": "页码超出范围；共 {pages} 页。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "list_empty": {
         "text": "{title}：当前没有关系。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "character_missing": {
         "text": "没有找到角色“{name}”；请检查名称、别名或 ID。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "character_ambiguous": {
         "text": "匹配到多个角色，请使用明确的名称或 ID：\n{candidates}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "admin_set_denied": {
         "text": "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       },
       "admin_set_unavailable": {
         "text": "角色当前不可用：{name}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": "default"
       }
     },
     "notifications": {
@@ -784,6 +784,7 @@
   },
   "render": {
     "mode": "card",
+    "quote_default": false,
     "types": {
       "draw": "inherit",
       "status": "inherit",

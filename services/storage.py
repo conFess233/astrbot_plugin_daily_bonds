@@ -21,6 +21,7 @@ from ..models.scope import Scope
 from .config_upgrade import (
     LEGACY_MESSAGES,
     SUPERSEDED_MESSAGES,
+    convert_quotes,
     is_legacy,
     refresh_superseded_messages,
     refresh_superseded_values,
@@ -36,7 +37,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 22
+_SCHEMA_VERSION = 23
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -588,9 +589,10 @@ class SQLiteStorage:
             migration_dir / "020_refresh_defaults.sql",
             migration_dir / "021_refresh_defaults.sql",
             migration_dir / "022_message_merge.sql",
+            migration_dir / "023_quote_default.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
-        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20, 21: _upgrade_v20, 22: _upgrade_v22}
+        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20, 21: _upgrade_v20, 22: _upgrade_v22, 23: _upgrade_v23}
         variants = [_checksum_variants(path) for path in migration_files]
         # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
         checksums = [lf for lf, _crlf in variants]
@@ -937,13 +939,49 @@ def _upgrade_v22(connection: sqlite3.Connection, from_version: int) -> None:
         )
 
 
+def _upgrade_v23(connection: sqlite3.Connection, from_version: int) -> None:
+    """迁移 023：引用改为全局默认加单条 default / on / off，写升级报告。"""
+
+    rows = connection.execute(
+        "SELECT scope_key,value_json FROM settings ORDER BY scope_key<>'global'"
+    ).fetchall()
+    report: dict[str, list[str]] = {}
+    global_default: bool | None = None
+    for row in rows:
+        value = json.loads(row["value_json"])
+        if row["scope_key"] == "global":
+            global_default, notes = convert_quotes(value)
+        else:
+            _default, notes = convert_quotes(value, bool(global_default))
+        connection.execute(
+            "UPDATE settings SET value_json=? WHERE scope_key=?",
+            (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+        )
+        if notes:
+            report[row["scope_key"]] = notes
+    if from_version and report:
+        connection.execute(
+            "INSERT INTO migration_reports(id,source,from_version,to_version,report_json,created_at) VALUES(?,?,?,?,?,unixepoch())",
+            (
+                str(uuid.uuid4()),
+                "database",
+                from_version,
+                _SCHEMA_VERSION,
+                json.dumps({"settings": report}, ensure_ascii=False),
+            ),
+        )
+
+
 def _drop_invalid_merged_texts(value: dict[str, Any]) -> list[str]:
     """合并后的自定义文案若用了新条目不支持的变量，改回默认文案并说明。"""
 
     notes: list[str] = []
     for _attempt in range(len(PATH_LABELS)):
         try:
-            validate_config(merge_sparse(default_config(), value))
+            # 引用开关的类型在迁移 023 才转换，这里按转换后的样子校验。
+            candidate = copy.deepcopy(value)
+            convert_quotes(candidate, False)
+            validate_config(merge_sparse(default_config(), candidate))
             return notes
         except ConfigurationError as exc:
             match = re.search(r"messages\.(results|errors)\.([a-z_]+)", str(exc))

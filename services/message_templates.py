@@ -208,9 +208,13 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
                 continue
             if not isinstance(entry, Mapping) or set(entry) != set(original_entry):
                 raise ConfigurationError(f"{path} 必须包含 {sorted(original_entry)}")
-            for flag in set(entry) - {"text", "alternatives", "llm_prompt"}:
+            for flag in set(entry) - {"text", "alternatives", "llm_prompt", "quote"}:
                 if not isinstance(entry[flag], bool):
                     raise ConfigurationError(f"{path}.{flag} 必须是布尔值")
+            if "quote" in entry and entry["quote"] not in QUOTE_CHOICES:
+                raise ConfigurationError(
+                    f"{path}.quote 必须是 default（跟随默认）、on 或 off"
+                )
             if "llm_prompt" in entry:
                 prompt = entry["llm_prompt"]
                 if (
@@ -303,6 +307,20 @@ def template_fields() -> dict[str, dict[str, Any]]:
     return result
 
 
+QUOTE_CHOICES = ("default", "on", "off")
+
+
+def quote_enabled(config: Mapping[str, Any], choice: Any) -> bool:
+    """单条回复的引用设置：on/off 优先，其余跟随 render.quote_default。"""
+
+    if choice == "on":
+        return True
+    if choice == "off":
+        return False
+    render = config.get("render")
+    return bool(render.get("quote_default", False)) if isinstance(render, Mapping) else False
+
+
 def render_message(
     config: Mapping[str, Any], section: str, key: str, **values: Any
 ) -> str:
@@ -315,7 +333,9 @@ def render_message(
     if system is not None:
         context = {**MESSAGE_CONTEXT.get(), "code": "", "detail": "", **values}
         text = system.format_map(context)
-        return MessageText(text, fallback=text)
+        return MessageText(
+            text, quote_source=quote_enabled(config, None), fallback=text
+        )
     entry = config["messages"][section][key]
     if isinstance(entry, Mapping) and not entry.get("enabled", True):
         return MessageText("")
@@ -337,7 +357,9 @@ def render_message(
     text = template.format_map(values)
     original = entry_text(_default_messages()[section][key])
     fallback = original.format_map(values).replace(IMAGE_TOKEN, "").strip()
-    quote = bool(entry.get("quote", False)) if isinstance(entry, Mapping) else False
+    quote = quote_enabled(
+        config, entry.get("quote") if isinstance(entry, Mapping) else None
+    )
     llm = None
     if isinstance(entry, Mapping) and entry.get("llm") and "llm" in config:
         llm = {

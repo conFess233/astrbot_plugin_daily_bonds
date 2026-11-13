@@ -294,6 +294,11 @@ def upgrade_config(
         {"legacy": LEGACY_MESSAGES, "superseded": SUPERSEDED_MESSAGES},
         PATH_LABELS,
     )
+    # 引用开关改为 default / on / off；旧配置只做类型转换，化简交给迁移 023。
+    for section in ("results", "errors"):
+        for item in ((result.get("messages") or {}).get(section) or {}).values():
+            if isinstance(item, dict) and isinstance(item.get("quote"), bool):
+                item["quote"] = "on" if item["quote"] else "off"
     if not sparse or "schema_version" in result:
         result["schema_version"] = SCHEMA_VERSION
     return result, notes
@@ -349,3 +354,49 @@ def refresh_superseded_messages(value: dict[str, Any]) -> bool:
     if messages == {}:
         del value["messages"]
     return changed
+
+
+def convert_quotes(
+    value: dict[str, Any], global_default: bool | None = None
+) -> tuple[bool | None, list[str]]:
+    """0.4.0：每条回复的引用由布尔值改为 default / on / off。
+
+    global_default 为 None 表示这是全局配置：按多数设置 render.quote_default，
+    与之相同的条目改为跟随默认。群级覆盖传入全局的默认值，同样化简。
+    返回全局默认值（群级覆盖原样返回传入值）与说明。
+    """
+
+    messages = value.get("messages")
+    entries = [
+        entry
+        for section in ("results", "errors")
+        for entry in (messages.get(section) or {}).values()
+        if isinstance(messages, dict) and isinstance(entry, dict) and "quote" in entry
+    ] if isinstance(messages, dict) else []
+    for entry in entries:
+        if isinstance(entry["quote"], bool):
+            entry["quote"] = "on" if entry["quote"] else "off"
+    if not entries:
+        return global_default, []
+    notes: list[str] = []
+    default = global_default
+    if default is None:
+        on = sum(entry["quote"] == "on" for entry in entries)
+        off = sum(entry["quote"] == "off" for entry in entries)
+        default = on > off
+        render = value.setdefault("render", {})
+        if isinstance(render, dict):
+            render["quote_default"] = default
+    same = "on" if default else "off"
+    changed = 0
+    for entry in entries:
+        if entry["quote"] == same:
+            entry["quote"] = "default"
+            changed += 1
+    own = sum(entry["quote"] != "default" for entry in entries)
+    if changed:
+        notes.append(
+            f"引用改为统一的默认设置（{'引用' if default else '不引用'}），"
+            f"{changed} 条改为跟随默认，{own} 条保留单独设置。"
+        )
+    return (global_default if global_default is not None else default), notes

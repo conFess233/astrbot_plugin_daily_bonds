@@ -15,6 +15,16 @@ export function beforeUnload(event) {
   event.returnValue = "";
 }
 
+// 单条回复的引用：跟随「回复形式」里的默认，或单独指定。
+const QUOTE_OPTIONS = [["default", "跟随默认"], ["on", "引用"], ["off", "不引用"]];
+
+function optionsFor(path) {
+  if (CONFIG_OPTIONS[path]) return CONFIG_OPTIONS[path];
+  if (path.endsWith(".gift_mode")) return [["direct", "直接赠送"], ["confirm", "等待确认"]];
+  if (path.startsWith("reply_quote.")) return QUOTE_OPTIONS;
+  return null;
+}
+
 // 次级设置的前置条件：[控制项, 判断, 收起时的说明]。全部满足才显示，数值始终保留。
 function fieldConditions(path) {
   const parts = path.split(".");
@@ -107,7 +117,7 @@ function diffText(path, value) {
     value = `${list.length} 条：${list.join("、")}`;
   }
   if (typeof value === "boolean") return value ? "开启" : "关闭";
-  const choices = CONFIG_OPTIONS[path] || (path.endsWith(".gift_mode") ? [["direct", "直接赠送"], ["confirm", "等待确认"]] : null);
+  const choices = optionsFor(path);
   const choice = choices?.find(([key]) => key === value);
   if (choice) return choice[1];
   if (isPoolConfig(path)) {
@@ -439,6 +449,7 @@ function configLabel(path) {
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
   if (parts[0] === "commands" && parts[1] === "keywords") return `${name}关键词`;
   if (path === "render.mode") return "默认回复形式";
+  if (path === "render.quote_default") return "回复默认引用触发消息";
   if (parts[0] === "render" && parts[1] === "types") return `${name}回复形式`;
   if (path === "access.groups.mode") return "群准入模式";
   if (path === "access.users.mode") return "用户准入模式";
@@ -726,9 +737,9 @@ function createConfigField(path, value) {
     input.type = "checkbox";
     input.setAttribute("role", "switch");
     input.checked = value;
-  } else if (CONFIG_OPTIONS[path] || path.endsWith(".gift_mode")) {
+  } else if (optionsFor(path)) {
     input = document.createElement("select");
-    const choices = CONFIG_OPTIONS[path] || [["direct", "直接赠送"], ["confirm", "等待确认"]];
+    const choices = optionsFor(path);
     for (const [optionValue, text] of choices) input.add(new Option(text, optionValue));
     input.value = value;
   } else {
@@ -850,7 +861,7 @@ function createConfigField(path, value) {
   const hint = CONFIG_HINTS[path] ||
     (path.startsWith("messages.") ? templateHint(path) :
     isVariantPath(path) ? templateHint(path.replace(/^reply_variants\./, "messages.")) :
-    path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
+    path.startsWith("reply_quote.") ? "是否引用触发消息。“跟随默认”使用「配置 → 高级 → 展示与回复形式」里的默认引用设置。" :
     path.startsWith("reply_llm.") ? "开启后由模型根据本次的人物和结果现写一条；超时、失败或达到频率上限时发送上面的预设文案。每次都会实际调用模型。" :
     path.startsWith("reply_llm_prompt.") ? "可选，最多 500 字；只对这一类回复生效，补充在全局文风要求之后。插件已固定要求模型只写真实结果、不编数字，这里写语气和侧重点即可。" :
     path.startsWith("commands.keywords.") ? "每行一个别名，至少一项。" : "");
@@ -1202,7 +1213,7 @@ export function updateReplySelection() {
 
 function initReplyBulk() {
   const bulk = document.createElement("details"); bulk.className = "reply-bulk";
-  bulk.innerHTML = '<summary>批量调整回复</summary><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-select-replies="visible">全选当前分类</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="all">全选所有回复</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="none">清空选择</button></div><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="enable">开启回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="disable">关闭回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote">开启引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="unquote">关闭引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="inherit">选中回复恢复继承</button></div><p id="reply-selection-count" class="hint" role="status"></p>';
+  bulk.innerHTML = '<summary>批量调整回复</summary><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-select-replies="visible">全选当前分类</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="all">全选所有回复</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="none">清空选择</button></div><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="enable">开启回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="disable">关闭回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote-default">引用跟随默认</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote">引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="unquote">不引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="inherit">选中回复恢复继承</button></div><p id="reply-selection-count" class="hint" role="status"></p>';
   $(".template-directory").insertBefore(bulk, $("#template-list"));
   bulk.addEventListener("click", (event) => {
     const button = event.target.closest("button"); if (!button) return;
@@ -1215,7 +1226,8 @@ function initReplyBulk() {
     const action = button.dataset.replyBulk; if (!action) return;
     for (const path of state.selectedReplies) {
       if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote.", "reply_llm.", "reply_llm_prompt."]) assignDraftField(path.replace("messages.", prefix), null, true);
-      else assignDraftField(path.replace("messages.", ["enable", "disable"].includes(action) ? "reply_enabled." : "reply_quote."), ["enable", "quote"].includes(action));
+      else if (["enable", "disable"].includes(action)) assignDraftField(path.replace("messages.", "reply_enabled."), action === "enable");
+      else if (path.startsWith("messages.results.") || path.startsWith("messages.errors.")) assignDraftField(path.replace("messages.", "reply_quote."), { quote: "on", unquote: "off" }[action] || "default");
     }
     renderTemplatePreview(); updateReplySelection();
   });
@@ -1322,7 +1334,8 @@ export function renderTemplatePreview() {
       const others = !disabled && variants && [state.draftValues[path], ...[...variants.editors.children].map((editor) => editor.value)].some((item) => item.trim());
       host.textContent = path.startsWith("messages.titles.") ? "空文字，隐藏对应标题或标签" : others ? "这一条留空，不参与随机" : "此回复不会发送消息、附图或引用"; return;
     }
-    if (state.draftValues[path.replace(/^messages\./, "reply_quote.")]) {
+    const quoteChoice = state.draftValues[path.replace(/^messages\./, "reply_quote.")];
+    if (quoteChoice === "on" || (quoteChoice === "default" && state.draftValues["render.quote_default"] === true)) {
       const quote = document.createElement("blockquote"); quote.textContent = "引用：示例用户消息"; host.append(quote);
     }
     for (const part of parts) {
