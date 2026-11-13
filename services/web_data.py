@@ -143,7 +143,7 @@ class DataRoutes:
     def _scopes(self):
         with self.storage.read() as db:
             rows = db.execute(
-                "SELECT id,platform_id,self_id,group_id,created_at FROM scopes ORDER BY platform_id,self_id,group_id LIMIT 500"
+                "SELECT id,platform_id,self_id,group_id,created_at FROM scopes WHERE merged_into IS NULL ORDER BY platform_id,self_id,group_id LIMIT 500"
             ).fetchall()
         return json_response(
             {
