@@ -20,6 +20,7 @@ from .services.command_replies import RuntimeReply
 from .services.command_runtime import CommandRuntime
 from .services.gameplay import GameplayService
 from .services.host_config import import_legacy_host_settings
+from .services.llm import LLMService
 from .services.message_chain import bypass_host_quote, reply_chain
 from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
@@ -47,6 +48,7 @@ class DailyBondsPlugin(Star):
         self._runtime: CommandRuntime | None = None
         self._maintenance_task: asyncio.Task[None] | None = None
         self._web_manager: WebManager | None = None
+        self._llm: LLMService | None = None
 
     async def initialize(self) -> None:
         """建立插件数据目录、验证数据库並确保全局默认配置。"""
@@ -79,6 +81,8 @@ class DailyBondsPlugin(Star):
                     "今日姻缘：%d 条通知在上次重载时发送中断，结果未知，不再重发。",
                     interrupted,
                 )
+            llm = LLMService(self.context)
+            self._llm = llm
             self._runtime = CommandRuntime(
                 context=self.context,
                 storage=storage,
@@ -87,6 +91,7 @@ class DailyBondsPlugin(Star):
                 gameplay=GameplayService(storage),
                 statistics=StatisticsService(storage),
                 render_html=self.html_render,
+                llm=llm,
             )
             web_manager.runtime_reset = self._runtime.reset
             web_manager.runtime = self._runtime
@@ -161,8 +166,13 @@ class DailyBondsPlugin(Star):
         )
 
     async def terminate(self) -> None:
-        """停止种子素材下载并关闭数据库连接。"""
+        """断开模型调用、停止后台任务，最后关闭数据库连接。"""
 
+        # 先断开消息处理与模型调用，旧实例在重载后不再被引用。
+        self._runtime = None
+        llm, self._llm = self._llm, None
+        if llm is not None:
+            llm.close()
         task, self._catalog_task = self._catalog_task, None
         if task is not None:
             task.cancel()

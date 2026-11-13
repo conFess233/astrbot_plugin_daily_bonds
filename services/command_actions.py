@@ -414,12 +414,14 @@ class ActionHandler:
         ):
             return reply
         names = MESSAGE_CONTEXT.get().get("member_names", {})
-        notice = render_message(
-            values["config"],
-            "results",
-            "mutual_formed",
-            owner_name=names.get(owner_id, "群友"),
-            subject_name=names.get(subject_id, "群友"),
+        notice = await self.replies.rewrite(
+            render_message(
+                values["config"],
+                "results",
+                "mutual_formed",
+                owner_name=names.get(owner_id, "群友"),
+                subject_name=names.get(subject_id, "群友"),
+            )
         )
         if not notice.strip():
             return reply

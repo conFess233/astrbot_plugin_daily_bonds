@@ -6,6 +6,7 @@ import copy
 import json
 import math
 import re
+import string
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -22,6 +23,7 @@ _DEFAULTS_PATH = (
 )
 
 _MODES = ("wife", "husband", "member")
+_FORMATTER = string.Formatter()
 # 群级覆盖允许的顶层字段；其余字段只能全局配置。
 SCOPE_OVERRIDABLE = frozenset(
     {
@@ -36,8 +38,16 @@ SCOPE_OVERRIDABLE = frozenset(
         "members",
         "messages",
         "render",
+        "llm",
+        "llm_replies",
     }
 )
+# 可群级覆盖的顶层字段中，仍只能全局设置的子字段（资源与批处理参数）。
+GLOBAL_ONLY_FIELDS = {
+    "llm": frozenset(
+        {"total_timeout_seconds", "call_timeout_seconds", "max_concurrency"}
+    ),
+}
 RENDER_TYPES = ("draw", "status", "help", "list", "rank", "affection", "collection")
 _ACTIONS = (
     "draw_wife",
@@ -267,6 +277,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
     ):
         raise ConfigurationError("导入展开上限不能小于上传上限")
 
+    _validate_llm(config)
     _enum(config, "render.mode", {"card", "text"})
     for kind in RENDER_TYPES:
         _enum(config, f"render.types.{kind}", {"inherit", "card", "text"})
@@ -291,6 +302,58 @@ def validate_config(config: Mapping[str, Any]) -> None:
             raise ConfigurationError(f"batch_import.{key} 必须为空或有效卡池 ID")
     validate_keywords(config["commands"]["keywords"])
     validate_messages(config["messages"], defaults["messages"])
+
+
+def _validate_llm(config: Mapping[str, Any]) -> None:
+    _enum(config, "llm.provider_mode", {"follow", "custom"})
+    _enum(config, "llm.persona_mode", {"follow", "custom", "none"})
+    providers = config["llm"]["provider_ids"]
+    if (
+        not isinstance(providers, list)
+        or len(providers) > 5
+        or any(
+            not isinstance(item, str) or not item.strip() or len(item) > 200
+            for item in providers
+        )
+    ):
+        raise ConfigurationError("llm.provider_ids 必须是最多 5 个非空模型 ID")
+    if len(providers) != len(set(providers)):
+        raise ConfigurationError("llm.provider_ids 不可重复")
+    if config["llm"]["provider_mode"] == "custom" and not providers:
+        raise ConfigurationError("指定模型时至少选择一个模型")
+    persona = config["llm"]["persona_id"]
+    if not isinstance(persona, str) or len(persona) > 200:
+        raise ConfigurationError("llm.persona_id 必须是最多 200 字符的文本")
+    if config["llm"]["persona_mode"] == "custom" and not persona.strip():
+        raise ConfigurationError("指定人格时必须选择人格")
+    for path, bounds in {
+        "llm.total_timeout_seconds": (1, 60),
+        "llm.call_timeout_seconds": (1, 60),
+        "llm.max_concurrency": (1, 16),
+        "llm.group_calls_per_minute": (1, 600),
+        "llm_replies.max_chars": (10, 500),
+    }.items():
+        _integer(config, path, *bounds)
+    if config["llm"]["call_timeout_seconds"] > config["llm"]["total_timeout_seconds"]:
+        raise ConfigurationError("单次调用超时不能大于总时限")
+    style = config["llm_replies"]["style_prompt"]
+    if not isinstance(style, str) or len(style) > 1000:
+        raise ConfigurationError("llm_replies.style_prompt 最多 1000 字符")
+    system = config["llm_replies"]["system_prompt"]
+    if not isinstance(system, str) or len(system) > 3000:
+        raise ConfigurationError("llm_replies.system_prompt 最多 3000 字符")
+    try:
+        fields = {
+            field for _, field, _, _ in _FORMATTER.parse(system) if field is not None
+        }
+    except ValueError as exc:
+        raise ConfigurationError(
+            "llm_replies.system_prompt 的大括号不匹配；输出字面大括号请写 {{ 或 }}"
+        ) from exc
+    if fields - {"max_chars"}:
+        raise ConfigurationError(
+            "llm_replies.system_prompt 只能使用变量 {max_chars}；输出字面大括号请写 {{ 或 }}"
+        )
 
 
 def validate_keywords(keywords: Mapping[str, Any]) -> None:

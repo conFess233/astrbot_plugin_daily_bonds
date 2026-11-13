@@ -29,6 +29,8 @@ from .command_parser import parse_command
 from .command_replies import ReplyBuilder, RuntimeReply
 from .game_status import StatusService
 from .gameplay import GameplayService
+from .llm import LLMService
+from .llm_replies import LLMReplyWriter
 from .members import reconcile_member_eligibility
 from .message_templates import (
     MESSAGE_CONTEXT,
@@ -95,8 +97,10 @@ class CommandRuntime:
         gameplay: GameplayService,
         statistics: StatisticsService,
         render_html: RenderHtml | None = None,
+        llm: LLMService | None = None,
     ) -> None:
         self.context = context
+        self.llm = llm
         self.storage = storage
         self.adapter = adapter
         self.access = access
@@ -107,6 +111,8 @@ class CommandRuntime:
         self.avatar_cache = AvatarCache(storage.database_path.parent / "avatars")
         # 回复、列表、个人查询与关系操作各自持有所需服务，跨组件调用经由属性。
         self.replies = ReplyBuilder(storage, self.cards, self.avatar_cache)
+        if llm is not None:
+            self.replies.llm_writer = LLMReplyWriter(llm, statistics.pair_intimacy)
         self.listing = ListingHandler(
             storage, statistics, self.cards, self.avatar_cache, self.replies
         )
@@ -193,7 +199,9 @@ class CommandRuntime:
         set_message_values(
             render=config["render"],
             actor_name=names.get(raw_event.sender_id, "群友"),
+            actor_id=raw_event.sender_id,
             member_names=names,
+            umo=str(getattr(event, "unified_msg_origin", "") or ""),
         )
         set_message_values(
             reset_at=rules.format_reset(

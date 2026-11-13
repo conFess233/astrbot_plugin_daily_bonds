@@ -213,19 +213,22 @@
         "text": "{actor_name}娶到老婆：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "draw_husband": {
         "text": "{actor_name}娶到老公：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "draw_member": {
         "text": "{actor_name}娶到群友：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "capacity_full": {
         "text": "持有名额已满：{names}。",
@@ -279,25 +282,29 @@
         "text": "{actor_name}抢夺失败，{subject_name}仍属于{owner_name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "stolen": {
         "text": "{actor_name}从{owner_name}处抢到了{subject_name}，{owner_name}可以再次抽取。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "force_success": {
         "text": "{actor_name}强娶了{name}！{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "force_failed": {
         "text": "{actor_name}强娶{subject_name}失败了。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "force_limit": {
         "text": "本周期强娶次数已用完，{reset_at} 重置。",
@@ -321,13 +328,15 @@
         "text": "{actor_name}与{subject_name}的关系已解除，可以再次抽取。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "gifted": {
         "text": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "recipient_full": {
         "text": "{recipient_name}的持有名额已满，暂时不能接收赠送。",
@@ -351,7 +360,8 @@
         "text": "{recipient_name}接受了{sender_name}赠送的{subject_name}。",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "invite_rejected": {
         "text": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
@@ -471,13 +481,15 @@
         "text": "{actor_name}指定老婆：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "designated_husband": {
         "text": "{actor_name}指定老公：{name}{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "designated_disabled": {
         "text": "指定抽取当前已关闭。",
@@ -555,13 +567,15 @@
         "text": "{actor_name}和{name}双向奔赴啦！{image}",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "mutual_formed": {
         "text": "{owner_name}和{subject_name}双向奔赴啦！",
         "alternatives": [],
         "enabled": true,
-        "quote": false
+        "quote": false,
+        "llm": false
       },
       "my_status": {
         "text": "{lines}{image}",
@@ -863,6 +877,21 @@
       "character_info": "角色信息 · {name}",
       "group_stats": "{group_name}的姻缘统计"
     }
+  },
+  "llm": {
+    "provider_mode": "follow",
+    "provider_ids": [],
+    "persona_mode": "follow",
+    "persona_id": "",
+    "total_timeout_seconds": 8,
+    "call_timeout_seconds": 5,
+    "max_concurrency": 2,
+    "group_calls_per_minute": 10
+  },
+  "llm_replies": {
+    "system_prompt": "",
+    "style_prompt": "",
+    "max_chars": 80
   },
   "history": {
     "retention_days": 30

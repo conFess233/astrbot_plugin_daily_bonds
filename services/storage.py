@@ -19,6 +19,7 @@ from ..models.errors import StorageError
 from ..models.scope import Scope
 from .config_upgrade import is_legacy, refresh_superseded_messages, upgrade_config
 from .settings import (
+    GLOBAL_ONLY_FIELDS,
     SCOPE_OVERRIDABLE,
     default_config,
     effective_config,
@@ -278,6 +279,11 @@ class SQLiteStorage:
                     "extra_bot_ids",
                 }:
                     raise StorageError("群覆盖只能设置用户规则和补充机器人名单。")
+                for section, fields in GLOBAL_ONLY_FIELDS.items():
+                    if isinstance(value.get(section), Mapping) and (
+                        set(value[section]) & fields
+                    ):
+                        raise StorageError(f"群覆盖不能设置 {section} 的全局资源参数。")
                 defaults = default_config()
                 merged = merge_sparse(defaults, value)
                 validate_config(merged)

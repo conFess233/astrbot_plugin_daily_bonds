@@ -212,10 +212,20 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
 class MessageText(str):
     """保留模板的引用开关，兼容已有文本与序列化调用。"""
 
-    def __new__(cls, text: str, *, quote_source: bool = False, fallback: str = ""):
+    def __new__(
+        cls,
+        text: str,
+        *,
+        quote_source: bool = False,
+        fallback: str = "",
+        llm: Mapping[str, Any] | None = None,
+    ):
         value = super().__new__(cls, text)
         value.quote_source = quote_source
         value.fallback = fallback
+        # 开启了 LLM 文案的回复携带生成请求，由异步回复流程替换文本。
+        value.llm = llm
+        value.generated = False
         return value
 
 
@@ -283,6 +293,7 @@ def render_message(
     if not templates:
         return MessageText("")
     template = random.choice(templates)
+    explicit = {**MESSAGE_CONTEXT.get(), **values}
     values = {
         "group_name": "本群",
         **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},
@@ -296,4 +307,32 @@ def render_message(
     original = entry_text(_default_messages()[section][key])
     fallback = original.format_map(values).replace(IMAGE_TOKEN, "").strip()
     quote = bool(entry.get("quote", False)) if isinstance(entry, Mapping) else False
-    return MessageText(text, quote_source=quote, fallback=fallback)
+    llm = None
+    if isinstance(entry, Mapping) and entry.get("llm") and "llm" in config:
+        llm = {
+            "key": key,
+            "facts": {
+                field: str(explicit[field])
+                for field in (*NAME_FIELDS, "name")
+                if explicit.get(field) not in (None, "")
+            },
+            "examples": _examples(templates[:5], values),
+            "has_image": IMAGE_TOKEN in text,
+            "settings": config["llm"],
+            "system_prompt": config["llm_replies"]["system_prompt"],
+            "style": config["llm_replies"]["style_prompt"],
+            "max_chars": config["llm_replies"]["max_chars"],
+        }
+    return MessageText(text, quote_source=quote, fallback=fallback, llm=llm)
+
+
+def _examples(templates: list[str], values: Mapping[str, Any]) -> list[str]:
+    """预设文案代入本次变量后作为模型的风格示例；无法代入的条目跳过。"""
+
+    result = []
+    for template in templates:
+        try:
+            result.append(template.format_map(values).replace(IMAGE_TOKEN, "").strip())
+        except (KeyError, ValueError, IndexError):
+            continue
+    return result
