@@ -76,8 +76,14 @@ _REMOVED_MESSAGES = {
 # 0.2.2 的默认文案：删除补抽并统一术语后改写；自定义文案保留。
 SUPERSEDED_MESSAGES: dict[str, str | tuple[str, ...]] = {
     "results.capacity_full": "持有名额已满：{names}。可以先发送“离婚”解除一段普通关系。",
-    "results.relationship_locked": "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
-    "results.steal_slot_locked": "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
+    "results.relationship_locked": (
+        "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
+        "抢来的和指定的关系本周期受保护，不能主动解除或赠送。",
+    ),
+    "results.steal_slot_locked": (
+        "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
+        "对方这段关系是抢来的或指定的，本周期受保护，不能抢夺。",
+    ),
     "results.capacity_full_single_wife": "你今日已有老婆{names}啦，{reset_at} 重置后再来吧。",
     "results.capacity_full_single_husband": "你今日已有老公{names}啦，{reset_at} 重置后再来吧。",
     "results.no_draw_quota": "今天的普通抽取次数已用完，{reset_at} 重置；离婚可获得一次补抽资格。",
@@ -86,9 +92,18 @@ SUPERSEDED_MESSAGES: dict[str, str | tuple[str, ...]] = {
     "results.invite_expired": "赠送邀请已过期",
     "results.invite_invalidated": "赠送邀请已失效",
     "results.invite_not_owned": "你无权处理这条邀请",
-    "results.target_protected": "该持有者本周期已受抢夺保护",
-    "results.invalid_target": "目标无效",
-    "results.no_target_relationship": "目标没有可抢夺的关系",
+    "results.target_protected": (
+        "该持有者本周期已受抢夺保护",
+        "该持有者本周期已受抢夺保护。",
+    ),
+    "results.invalid_target": (
+        "目标无效",
+        "目标无效。",
+    ),
+    "results.no_target_relationship": (
+        "目标没有可抢夺的关系",
+        "目标没有可抢夺的关系。",
+    ),
     "results.mode_disabled": "这个玩法当前已关闭",
     "results.invalid_probability": "抢夺概率配置无效",
     "results.invalid_timeout": "赠送超时配置无效",
@@ -102,6 +117,10 @@ SUPERSEDED_MESSAGES: dict[str, str | tuple[str, ...]] = {
     "titles.rank_group_intimacy": "{群名}的亲密度排行",
     "titles.rank_activity": "{群名}的活跃度排行",
     "titles.query_affection": "{name}与{target_name}的好感度",
+    # 0.3.0 的默认文案：误导或缺少引导，0.3.1 改写。
+    "results.relationship_not_found": "没有找到可处理的关系；发送“我的姻缘”查看当前关系。",
+    "errors.divorce_relation_missing": "没有找到匹配的当前关系。",
+    "errors.steal_relation_missing": "该持有者没有匹配的关系，请检查名称或 #ID。",
 }
 
 

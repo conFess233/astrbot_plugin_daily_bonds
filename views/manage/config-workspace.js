@@ -306,7 +306,8 @@ const MESSAGE_LABELS = {
   draw_member_mutual: "群友双向奔赴", my_status: "我的姻缘", help: "姻缘帮助", my_collection: "我的图鉴",
   status: "我的姻缘标题", collection: "我的图鉴标题",
   force_success: "强娶成功", force_failed: "强娶失败", force_limit: "强娶次数用完", force_target_taken: "强娶目标已被娶走",
-  force_disabled: "强娶关闭", force_target_required: "强娶目标无效",
+  force_disabled: "强娶关闭", force_target_required: "强娶没有 @ 目标",
+  target_is_self: "目标是自己", target_is_bot: "目标是机器人", target_ineligible: "目标暂时不能参与",
   character_info: "角色信息回复", character_info_missing: "未找到角色", character_info_ambiguous: "角色有多个匹配", group_stats: "本群统计回复",
   capacity_full: "持有名额已满", no_draw_quota: "普通抽取额度用完", no_candidate: "没有候选对象", no_candidate_member: "没有可娶的群友",
   recipient_full: "接收者持有已满", recipient_holds: "接收者已持有该对象", already_holds: "抢夺者已持有该对象", mutual_formed: "抢夺或赠送促成双向奔赴",
@@ -316,16 +317,17 @@ const MESSAGE_LABELS = {
   invite_rejected: "赠送已拒绝", invite_cancelled: "赠送已取消",
   invite_expired: "赠送邀请过期", invite_invalidated: "赠送邀请失效",
   invite_not_owned: "无权处理邀请", steal_cooldown: "抢夺冷却", steal_limit: "抢夺次数用完",
-  target_protected: "目标受保护", divorce_limit: "解除关系次数用完",
-  relationship_not_found: "关系不存在", invalid_target: "目标无效",
-  no_target_relationship: "目标没有关系", mode_disabled: "玩法已关闭",
+  target_protected: "对方被抢次数已满受保护", divorce_limit: "解除关系次数用完",
+  relationship_not_found: "没有可送出的关系", invalid_target: "目标无效（其他情况）",
+  steal_own_partner: "对方的群友就是自己", gift_to_subject: "把群友送给 ta 本人",
+  no_target_relationship: "对方没有可抢的关系", mode_disabled: "玩法已关闭",
   invalid_probability: "抢夺概率无效", invalid_timeout: "赠送超时无效",
   invite_already_pending: "已有待处理邀请", invite_limit: "待处理邀请达到上限",
   invite_invalid: "邀请无效", unknown_result: "其他操作结果",
   syntax_error: "指令格式错误", operation_error: "操作错误", mode_closed: "玩法关闭",
   command_cooldown: "通用指令冷却", steal_disabled: "抢夺关闭",
-  steal_target_required: "抢夺目标无效", steal_relation_ambiguous: "抢夺关系不明确",
-  gift_disabled: "赠送关闭", gift_target_required: "赠送目标无效",
+  steal_target_required: "抢夺没有 @ 目标", steal_relation_ambiguous: "抢夺关系不明确",
+  gift_disabled: "赠送关闭", gift_target_required: "赠送没有 @ 目标",
   gift_relation_ambiguous: "赠送关系不明确", divorce_ambiguous: "离婚关系不明确",
   divorce_disabled: "解除关系关闭", divorce_relation_missing: "解除关系未找到",
   invite_multiple: "有多条待处理邀请", invite_none: "没有待处理邀请",
@@ -335,8 +337,8 @@ const MESSAGE_LABELS = {
   admin_set_wife: "管理员设置老婆成功", already_held: "管理员已持有角色",
   admin_set_denied: "设置老婆权限不足", admin_set_missing: "设置老婆未找到角色",
   admin_set_ambiguous: "设置老婆角色不明确", admin_set_unavailable: "设置老婆角色不可用",
-  steal_slot_full: "抢夺槽位已满", relationship_locked: "受保护关系不可操作",
-  steal_slot_locked: "目标关系不可被抢", capacity_full_single_wife: "已有老婆",
+  steal_slot_full: "抢夺槽位已满", relationship_locked: "自己的受保护关系不能离婚或转送",
+  steal_slot_locked: "去抢的关系受保护", capacity_full_single_wife: "已有老婆",
   capacity_full_single_husband: "已有老公", designated_wife: "指定老婆成功",
   designated_husband: "指定老公成功", designated_disabled: "指定抽取关闭",
   designated_slot_full: "指定槽位已满", no_designated_quota: "指定次数用完",
@@ -511,7 +513,26 @@ export function refreshPoolPickers() {
   }
 }
 
+// 容易混淆的回复：说明什么时候发送，避免把两条的文案写反。
+const MESSAGE_SCENES = {
+  relationship_locked: "发送时机：用户想离婚，或想把自己的关系送人，但这段关系是抢来、强娶、指定、别人送的或管理员设置的。",
+  steal_slot_locked: "发送时机：用户去抢别人，但对方的那段关系是抢来、强娶、指定、别人送的或管理员设置的。",
+  target_protected: "发送时机：对方本周期被抢的次数已达上限，暂时不能再抢 ta。",
+  no_target_relationship: "发送时机：对方在这个玩法里没有关系；{hint} 会在对方有其他玩法的关系时提示改用对应的抢夺指令。",
+  relationship_not_found: "发送时机：用户想送出关系，但自己在这个玩法里没有可送的关系。",
+  designated_wife: "发送时机：用户用“今日老婆 角色名”指定角色成功（不是强娶）。",
+  designated_husband: "发送时机：用户用“今日老公 角色名”指定角色成功（不是强娶）。",
+  admin_set_wife: "发送时机：管理员用“/设置老婆 角色名”设置成功（不是强娶）。",
+  force_target_required: "发送时机：强娶时没有 @ 任何人。",
+  target_ineligible: "发送时机：强娶、抢夺、赠送 @ 的人被管理员排除、已退群，或插件还没记录到 ta。",
+};
+
 function templateHint(path) {
+  const scene = path.startsWith("messages.") ? MESSAGE_SCENES[path.split(".").at(-1)] || "" : "";
+  return scene + templateHintBody(path);
+}
+
+function templateHintBody(path) {
   const fields = state.templateFields[path];
   const empty = path.startsWith("messages.titles.") ? "留空仅隐藏对应标题或标签。" : "可用右上角的 + 添加多条，发送时随机选一条；全部留空则不发送此消息、附图或引用。";
   if (!fields) return `最多 1000 字符；${empty}模板变量由服务端校验。使用 {{ 和 }} 表示大括号。`;
@@ -1115,9 +1136,9 @@ function templateCategory(path) {
   if (/^(my_status|help|my_collection)$/.test(key)) return "我的姻缘与帮助";
   if (/steal|stolen|target_protected|no_target_relationship/.test(key)) return "抢夺";
   if (/gift|invite/.test(key)) return "赠送";
-  if (/divorc/.test(key)) return "离婚";
+  if (/divorc|relationship_locked/.test(key)) return "离婚";
   if (/rank|list|affection|activity|page/.test(key)) return "列表与统计";
-  if (/draw|designated|capacity|admin_set|already_held|no_candidate|relationship_locked/.test(key)) return "抽取与指定";
+  if (/draw|designated|capacity|admin_set|already_held|no_candidate/.test(key)) return "抽取与指定";
   return "指令与通用提示";
 }
 

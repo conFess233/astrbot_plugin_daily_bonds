@@ -240,13 +240,13 @@
         "quote": false
       },
       "relationship_locked": {
-        "text": "抢来的和指定的关系本周期受保护，不能主动解除或赠送。",
+        "text": "这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能离婚或转送；{reset_at} 重置后恢复。",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
       "steal_slot_locked": {
-        "text": "对方这段关系是抢来的或指定的，本周期受保护，不能抢夺。",
+        "text": "{target_name}的这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能抢。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -416,7 +416,7 @@
         "quote": false
       },
       "target_protected": {
-        "text": "该持有者本周期已受抢夺保护。",
+        "text": "{owner_name}本周期已经被抢过了，受保护，换个人试试。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -428,19 +428,31 @@
         "quote": false
       },
       "relationship_not_found": {
-        "text": "没有找到可处理的关系；发送“我的姻缘”查看当前关系。",
+        "text": "你本周期没有可以送出的{role}；发送“我的姻缘”查看当前关系。",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
       "invalid_target": {
-        "text": "目标无效。",
+        "text": "不能对这个对象使用这个指令。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "steal_own_partner": {
+        "text": "{owner_name}娶的就是你，不用抢啦。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "gift_to_subject": {
+        "text": "不能把{recipient_name}送给 ta 本人。",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
       "no_target_relationship": {
-        "text": "目标没有可抢夺的关系。",
+        "text": "{target_name}本周期没有能抢的{role}。{hint}",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -666,7 +678,7 @@
         "quote": false
       },
       "steal_relation_missing": {
-        "text": "该持有者没有匹配的关系，请检查名称或 #ID。",
+        "text": "{target_name}没有叫这个名字的关系；不写名称时会随机抢一段。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -679,6 +691,24 @@
       },
       "force_target_required": {
         "text": "请 @ 一位当前群内且允许参与的其他成员。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "target_is_self": {
+        "text": "不能对自己使用这个指令。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "target_is_bot": {
+        "text": "不能对机器人使用这个指令。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "target_ineligible": {
+        "text": "{target_name}暂时不能参与（可能被管理员排除、已退群，或插件还没记录到 ta），换个人试试。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -720,7 +750,7 @@
         "quote": false
       },
       "divorce_relation_missing": {
-        "text": "没有找到匹配的当前关系。",
+        "text": "没有找到可以离婚的关系；发送“我的姻缘”查看你当前的关系。",
         "alternatives": [],
         "enabled": true,
         "quote": false

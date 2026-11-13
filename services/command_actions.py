@@ -24,6 +24,8 @@ from .message_templates import (
 )
 from .storage import SQLiteStorage
 
+_MODE_LABELS = {"wife": "老婆", "husband": "老公", "member": "群友"}
+
 
 class ActionHandler:
     """抽取以外的关系操作（抢夺、赠送、离婚）与查询指令分发。"""
@@ -43,6 +45,53 @@ class ActionHandler:
         self.replies = replies
         self.listing = listing
         self.features = features
+
+    def _other_mode_hint(
+        self, values: Mapping[str, Any], mode: str, target_id: str
+    ) -> str:
+        """对方在别的玩法里有可抢的关系时，提示改用对应的抢夺指令。"""
+
+        config = values["config"]
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT DISTINCT mode FROM relationships
+                   WHERE scope_id=? AND period_id=? AND owner_id=? AND state='active'
+                   AND slot_kind='normal' AND mode<>?""",
+                (values["scope_id"], values["period_id"], target_id, mode),
+            ).fetchall()
+        keywords = [
+            config["commands"]["keywords"][f"steal_{row['mode']}"][0]
+            for row in rows
+            if config["modes"][row["mode"]]["enabled"]
+            and config["modes"][row["mode"]]["steal_enabled"]
+        ]
+        if not keywords:
+            return ""
+        return "可以试试" + "或".join(f"“{keyword}”" for keyword in keywords) + "。"
+
+    async def _target_problem(
+        self, values: Mapping[str, Any], target_id: str
+    ) -> str | None:
+        """强娶、抢夺、赠送的目标不合规时返回对应提示的文案键。"""
+
+        if target_id == values["actor_id"]:
+            return "target_is_self"
+        if target_id in values["eligible"]:
+            return None
+        if target_id in values["config"]["access"]["extra_bot_ids"]:
+            return "target_is_bot"
+        is_bot = await asyncio.to_thread(
+            self._known_bot, int(values["scope_id"]), target_id
+        )
+        return "target_is_bot" if is_bot else "target_ineligible"
+
+    def _known_bot(self, scope_id: int, user_id: str) -> bool:
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT is_known_bot FROM members WHERE scope_id=? AND user_id=?",
+                (scope_id, user_id),
+            ).fetchone()
+        return bool(row and row["is_known_bot"])
 
     async def _steal_probability(
         self,
@@ -108,16 +157,17 @@ class ActionHandler:
             sender_name=names.get(actor_id, "群友"),
             recipient_name=names.get(target_id, "群友"),
             target_name=names.get(target_id, "群友"),
+            role=_MODE_LABELS[mode],
+            hint="",
         )
         if command.action == "force_member":
             if not mode_config["force_limit"]:
                 return render_message(config, "errors", "force_disabled")
-            if (
-                not target_id
-                or target_id == actor_id
-                or target_id not in values["eligible"]
-            ):
+            if not target_id:
                 return render_message(config, "errors", "force_target_required")
+            problem = await self._target_problem(values, target_id)
+            if problem:
+                return render_message(config, "errors", problem)
             set_message_values(subject_name=names.get(target_id, "群友"))
             result = await asyncio.to_thread(
                 self.gameplay.force_marry,
@@ -148,8 +198,11 @@ class ActionHandler:
         if command.action.startswith("steal_"):
             if not mode_config["steal_enabled"]:
                 return render_message(config, "errors", "steal_disabled")
-            if not target_id or target_id not in values["eligible"]:
+            if not target_id:
                 return render_message(config, "errors", "steal_target_required")
+            problem = await self._target_problem(values, target_id)
+            if problem:
+                return render_message(config, "errors", problem)
             relation_id, matches = await asyncio.to_thread(
                 self._resolve_relation,
                 values["scope_id"],
@@ -195,6 +248,12 @@ class ActionHandler:
                 config_revision=values["revision"],
                 now=values["now"],
             )
+            if result.code == "NO_TARGET_RELATIONSHIP":
+                set_message_values(
+                    hint=await asyncio.to_thread(
+                        self._other_mode_hint, values, mode, target_id
+                    )
+                )
             reply = await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
@@ -210,8 +269,11 @@ class ActionHandler:
         }:
             if not mode_config["gift_enabled"]:
                 return render_message(config, "errors", "gift_disabled")
-            if not target_id or target_id not in values["eligible"]:
+            if not target_id:
                 return render_message(config, "errors", "gift_target_required")
+            problem = await self._target_problem(values, target_id)
+            if problem:
+                return render_message(config, "errors", problem)
             relation_id, matches = await asyncio.to_thread(
                 self._resolve_relation,
                 values["scope_id"],
@@ -290,7 +352,7 @@ class ActionHandler:
             if not matches:
                 return render_message(config, "errors", "divorce_relation_missing")
             if len(matches) > 1:
-                labels = {"wife": "老婆", "husband": "老公", "member": "群友"}
+                labels = _MODE_LABELS
                 candidates = "\n".join(
                     f"- {labels[item['mode']]}：{item['name']}"
                     + (

@@ -13,6 +13,22 @@ from ..models.errors import CommandSyntaxError
 _AT_TOKEN = re.compile(r"<@([0-9]+)>")
 _INVITE_ID = re.compile(r"[0-9]{1,20}")
 _PAGE = re.compile(r"[1-9][0-9]{0,5}")
+# 需要 @ 一个人的指令。
+_TARGET_ACTIONS = frozenset(
+    {
+        "steal_wife",
+        "steal_husband",
+        "steal_member",
+        "force_member",
+        "gift_wife",
+        "gift_husband",
+        "gift_member",
+        "query_affection",
+    }
+)
+_PLAIN_AT = "要用 QQ 的 @ 功能选人（输入 @ 后从列表里点选），手打的“@名字”识别不了。"
+_NO_EXTRA = "这个指令不需要 @ 别人，也不用加其他内容，直接发送关键词就行。"
+_UNSUPPORTED = "指令里不能带图片、表情等内容，请只发文字。"
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +109,9 @@ def parse_command(
         for alias in aliases:
             if rendered == alias or rendered.startswith((alias + " ", alias + "<@")):
                 candidates.append((alias, action))
+            elif action in _TARGET_ACTIONS and rendered.startswith(alias + "@"):
+                # “强娶@某人”这种手打的 @：识别出来后提示改用真正的 @。
+                candidates.append((alias, action))
     if not candidates:
         return None
     candidates.sort(key=lambda item: (len(item[0]), item[0]), reverse=True)
@@ -103,23 +122,24 @@ def parse_command(
     alias, action = matches[0]
     suffix = rendered[len(alias) :].strip()
     if leading_target is not None:
-        if action not in {
-            "steal_wife",
-            "steal_husband",
-            "steal_member",
-            "force_member",
-            "gift_wife",
-            "gift_husband",
-            "gift_member",
-            "query_affection",
-        }:
+        if action == "draw_member":
+            # “@某人 娶群友”多半是想娶这个人：引导改用强娶。
+            force = keywords.get("force_member") or ("强娶",)
+            raise CommandSyntaxError(
+                f"“{alias}”是随机娶一位群友，不能指定人；"
+                f"想娶 ta 请发送“{force[0]} @ta”。"
+            )
+        if action not in _TARGET_ACTIONS:
+            # 其余指令前面 @ 了别人按聊天处理（也可能是在叫别的机器人）。
             return None
         suffix = f"<@{leading_target}>" + (f" {suffix}" if suffix else "")
     if action == "query_affection" and (
         sum(part.kind == "at" for part in parts) + int(leading_target is not None) != 1
     ):
-        raise CommandSyntaxError("亲密度查询需要一段真实的 @ 消息。")
-    return _parse_action(action, suffix)
+        raise CommandSyntaxError(
+            f"请在“{alias}”后面 @ 一个人（输入 @ 后从列表里点选），例如：{alias} @某人"
+        )
+    return _parse_action(action, suffix, alias)
 
 
 def _parts(segments: Sequence[Mapping[str, Any]]) -> list[_Part]:
@@ -197,26 +217,23 @@ def _render(part: _Part) -> str:
     return "<UNSUPPORTED_SEGMENT>"
 
 
-def _parse_action(action: str, suffix: str) -> ParsedCommand:
-    if action not in {
-        "steal_wife",
-        "steal_husband",
-        "steal_member",
-        "force_member",
-        "gift_wife",
-        "gift_husband",
-        "gift_member",
+def _parse_action(action: str, suffix: str, alias: str = "") -> ParsedCommand:
+    if action not in _TARGET_ACTIONS | {
         "divorce_character",
         "divorce_wife",
         "divorce_husband",
         "divorce_member",
-        "query_affection",
-    } and ("<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix):
-        raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
+    }:
+        if "<UNSUPPORTED_SEGMENT>" in suffix:
+            raise CommandSyntaxError(_UNSUPPORTED)
+        if "<@" in suffix:
+            raise CommandSyntaxError(_NO_EXTRA)
     if action in {"draw_wife", "draw_husband"}:
         return ParsedCommand(action, argument=suffix or None)
     if action == "force_member":
-        target, _argument = _target_and_argument(suffix, optional_argument=False)
+        target, _argument = _target_and_argument(
+            suffix, optional_argument=False, alias=alias
+        )
         return ParsedCommand(action, target_user_id=target)
     if action == "character_info":
         if not suffix or len(suffix) > 80:
@@ -233,7 +250,9 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
     if action == "query_affection":
         target, rest = _leading_at(suffix)
         if target is None or rest:
-            raise CommandSyntaxError("亲密度查询只接受一名 @ 用户，不接受其他参数。")
+            raise CommandSyntaxError(
+                f"“{alias}”只需要 @ 一个人，后面不用再写别的。"
+            )
         return ParsedCommand(action, target_user_id=target)
     if action in {
         "list_characters",
@@ -255,10 +274,14 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
             raise CommandSyntaxError("邀请编号必须是数字。")
         return ParsedCommand(action, argument=suffix)
     if action in {"steal_wife", "steal_husband", "steal_member"}:
-        target, argument = _target_and_argument(suffix, optional_argument=True)
+        target, argument = _target_and_argument(
+            suffix, optional_argument=True, alias=alias
+        )
         return ParsedCommand(action, argument=argument, target_user_id=target)
     if action in {"gift_wife", "gift_husband", "gift_member"}:
-        target, argument = _target_and_argument(suffix, optional_argument=True)
+        target, argument = _target_and_argument(
+            suffix, optional_argument=True, alias=alias
+        )
         return ParsedCommand(action, argument=argument, target_user_id=target)
     if action in {
         "divorce_character",
@@ -271,37 +294,48 @@ def _parse_action(action: str, suffix: str) -> ParsedCommand:
         target, rest = _leading_at(suffix)
         if target is not None:
             if rest:
-                raise CommandSyntaxError("@目标后不能再填写名称或 ID。")
+                raise CommandSyntaxError(
+                    "@ 了人就不用再写名称；要按名称离婚，去掉 @ 只写名称。"
+                )
             return ParsedCommand(action, target_user_id=target)
-        if "<@" in suffix or "<UNSUPPORTED_SEGMENT>" in suffix:
-            raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
+        if "<UNSUPPORTED_SEGMENT>" in suffix:
+            raise CommandSyntaxError(_UNSUPPORTED)
+        if "<@" in suffix:
+            raise CommandSyntaxError("@ 要紧跟在关键词后面，例如：离婚 @某人")
         return ParsedCommand(action, argument=suffix)
     raise CommandSyntaxError("该命令尚未配置语法。")
 
 
 def _target_and_argument(
-    suffix: str, *, optional_argument: bool
+    suffix: str, *, optional_argument: bool, alias: str = ""
 ) -> tuple[str, str | None]:
     target, rest = _leading_at(suffix)
     if target is None:
         match = re.match(r"^(.+?)\s*<@([0-9]+)>\s*(.*)$", suffix)
         if not match:
-            raise CommandSyntaxError("请通过原始 @消息段 指定目标用户。")
+            if "@" in suffix or "＠" in suffix:
+                raise CommandSyntaxError(_PLAIN_AT)
+            if "<UNSUPPORTED_SEGMENT>" in suffix:
+                raise CommandSyntaxError(_UNSUPPORTED)
+            raise CommandSyntaxError(
+                f"请在“{alias}”后面 @ 一个人（输入 @ 后从列表里点选），"
+                f"例如：{alias} @某人"
+            )
         before, after = match.group(1).strip(), match.group(3).strip()
         if before and after:
-            raise CommandSyntaxError("@目标前后只能写一处对象名称或 ID。")
+            raise CommandSyntaxError("@ 的前后只能有一处写对象名称或 ID。")
         target, rest = match.group(2), before or after
     argument = rest.strip() or None
     # 群友玩法可以用第二个 @ 指定对象。
     second_at = re.fullmatch(r"<@([0-9]+)>", argument or "")
     if second_at:
         argument = second_at.group(1)
-    if argument is not None and (
-        "<@" in argument or "<UNSUPPORTED_SEGMENT>" in argument
-    ):
-        raise CommandSyntaxError("命令中包含多余 @ 或不支持的消息段。")
+    if argument is not None and "<UNSUPPORTED_SEGMENT>" in argument:
+        raise CommandSyntaxError(_UNSUPPORTED)
+    if argument is not None and "<@" in argument:
+        raise CommandSyntaxError(f"“{alias}”一次只能 @ 一个人。")
     if not optional_argument and argument:
-        raise CommandSyntaxError("命令包含多余参数。")
+        raise CommandSyntaxError(f"“{alias}”只需要 @ 一个人，后面不用再写别的。")
     return target, argument
 
 
@@ -314,4 +348,4 @@ def _leading_at(suffix: str) -> tuple[str | None, str]:
 
 def _no_suffix(action: str, suffix: str) -> None:
     if suffix:
-        raise CommandSyntaxError("这个指令不需要额外参数，直接发送关键词即可。")
+        raise CommandSyntaxError(_NO_EXTRA)

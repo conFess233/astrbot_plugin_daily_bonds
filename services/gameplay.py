@@ -605,7 +605,7 @@ class GameplayService(GiftMixin):
                     mode,
                     actor_id,
                     "steal",
-                    "INVALID_TARGET",
+                    "STEAL_OWN_PARTNER",
                     {},
                     config_revision,
                     now,

@@ -149,7 +149,7 @@ class GiftMixin(GameplayBase):
                     mode,
                     sender_id,
                     "gift",
-                    "INVALID_TARGET",
+                    "GIFT_TO_SUBJECT",
                     {},
                     config_revision,
                     now,
