@@ -15,6 +15,7 @@ from astrbot.api.web import json_response, request
 
 from ..models.errors import ConfigurationError, InvalidInputError, StorageError
 from .message_templates import template_fields
+from .message_usage import message_defaults, message_usage
 from .settings import (
     GLOBAL_ONLY_FIELDS,
     SCOPE_OVERRIDABLE,
@@ -51,6 +52,11 @@ class ConfigRoutes:
                         "override": override,
                         "effective": value,
                         "template_fields": template_fields(),
+                        # 回复模板页：默认文案用于“只看已修改”，次数为近 7 天触发次数。
+                        "message_defaults": message_defaults(),
+                        "message_usage": await asyncio.to_thread(
+                            message_usage, self.storage, scope_id, int(time.time())
+                        ),
                         # AstrBot's Plugin Page bridge may unwrap the outer API envelope.
                         # Keep the revision beside the config payload so the UI can
                         # normalize either wrapped or unwrapped responses.

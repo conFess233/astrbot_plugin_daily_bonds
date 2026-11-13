@@ -1152,29 +1152,56 @@ export function renderRulePreview() {
 }
 
 // 回复词按使用场景分组：同一场景的成功结果与错误提示相邻。
-const TEMPLATE_CATEGORIES = ["抽取与指定", "抢夺", "赠送", "离婚", "列表与统计", "我的姻缘与帮助", "指令与通用提示", "通知", "标题标签"];
+// 回复按指令分组；同一组里结果在前、报错在后。
+const TEMPLATE_CATEGORIES = ["抽取", "强娶", "抢夺", "赠送", "离婚", "指定与设置", "通用提示", "查询与列表", "通知", "标题标签"];
+const TEMPLATE_GROUPS = {
+  抽取: ["draw_character", "draw_member", "draw_member_mutual", "capacity_full", "capacity_full_single", "no_draw_quota", "no_candidate", "no_candidate_member"],
+  强娶: ["force_success", "force_failed", "force_already_holds", "force_target_taken"],
+  抢夺: ["stolen", "steal_failed", "mutual_formed", "steal_cooldown", "target_protected", "no_target_relationship", "steal_slot_locked", "already_holds"],
+  赠送: ["gifted", "invite_created", "gift_accepted", "invite_rejected", "invite_cancelled", "invite_invalid", "relationship_not_found", "gift_locked", "recipient_full", "recipient_holds", "invite_not_owned", "invite_already_pending", "invite_limit", "invite_multiple", "invite_none", "invite_invalid_id"],
+  离婚: ["divorced", "divorce_locked", "divorce_relation_missing"],
+  指定与设置: ["designated", "designated_occupied", "admin_set_wife", "already_held", "character_missing", "character_ambiguous", "admin_set_denied", "admin_set_unavailable"],
+  通用提示: ["target_required", "target_invalid", "feature_disabled", "quota_used_up", "relation_missing", "relation_ambiguous", "command_cooldown"],
+  查询与列表: ["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection", "list_empty", "page_out_of_range", "activity_disabled"],
+};
+const TEMPLATE_GROUP_OF = Object.fromEntries(Object.entries(TEMPLATE_GROUPS).flatMap(([group, keys]) => keys.map((key) => [key, group])));
+// 卡片排版类：文字只在纯文本模式或卡片失败时使用；与标题标签一起默认收起。
+const LAYOUT_KEYS = new Set(["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection"]);
+// 很少触发的提示：默认收起，勾选“显示少见与排版类”后列出。
+const RARE_KEYS = new Set(["force_target_taken", "already_holds", "recipient_holds", "invite_not_owned", "invite_already_pending", "invite_limit", "invite_multiple", "invite_invalid_id", "already_held", "admin_set_denied", "admin_set_unavailable", "character_ambiguous", "relation_ambiguous", "designated_occupied", "page_out_of_range", "activity_disabled", "no_candidate"]);
 
 function templateCategory(path) {
-  const key = path.split(".").at(-1);
   if (path.startsWith("messages.notifications.")) return "通知";
   if (path.startsWith("messages.titles.")) return "标题标签";
-  if (/^(my_status|help|my_collection)$/.test(key)) return "我的姻缘与帮助";
-  if (/steal|stolen|target_protected|no_target_relationship/.test(key)) return "抢夺";
-  if (/gift|invite/.test(key)) return "赠送";
-  if (/divorc/.test(key)) return "离婚";
-  if (/rank|list|affection|activity|page/.test(key)) return "列表与统计";
-  if (/draw|designated|capacity|admin_set|already_held|no_candidate/.test(key)) return "抽取与指定";
-  return "指令与通用提示";
+  return TEMPLATE_GROUP_OF[path.split(".").at(-1)] || "通用提示";
 }
 
 function templateOrder(path) {
-  const section = path.split(".")[1];
-  return TEMPLATE_CATEGORIES.indexOf(templateCategory(path)) * 10 + ["results", "errors", "notifications", "titles"].indexOf(section);
+  const key = path.split(".").at(-1);
+  const group = templateCategory(path);
+  const index = (TEMPLATE_GROUPS[group] || []).indexOf(key);
+  return TEMPLATE_CATEGORIES.indexOf(group) * 1000 + (index < 0 ? 900 : index);
+}
+
+function templateIsFolded(path) {
+  const key = path.split(".").at(-1);
+  return path.startsWith("messages.titles.") || LAYOUT_KEYS.has(key) || RARE_KEYS.has(key);
+}
+
+// 与默认文案不同（含多条预设）才算“已修改”；只改开关不算。
+function templateCustomized(path) {
+  const [, section, key] = path.split(".");
+  const base = state.messageDefaults?.[section]?.[key];
+  if (base === undefined) return false;
+  const text = typeof base === "string" ? base : base.text;
+  if ((state.draftValues[path] ?? "") !== text) return true;
+  const variants = state.draftValues[variantPathOf(path)];
+  return Boolean(variants && variants !== "[]" && variants !== JSON.stringify(base.alternatives || []));
 }
 
 function renderRepliesWorkspace() {
   const view = configView("replies");
-  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><div id="reply-variant-tabs" class="variant-tabs" role="group" aria-label="同一回复的多条预设"></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
+  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div class="template-filters"><label><input type="checkbox" id="template-modified" /> 只看已修改</label><label><input type="checkbox" id="template-folded" /> 显示少见与排版类</label></div><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><div id="reply-variant-tabs" class="variant-tabs" role="group" aria-label="同一回复的多条预设"></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
   const side = sideSection("replies");
   side.innerHTML = '<div id="reply-preview-panel"><h4>消息预览</h4><p class="preview-label">使用草稿 · 模拟预览，不会实际发送</p><div class="chat-preview"><div class="chat-user">示例用户消息</div><div id="template-preview" class="chat-bubble"></div></div><p class="side-note">演示数据；实际图片、引用和消息样式以 QQ 客户端为准。</p></div>';
   sideSection("advanced").innerHTML = '<div class="notice"><p>群级覆盖只保存改动的字段；“仅全局设置”的项需切到全局配置修改。保存后立即生效，无需重载插件。</p></div>';
@@ -1187,6 +1214,7 @@ function renderRepliesWorkspace() {
   for (const category of categories) $("#template-category").add(new Option(category, category));
   $("#template-search").addEventListener("input", filterTemplates);
   $("#template-category").addEventListener("change", filterTemplates);
+  for (const id of ["template-modified", "template-folded"]) $(`#${id}`).addEventListener("change", filterTemplates);
   for (const kind of ["templates", "keywords"]) $(`#reply-${kind}-tab`).addEventListener("click", () => showReplySection(kind));
   $("#reply-directory-toggle").addEventListener("click", () => { $(".replies-workspace").dataset.directory = "true"; });
   $("#reply-directory-back").addEventListener("click", () => { $(".replies-workspace").dataset.directory = "false"; });
@@ -1244,9 +1272,16 @@ function filterTemplates() {
   const search = $("#template-search").value.trim().toLowerCase();
   const category = $("#template-category").value;
   const paths = [...fieldCards.keys()].filter((path) => path.startsWith("messages."));
-  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]} ${state.draftValues[variantPathOf(path)] || ""}`.toLowerCase().includes(search))
+  const onlyModified = $("#template-modified").checked;
+  // 搜索、选了具体分类或只看已修改时不再收起，避免找不到。
+  const showFolded = $("#template-folded").checked || Boolean(search) || category !== "全部" || onlyModified;
+  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category)
+    && (showFolded || !templateIsFolded(path) || path === state.selectedTemplate)
+    && (!onlyModified || templateCustomized(path))
+    && `${path} ${configLabel(path)} ${state.draftValues[path]} ${state.draftValues[variantPathOf(path)] || ""}`.toLowerCase().includes(search))
     .sort((left, right) => templateOrder(left) - templateOrder(right));
-  $("#template-total").textContent = `显示 ${visible.length} / 共 ${paths.length} 条`;
+  const folded = paths.filter((path) => templateIsFolded(path)).length;
+  $("#template-total").textContent = `显示 ${visible.length} / 共 ${paths.length} 条` + (showFolded ? "" : `（${folded} 条少见与排版类已收起）`);
   for (const path of visible) {
     const button = document.createElement("button"); button.type = "button"; button.dataset.templatePath = path;
     button.className = "template-item";
@@ -1254,7 +1289,8 @@ function filterTemplates() {
     button.setAttribute("aria-pressed", String(path === state.selectedTemplate));
     const name = document.createElement("strong"); name.textContent = configLabel(path);
     const kind = { results: "结果", errors: "错误", notifications: "通知", titles: "标签" }[path.split(".")[1]] || "";
-    const group = document.createElement("small"); group.textContent = `${templateCategory(path)} · ${kind}`;
+    const usage = state.messageUsage?.[path];
+    const group = document.createElement("small"); group.textContent = [templateCategory(path), kind, templateCustomized(path) ? "已改" : "", usage ? `近 7 天 ${usage} 次` : ""].filter(Boolean).join(" · ");
     button.append(name, group); button.addEventListener("click", () => selectTemplate(path));
     const row = document.createElement("div"); row.className = "template-row";
     if (fieldCards.has(path.replace("messages.", "reply_enabled."))) {
@@ -1404,6 +1440,8 @@ function renderAdvancedWorkspace() {
   const trigger = compoundField("触发方式", "群消息以哪些形式触发指令；全部关闭时只能通过额外前缀触发。", TRIGGER_PATHS);
   subsections.get("commands").prepend(trigger);
   subsections.get("render").append(renderFormField());
+  // 默认引用是回复形式里唯一单独显示的开关。
+  if (fieldCards.has("render.quote_default")) subsections.get("render").append(fieldCards.get("render.quote_default"));
   for (const [, rows] of subsections) if (!rows.children.length) rows.parentElement.remove();
   if (!ADVANCED_GROUPS.some(([id]) => id === state.configGroup)) state.configGroup = ADVANCED_GROUPS[0][0];
   selectConfigGroup(state.configGroup);

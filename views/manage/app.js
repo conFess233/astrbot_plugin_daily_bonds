@@ -42,6 +42,8 @@ export const state = {
   globalConfig: null,
   savedOverride: {},
   templateFields: {},
+  messageDefaults: {},
+  messageUsage: {},
   draftValues: {},
   overridePaths: new Set(),
   view: "overview",
@@ -415,6 +417,8 @@ export async function loadConfig(scopeId = state.scopeId) {
   state.draftValues = values;
   state.overridePaths = new Set(configLeaves(state.savedOverride).map(([path]) => path));
   state.templateFields = result.data.template_fields || {};
+  state.messageDefaults = result.data.message_defaults || {};
+  state.messageUsage = result.data.message_usage || {};
   state.selectedReplies.clear();
   state.pendingSubmission = null;
   state.saveNeedsReload = false;
