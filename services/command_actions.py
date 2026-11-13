@@ -216,6 +216,9 @@ class ActionHandler:
                 set_message_values(
                     owner_name=names.get(str(result.data["owner_id"]), "群友")
                 )
+            if result.code == "ALREADY_HOLDS":
+                # 结果码与抢夺共用，文案按强娶单独设置。
+                return render_message(config, "results", "force_already_holds")
             reply = await self.replies.result_reply(
                 result.code, result.data, mode, config
             )
@@ -343,6 +346,8 @@ class ActionHandler:
                 config_revision=values["revision"],
                 now=values["now"],
             )
+            if result.code == "RELATIONSHIP_LOCKED":
+                return render_message(config, "results", "gift_locked")
             accept_keyword = values["config"]["commands"]["keywords"]["gift_accept"][0]
             reply = await self.replies.result_reply(
                 result.code,
@@ -389,16 +394,12 @@ class ActionHandler:
                     )
                     for item in matches
                 )
-                prefix = render_message(config, "errors", "divorce_ambiguous")
-                if not prefix.strip():
-                    return prefix
-                return MessageText(
-                    f"{prefix}\n{candidates}",
-                    quote_source=getattr(prefix, "quote_source", False),
+                return render_message(
+                    config, "errors", "relation_ambiguous", candidates=candidates
                 )
             set_message_values(subject_name=matches[0]["name"])
             if matches[0]["slot_kind"] != "normal":
-                return render_message(config, "results", "relationship_locked")
+                return render_message(config, "results", "divorce_locked")
             mode = str(matches[0]["mode"])
             relation_id = str(matches[0]["id"])
             mode_config = config["modes"][mode]

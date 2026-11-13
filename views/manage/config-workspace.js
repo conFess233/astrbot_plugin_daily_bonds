@@ -308,6 +308,12 @@ const MESSAGE_LABELS = {
   force_success: "强娶成功", force_failed: "强娶失败", force_limit: "强娶次数用完", force_target_taken: "强娶时对方刚被别人娶走",
   force_disabled: "强娶关闭", force_target_required: "强娶没有 @ 目标",
   target_is_self: "目标是自己", target_is_bot: "目标是机器人", target_ineligible: "目标暂时不能参与",
+  target_required: "没有 @ 人", target_invalid: "不能选这个人", feature_disabled: "功能已关闭",
+  quota_used_up: "次数用完（强娶、抢夺、离婚、指定）", capacity_full_single: "已有老婆/老公",
+  relation_ambiguous: "关系有多段匹配", character_ambiguous: "角色有多个匹配",
+  relation_missing: "找不到关系", character_missing: "找不到角色",
+  draw_character: "抽到老婆/老公", designated: "指定老婆/老公成功",
+  divorce_locked: "受保护关系不能离婚", gift_locked: "受保护关系不能转送", force_already_holds: "强娶的人已经是你的",
   character_info: "角色信息回复", character_info_missing: "未找到角色", character_info_ambiguous: "角色有多个匹配", group_stats: "本群统计回复",
   capacity_full: "持有名额已满", no_draw_quota: "普通抽取额度用完", no_candidate: "没有候选对象", no_candidate_member: "没有可娶的群友",
   recipient_full: "接收者持有已满", recipient_holds: "接收者已持有该对象", already_holds: "抢夺者已持有该对象", mutual_formed: "抢夺或赠送促成双向奔赴",
@@ -323,7 +329,7 @@ const MESSAGE_LABELS = {
   no_target_relationship: "对方没有可抢的关系", mode_disabled: "玩法已关闭",
   invalid_probability: "抢夺概率无效", invalid_timeout: "赠送超时无效",
   invite_already_pending: "已有待处理邀请", invite_limit: "待处理邀请达到上限",
-  invite_invalid: "邀请无效", unknown_result: "其他操作结果",
+  invite_invalid: "赠送邀请失效", unknown_result: "其他操作结果",
   syntax_error: "指令格式错误", operation_error: "操作错误", mode_closed: "玩法关闭",
   command_cooldown: "通用指令冷却", steal_disabled: "抢夺关闭",
   steal_target_required: "抢夺没有 @ 目标", steal_relation_ambiguous: "抢夺关系不明确",
@@ -515,17 +521,24 @@ export function refreshPoolPickers() {
 
 // 容易混淆的回复：说明什么时候发送，避免把两条的文案写反。
 const MESSAGE_SCENES = {
-  relationship_locked: "发送时机：用户想离婚，或想把自己的关系送人，但这段关系是抢来、强娶、指定、别人送的或管理员设置的。",
-  steal_slot_locked: "发送时机：用户去抢别人，但对方的那段关系是抢来、强娶、指定、别人送的或管理员设置的。",
+  divorce_locked: "发送时机：用户想离婚，但这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护。",
+  gift_locked: "发送时机：用户想把自己的关系送人，但这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护。",
+  steal_slot_locked: "发送时机：用户用“抢老婆/抢老公/抢群友”去抢，但对方的那段关系受保护（用强娶抢群友不受此限制）。",
   target_protected: "发送时机：对方本周期被抢的次数已达上限，暂时不能再抢 ta。",
   no_target_relationship: "发送时机：对方在这个玩法里没有关系；{hint} 会在对方有其他玩法的关系时提示改用对应的抢夺指令。",
   relationship_not_found: "发送时机：用户想送出关系，但自己在这个玩法里没有可送的关系。",
-  designated_wife: "发送时机：用户用“今日老婆 角色名”指定角色成功（不是强娶）。",
-  designated_husband: "发送时机：用户用“今日老公 角色名”指定角色成功（不是强娶）。",
+  designated: "发送时机：用户用“今日老婆/今日老公 角色名”指定角色成功（不是强娶）；{role} 是老婆或老公。",
+  draw_character: "发送时机：用户抽到老婆或老公；{role} 是老婆或老公。娶群友另有一条。",
   admin_set_wife: "发送时机：管理员用“/设置老婆 角色名”设置成功（不是强娶）。",
-  force_target_required: "发送时机：强娶时没有 @ 任何人。",
+  target_required: "发送时机：强娶、抢夺、赠送、查亲密度时没有 @ 任何人。",
+  target_invalid: "发送时机：@ 的人不能作为目标；{reason} 会填入原因，例如“这是你自己”“ta 是机器人”“ta 娶的就是你，不用抢”。",
+  feature_disabled: "发送时机：用户使用了被关闭的功能；{feature} 是功能名称，如强娶、抢夺、亲密度排行。",
+  quota_used_up: "发送时机：强娶、抢夺、离婚或指定的次数用完；{action} 是对应的操作。普通抽取次数用完另有一条。",
+  capacity_full_single: "发送时机：每人只能有一位老婆/老公且已经有了；{role} 是老婆或老公。",
   force_target_taken: "发送时机：强娶时对方恰好刚被别人娶走（极少见）；对方早已被娶走时会直接转为争夺，不发这条。",
-  target_ineligible: "发送时机：强娶、抢夺、赠送 @ 的人被管理员排除、已退群，或插件还没记录到 ta。",
+  force_already_holds: "发送时机：强娶的人已经是你娶到的群友。",
+  relation_ambiguous: "发送时机：抢夺、赠送、离婚时匹配到多段关系，需要写明是哪一段；{candidates} 是候选列表。",
+  character_ambiguous: "发送时机：指定、查询角色信息或设置老婆时匹配到多个角色；{candidates} 是候选列表。",
 };
 
 function templateHint(path) {
@@ -1137,7 +1150,7 @@ function templateCategory(path) {
   if (/^(my_status|help|my_collection)$/.test(key)) return "我的姻缘与帮助";
   if (/steal|stolen|target_protected|no_target_relationship/.test(key)) return "抢夺";
   if (/gift|invite/.test(key)) return "赠送";
-  if (/divorc|relationship_locked/.test(key)) return "离婚";
+  if (/divorc/.test(key)) return "离婚";
   if (/rank|list|affection|activity|page/.test(key)) return "列表与统计";
   if (/draw|designated|capacity|admin_set|already_held|no_candidate/.test(key)) return "抽取与指定";
   return "指令与通用提示";

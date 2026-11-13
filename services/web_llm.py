@@ -25,6 +25,7 @@ _SAMPLE_VALUES = {
     "sender_name": "小明",
     "recipient_name": "小红",
     "target_name": "示例群友",
+    "role": "老婆",
 }
 
 

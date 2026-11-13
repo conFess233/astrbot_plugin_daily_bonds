@@ -14,6 +14,7 @@ from astrbot.api import logger
 
 from .avatar_cache import AvatarCache
 from .cards import CardRow, CardService, data_uri, render_mode
+from .message_merge import MESSAGE_ALIASES, SYSTEM_MESSAGES
 from .message_templates import (
     IMAGE_TOKEN,
     MESSAGE_CONTEXT,
@@ -404,7 +405,11 @@ class ReplyBuilder:
         key = code.lower()
         if code == "NO_CANDIDATE" and mode == "member":
             key = "no_candidate_member"
-        if key in config["messages"]["results"]:
+        if (
+            key in config["messages"]["results"]
+            or ("results", key) in MESSAGE_ALIASES
+            or f"results.{key}" in SYSTEM_MESSAGES
+        ):
             available_at = data.get("available_at")
             return render_message(
                 config,

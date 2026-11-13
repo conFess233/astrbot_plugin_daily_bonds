@@ -16,12 +16,10 @@ from .message_templates import IMAGE_TOKEN, MESSAGE_CONTEXT, MessageText
 
 # 每条白名单回复对应的事件说明；变量来自同一次 render_message 的取值。
 EVENTS = {
-    "draw_wife": "{actor_name}抽中了今日老婆「{name}」",
-    "draw_husband": "{actor_name}抽中了今日老公「{name}」",
+    "draw_character": "{actor_name}抽中了今日{role}「{name}」",
     "draw_member": "{actor_name}今天娶到了群友「{name}」",
     "draw_member_mutual": "{actor_name}娶到了群友「{name}」，而对方也娶了{actor_name}，双向奔赴",
-    "designated_wife": "{actor_name}指定娶了老婆「{name}」",
-    "designated_husband": "{actor_name}指定娶了老公「{name}」",
+    "designated": "{actor_name}指定娶了{role}「{name}」",
     "force_success": "{actor_name}强娶群友「{name}」成功了",
     "force_failed": "{actor_name}想强娶群友「{subject_name}」，但失败了",
     "stolen": "{actor_name}从{owner_name}手里抢走了「{subject_name}」",
@@ -141,7 +139,10 @@ class LLMReplyWriter:
     ) -> str:
         facts = request["facts"]
         event = EVENTS[request["key"]].format_map(
-            {field: facts.get(field, "群友") for field in _FACT_FIELDS}
+            {
+                **{field: facts.get(field, "群友") for field in _FACT_FIELDS},
+                "role": facts.get("role", "对象"),
+            }
         )
         lines = [f"刚发生的事：{event}。"]
         intimacy = await self._intimacy_line(context, facts)

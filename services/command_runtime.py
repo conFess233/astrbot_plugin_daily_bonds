@@ -451,7 +451,7 @@ class CommandRuntime:
         matches = rules.match_candidates(candidates, command.argument)
         if not matches:
             return render_message(
-                config, "errors", "admin_set_missing", name=command.argument
+                config, "errors", "character_missing", name=command.argument
             )
         if len(matches) > 1:
             return render_message(
@@ -505,12 +505,15 @@ class CommandRuntime:
         if command.argument and mode in {"wife", "husband"}:
             selected = rules.match_candidates(candidates, command.argument)
             if not selected:
-                return render_message(config, "errors", "designated_missing")
+                return render_message(
+                    config, "errors", "character_missing", name=command.argument
+                )
             if len(selected) > 1:
                 return render_message(
                     config,
                     "errors",
-                    "designated_ambiguous",
+                    "character_ambiguous",
+                    name=command.argument,
                     candidates=rules.candidate_choices(selected),
                 )
             result = await asyncio.to_thread(

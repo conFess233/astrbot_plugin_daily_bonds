@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -15,14 +16,17 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ..models.errors import StorageError
+from ..models.errors import ConfigurationError, StorageError
 from ..models.scope import Scope
 from .config_upgrade import (
+    LEGACY_MESSAGES,
+    SUPERSEDED_MESSAGES,
     is_legacy,
     refresh_superseded_messages,
     refresh_superseded_values,
     upgrade_config,
 )
+from .message_merge import PATH_LABELS, merge_messages
 from .settings import (
     GLOBAL_ONLY_FIELDS,
     SCOPE_OVERRIDABLE,
@@ -32,7 +36,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 21
+_SCHEMA_VERSION = 22
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -583,9 +587,10 @@ class SQLiteStorage:
             migration_dir / "019_scope_identity.sql",
             migration_dir / "020_refresh_defaults.sql",
             migration_dir / "021_refresh_defaults.sql",
+            migration_dir / "022_message_merge.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
-        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20, 21: _upgrade_v20}
+        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20, 21: _upgrade_v20, 22: _upgrade_v22}
         variants = [_checksum_variants(path) for path in migration_files]
         # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
         checksums = [lf for lf, _crlf in variants]
@@ -898,6 +903,62 @@ def _upgrade_v20(connection: sqlite3.Connection, _from_version: int) -> None:
                 "UPDATE settings SET value_json=? WHERE scope_key=?",
                 (json.dumps(value, ensure_ascii=False), row["scope_key"]),
             )
+
+
+def _upgrade_v22(connection: sqlite3.Connection, from_version: int) -> None:
+    """迁移 022：合并、拆分回复文案条目，并写一份升级报告给管理员。"""
+
+    history = {"legacy": LEGACY_MESSAGES, "superseded": SUPERSEDED_MESSAGES}
+    report: dict[str, list[str]] = {}
+    for row in connection.execute(
+        "SELECT scope_key,value_json FROM settings"
+    ).fetchall():
+        value = json.loads(row["value_json"])
+        before = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        notes = merge_messages(value, history, PATH_LABELS)
+        notes += _drop_invalid_merged_texts(value)
+        if json.dumps(value, ensure_ascii=False, sort_keys=True) != before:
+            connection.execute(
+                "UPDATE settings SET value_json=? WHERE scope_key=?",
+                (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+            )
+        if notes:
+            report[row["scope_key"]] = notes
+    if from_version and report:
+        connection.execute(
+            "INSERT INTO migration_reports(id,source,from_version,to_version,report_json,created_at) VALUES(?,?,?,?,?,unixepoch())",
+            (
+                str(uuid.uuid4()),
+                "database",
+                from_version,
+                _SCHEMA_VERSION,
+                json.dumps({"settings": report}, ensure_ascii=False),
+            ),
+        )
+
+
+def _drop_invalid_merged_texts(value: dict[str, Any]) -> list[str]:
+    """合并后的自定义文案若用了新条目不支持的变量，改回默认文案并说明。"""
+
+    notes: list[str] = []
+    for _attempt in range(len(PATH_LABELS)):
+        try:
+            validate_config(merge_sparse(default_config(), value))
+            return notes
+        except ConfigurationError as exc:
+            match = re.search(r"messages\.(results|errors)\.([a-z_]+)", str(exc))
+            entries = (value.get("messages") or {}).get(match.group(1)) if match else None
+            if not match or not isinstance(entries, dict) or match.group(2) not in entries:
+                raise
+            entry = entries[match.group(2)]
+            for field in ("text", "alternatives"):
+                if isinstance(entry, dict):
+                    entry.pop(field, None)
+            path = f"{match.group(1)}.{match.group(2)}"
+            notes.append(
+                f"{PATH_LABELS.get(path, path)}：合并来的自定义文案无法使用（{exc}），已改回默认文案。"
+            )
+    return notes
 
 
 def _upgrade_settings_v2(connection: sqlite3.Connection, from_version: int) -> None:

@@ -209,16 +209,8 @@
   },
   "messages": {
     "results": {
-      "draw_wife": {
-        "text": "{actor_name}娶到老婆：{name}{image}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false,
-        "llm": false,
-        "llm_prompt": ""
-      },
-      "draw_husband": {
-        "text": "{actor_name}娶到老公：{name}{image}",
+      "draw_character": {
+        "text": "{actor_name}娶到{role}：{name}{image}",
         "alternatives": [],
         "enabled": true,
         "quote": false,
@@ -239,8 +231,14 @@
         "enabled": true,
         "quote": false
       },
-      "relationship_locked": {
-        "text": "这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能离婚或转送；{reset_at} 重置后恢复。",
+      "divorce_locked": {
+        "text": "{subject_name}是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能离婚；{reset_at} 重置后恢复。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "gift_locked": {
+        "text": "这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护，不能转送。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -251,14 +249,8 @@
         "enabled": true,
         "quote": false
       },
-      "capacity_full_single_wife": {
-        "text": "你本周期已有老婆{names}啦，{reset_at} 重置后再来吧。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "capacity_full_single_husband": {
-        "text": "你本周期已有老公{names}啦，{reset_at} 重置后再来吧。",
+      "capacity_full_single": {
+        "text": "你本周期已有{role}{names}啦，{reset_at} 重置后再来吧。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -313,8 +305,14 @@
         "llm": false,
         "llm_prompt": ""
       },
-      "force_limit": {
-        "text": "本周期强娶次数已用完，{reset_at} 重置。",
+      "quota_used_up": {
+        "text": "本周期{action}次数已用完，{reset_at} 重置。",
+        "alternatives": [],
+        "enabled": true,
+        "quote": false
+      },
+      "force_already_holds": {
+        "text": "你已经娶了{subject_name}啦。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -385,14 +383,8 @@
         "enabled": true,
         "quote": false
       },
-      "invite_expired": {
-        "text": "赠送邀请已过期。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "invite_invalidated": {
-        "text": "赠送邀请已失效。",
+      "invite_invalid": {
+        "text": "这条赠送邀请已失效。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -409,20 +401,8 @@
         "enabled": true,
         "quote": false
       },
-      "steal_limit": {
-        "text": "本周期抢夺次数已用完，{reset_at} 重置。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
       "target_protected": {
         "text": "{owner_name}本周期已经被抢过了，受保护，换个人试试。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "divorce_limit": {
-        "text": "本周期解除关系次数已用完，{reset_at} 重置。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -433,44 +413,8 @@
         "enabled": true,
         "quote": false
       },
-      "invalid_target": {
-        "text": "不能对这个对象使用这个指令。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "steal_own_partner": {
-        "text": "{owner_name}娶的就是你，不用抢啦。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "gift_to_subject": {
-        "text": "不能把{recipient_name}送给 ta 本人。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
       "no_target_relationship": {
         "text": "{target_name}本周期没有能抢的{role}。{hint}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "mode_disabled": {
-        "text": "这个玩法当前已关闭。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "invalid_probability": {
-        "text": "抢夺概率配置无效。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "invalid_timeout": {
-        "text": "赠送超时配置无效。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -487,45 +431,13 @@
         "enabled": true,
         "quote": false
       },
-      "invite_invalid": {
-        "text": "赠送邀请已无效。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "unknown_result": {
-        "text": "操作未完成：{code}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "designated_wife": {
-        "text": "{actor_name}指定老婆：{name}{image}",
+      "designated": {
+        "text": "{actor_name}指定{role}：{name}{image}",
         "alternatives": [],
         "enabled": true,
         "quote": false,
         "llm": false,
         "llm_prompt": ""
-      },
-      "designated_husband": {
-        "text": "{actor_name}指定老公：{name}{image}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false,
-        "llm": false,
-        "llm_prompt": ""
-      },
-      "designated_disabled": {
-        "text": "指定抽取当前已关闭。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "no_designated_quota": {
-        "text": "本周期指定次数已用完，{reset_at} 重置。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
       },
       "designated_occupied": {
         "text": "该角色已有关系，当前开启了指定角色独占。",
@@ -635,20 +547,8 @@
       }
     },
     "errors": {
-      "syntax_error": {
-        "text": "{detail}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "operation_error": {
-        "text": "{detail}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "mode_closed": {
-        "text": "这个玩法当前已关闭。",
+      "feature_disabled": {
+        "text": "{feature}当前已关闭。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -659,92 +559,26 @@
         "enabled": true,
         "quote": false
       },
-      "steal_disabled": {
-        "text": "这个玩法当前不允许抢夺。",
+      "relation_ambiguous": {
+        "text": "找到多段匹配的关系，请写明名称或 #ID：\n{candidates}",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
-      "steal_target_required": {
-        "text": "请 @ 一位当前群内且允许参与的持有者。",
+      "relation_missing": {
+        "text": "没有找到叫这个名字的关系；发送“我的姻缘”查看当前关系。",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
-      "steal_relation_ambiguous": {
-        "text": "该持有者有多段匹配的关系，请写明名称或 #ID：\n{candidates}",
+      "target_required": {
+        "text": "请在指令后面 @ 一位群友。",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
-      "steal_relation_missing": {
-        "text": "{target_name}没有叫这个名字的关系；不写名称时会随机抢一段。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "force_disabled": {
-        "text": "本群当前不允许强娶。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "force_target_required": {
-        "text": "请 @ 一位当前群内且允许参与的其他成员。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "target_is_self": {
-        "text": "不能对自己使用这个指令。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "target_is_bot": {
-        "text": "不能对机器人使用这个指令。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "target_ineligible": {
-        "text": "{target_name}暂时不能参与（可能被管理员排除、已退群，或插件还没记录到 ta），换个人试试。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "gift_disabled": {
-        "text": "这个玩法当前不允许赠送。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "gift_target_required": {
-        "text": "请 @ 一位当前群内且允许参与的接收者。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "gift_relation_ambiguous": {
-        "text": "你有多段可赠送的关系，请写明要送出哪一段：\n{candidates}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "gift_relation_missing": {
-        "text": "你没有匹配的关系；发送“我的姻缘”查看当前关系。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "divorce_ambiguous": {
-        "text": "找到多段匹配关系，请用“离婚老婆/离婚老公/离婚群友”指定玩法和名称或 ID：",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "divorce_disabled": {
-        "text": "这个玩法当前不允许解除关系。",
+      "target_invalid": {
+        "text": "不能选{target_name}：{reason}。",
         "alternatives": [],
         "enabled": true,
         "quote": false
@@ -773,18 +607,6 @@
         "enabled": true,
         "quote": false
       },
-      "rank_intimacy_disabled": {
-        "text": "亲密度排行当前已关闭。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "rank_activity_disabled": {
-        "text": "活跃度排行当前已关闭。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
       "activity_disabled": {
         "text": "活跃度统计已关闭；当前保留历史排行。",
         "alternatives": [],
@@ -803,50 +625,20 @@
         "enabled": true,
         "quote": false
       },
-      "designated_missing": {
-        "text": "未找到当前角色池内可指定的角色；请使用精确名称、别名或 ID。",
+      "character_missing": {
+        "text": "没有找到角色“{name}”；请检查名称、别名或 ID。",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
-      "designated_ambiguous": {
-        "text": "匹配到多个角色，请使用明确 ID：\n{candidates}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "character_info_missing": {
-        "text": "未找到本群角色池内的角色；请检查名称、别名或 ID。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "character_info_ambiguous": {
-        "text": "匹配到多个角色，请使用明确 ID：\n{candidates}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "affection_target_required": {
-        "text": "请 @ 一位当前群内且允许参与的其他成员。",
+      "character_ambiguous": {
+        "text": "匹配到多个角色，请使用明确的名称或 ID：\n{candidates}",
         "alternatives": [],
         "enabled": true,
         "quote": false
       },
       "admin_set_denied": {
         "text": "仅 Bot 管理员或额外命令管理员可使用 /设置老婆。",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "admin_set_missing": {
-        "text": "未找到可用的今日老婆角色：{name}",
-        "alternatives": [],
-        "enabled": true,
-        "quote": false
-      },
-      "admin_set_ambiguous": {
-        "text": "匹配到多个角色：{name}；请使用明确 ID：\n{candidates}",
         "alternatives": [],
         "enabled": true,
         "quote": false

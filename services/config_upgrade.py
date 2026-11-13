@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .message_merge import OLD_DEFAULTS, PATH_LABELS, merge_messages
+
 SCHEMA_VERSION = 2
 _DEFAULTS_PATH = (
     Path(__file__).resolve().parents[1]
@@ -286,6 +288,12 @@ def upgrade_config(
     ):
         notes.append("文案、启用与引用合并为每条文案一个对象。")
 
+    # 0.4.0 合并、拆分了部分文案条目；旧配置直接转换成新的条目。
+    notes += merge_messages(
+        result,
+        {"legacy": LEGACY_MESSAGES, "superseded": SUPERSEDED_MESSAGES},
+        PATH_LABELS,
+    )
     if not sparse or "schema_version" in result:
         result["schema_version"] = SCHEMA_VERSION
     return result, notes
@@ -322,7 +330,12 @@ def refresh_superseded_messages(value: dict[str, Any]) -> bool:
         if not isinstance(entries, dict):
             continue
         entry = entries.get(key)
-        current = defaults[section][key]
+        current = defaults[section].get(key)
+        if current is None:
+            # 0.4.0 合并或移除的条目：先换成它最后的默认文案，交给迁移 022 处理。
+            if path not in OLD_DEFAULTS:
+                continue
+            current = {"text": OLD_DEFAULTS[path]}
         olds = (old,) if isinstance(old, str) else old
         if isinstance(entry, dict) and entry.get("text") in olds:
             if entry["text"] != current["text"]:

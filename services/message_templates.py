@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ..models.errors import ConfigurationError
+from .message_merge import MESSAGE_ALIASES, SYSTEM_MESSAGES
 
 _FORMATTER = string.Formatter()
 # 每条回复（含 text）最多的预设数量，管理页 + 号使用同一上限。
@@ -42,6 +43,9 @@ FIELD_DESCRIPTIONS = {
     "image": "结果图片的插入位置，可代替必要文字变量",
     "role": "玩法名称：老婆、老公或群友",
     "hint": "改用其他指令的建议，没有建议时为空",
+    "action": "用完次数的操作：强娶、抢夺、离婚或指定",
+    "feature": "被关闭的功能名称，如强娶、抢夺、亲密度排行",
+    "reason": "不能选这个人的原因，如“这是你自己”“ta 是机器人”",
     "invite_id": "当前赠送邀请编号",
     "accept_keyword": "接受赠送邀请的指令关键词",
     "limit": "待处理赠送邀请数量上限",
@@ -64,6 +68,17 @@ FIELD_DESCRIPTIONS = {
     "forward_score": "发起者对目标群员的亲密度",
     "reverse_score": "目标群员对发起者的亲密度",
 }
+# 合并后的条目使用的变量在缺少值时的兜底。
+_VARIABLE_DEFAULTS = {
+    "role": "关系",
+    "hint": "",
+    "action": "这个操作",
+    "feature": "这个功能",
+    "reason": "这个指令不能对 ta 使用",
+    "candidates": "",
+    "name": "",
+}
+
 MESSAGE_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
     "daily_bonds_reply", default=MappingProxyType({})
 )
@@ -77,8 +92,7 @@ def set_message_values(**values: Any) -> None:
 IMAGE_TOKEN = "\ue000image\ue001"
 IMAGE_KEYS = {
     "admin_set_wife",
-    "draw_wife",
-    "draw_husband",
+    "draw_character",
     "draw_member",
     "draw_member_mutual",
     "my_status",
@@ -87,11 +101,9 @@ IMAGE_KEYS = {
     "character_info",
     "group_stats",
     "force_success",
-    "designated_wife",
-    "designated_husband",
+    "designated",
     "capacity_full",
-    "capacity_full_single_wife",
-    "capacity_full_single_husband",
+    "capacity_full_single",
     "list_wife",
     "list_husband",
     "list_member",
@@ -105,8 +117,8 @@ EXTRA_FIELDS = {
     "member_removed": {"owner_id"},
     "owner_ineligible": {"owner_id"},
     "capacity_full": {"name"},
-    "capacity_full_single_wife": {"name", "names"},
-    "capacity_full_single_husband": {"name", "names"},
+    "capacity_full_single": {"name", "names"},
+    "character_ambiguous": {"name"},
     "rank_intimacy": {"title", "lines", "count", "group_name", "群名"},
     "rank_my_intimacy": {"title", "lines", "count", "group_name", "群名"},
     "rank_activity": {"title", "lines", "count", "days", "group_name", "群名"},
@@ -115,8 +127,7 @@ EXTRA_FIELDS = {
     "group_stats": {"group_name", "群名", "days"},
 }
 _REQUIRED = {
-    "messages.results.draw_wife": {"name"},
-    "messages.results.draw_husband": {"name"},
+    "messages.results.draw_character": {"name"},
     "messages.results.draw_member": {"name"},
     "messages.results.draw_member_mutual": {"name"},
     "messages.results.capacity_full": {"names"},
@@ -281,10 +292,8 @@ def template_fields() -> dict[str, dict[str, Any]]:
                 "affection_value",
             }:
                 result[path]["descriptions"]["name"] = "查询或排行所属的用户名称"
-            elif (
-                "name" in allowed
-                and key.startswith("admin_set_")
-                and section == "errors"
+            elif "name" in allowed and section == "errors" and (
+                key.startswith(("admin_set_", "character_"))
             ):
                 result[path]["descriptions"]["name"] = "指令中输入的角色名称或别名"
             elif "name" in allowed and key.startswith("capacity_full"):
@@ -297,6 +306,16 @@ def template_fields() -> dict[str, dict[str, Any]]:
 def render_message(
     config: Mapping[str, Any], section: str, key: str, **values: Any
 ) -> str:
+    # 合并过的旧键改用合并后的条目，场景差异作为变量填入（调用方的值优先）。
+    alias = MESSAGE_ALIASES.get((section, key))
+    if alias is not None:
+        section, key, extra = alias
+        values = {**extra, **values}
+    system = SYSTEM_MESSAGES.get(f"{section}.{key}")
+    if system is not None:
+        context = {**MESSAGE_CONTEXT.get(), "code": "", "detail": "", **values}
+        text = system.format_map(context)
+        return MessageText(text, fallback=text)
     entry = config["messages"][section][key]
     if isinstance(entry, Mapping) and not entry.get("enabled", True):
         return MessageText("")
@@ -309,8 +328,7 @@ def render_message(
         "group_name": "本群",
         **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},
         "reset_at": "下次重置",
-        "role": "关系",
-        "hint": "",
+        **_VARIABLE_DEFAULTS,
         **MESSAGE_CONTEXT.get(),
         **values,
         "image": IMAGE_TOKEN,
@@ -326,7 +344,7 @@ def render_message(
             "key": key,
             "facts": {
                 field: str(explicit[field])
-                for field in (*NAME_FIELDS, "name")
+                for field in (*NAME_FIELDS, "name", "role")
                 if explicit.get(field) not in (None, "")
             },
             # 预设文案默认不发给模型，避免照着套写或沿用其中的说法；可在管理页打开。
