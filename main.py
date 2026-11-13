@@ -100,6 +100,8 @@ class DailyBondsPlugin(Star):
             )
             web_manager.runtime_reset = self._runtime.reset
             web_manager.runtime = self._runtime
+            web_manager.llm = llm
+            web_manager.config_saved = sentiment.revalidate
             self._sentiment_task = asyncio.create_task(
                 self._sentiment_loop(sentiment, llm),
                 name="daily-bonds-sentiment",

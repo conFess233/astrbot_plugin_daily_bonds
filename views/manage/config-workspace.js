@@ -39,7 +39,11 @@ function fieldConditions(path) {
     "display.page_size": ["display.pagination_enabled", (on) => on !== false],
     "statistics.activity_window_days": ["statistics.activity_enabled", (on) => on !== false],
     "statistics.intimacy_decay_idle_days": ["statistics.intimacy_decay_percent", (percent) => Number(percent) > 0],
+    "llm.provider_ids": ["llm.provider_mode", (mode) => mode === "custom"],
+    "llm.persona_id": ["llm.persona_mode", (mode) => mode === "custom"],
   }[path];
+  // AI 好感度评估关闭时，其余评估参数收起。
+  if (path.startsWith("sentiment.") && path !== "sentiment.enabled") return [["sentiment.enabled", () => value("sentiment.enabled") !== false, "AI 好感度评估未开启"]];
   return simple ? [[simple[0], () => simple[1](value(simple[0])), ""]] : [];
 }
 
@@ -257,7 +261,39 @@ const CONFIG_GROUPS = {
   "messages.notifications": "赠送与重启通知", "messages.titles": "标题与统计标签",
   "reply_quote.results": "结果回复引用", "reply_quote.errors": "错误回复引用",
   batch_import: "批量图片检测默认值", render: "回复形式",
+  llm: "AI 模型", llm_replies: "AI 文案", sentiment: "AI 好感度评估",
 };
+
+// 末段名称容易与其他分组重名的配置，按完整路径命名。
+const PATH_LABELS = {
+  "llm.provider_mode": "模型来源", "llm.provider_ids": "指定的模型", "llm.persona_mode": "人格来源", "llm.persona_id": "指定的人格",
+  "llm.total_timeout_seconds": "每条回复最多等待（秒）", "llm.call_timeout_seconds": "单个模型超时（秒）",
+  "llm.max_concurrency": "同时调用上限", "llm.group_calls_per_minute": "每群每分钟调用上限",
+  "llm_replies.system_prompt": "系统提示词", "llm_replies.style_prompt": "文风要求", "llm_replies.max_chars": "文案字数上限",
+  "sentiment.extra_prompt": "本群语境说明",
+  "sentiment.enabled": "启用 AI 好感度评估", "sentiment.mode": "加减方式", "sentiment.daily_cap": "每对每天加减上限",
+  "sentiment.base_points": "隐式对话底分", "sentiment.attitude_factor": "态度分系数", "sentiment.passive_ratio": "被说话方加分比例",
+  "sentiment.min_confidence": "最低对象把握", "sentiment.diminish_after": "当天累计多少分后减半",
+  "sentiment.send_names": "发送群名片和昵称", "sentiment.name_min_chars": "点名的最短名称长度",
+  "sentiment.adjacency_seconds": "接话判断时间（秒）", "sentiment.min_chars": "参与态度评分的最短字数",
+  "sentiment.batch_interval_seconds": "评估间隔（秒）", "sentiment.batch_max_messages": "积累多少条立即评估",
+  "sentiment.buffer_max_messages": "每群暂存上限（条）", "sentiment.global_buffer_max_messages": "全部群暂存上限（条）",
+  "sentiment.context_messages": "附带上下文条数", "sentiment.message_max_chars": "每条消息最多字数",
+};
+
+// 提示词类文本：[行数, 字数上限, 占位文字]。
+const PROMPT_FIELDS = {
+  "llm_replies.system_prompt": [8, 3000, "留空使用内置提示词"],
+  "llm_replies.style_prompt": [3, 1000, "可选，例如：像相声捧哏一样夸张"],
+  "sentiment.extra_prompt": [4, 1000, "可选，例如：群里互称“老婆”是玩笑，不算冒犯"],
+};
+
+// 只能全局设置的 AI 资源参数，与服务端 GLOBAL_ONLY_FIELDS 一致。
+const AI_GLOBAL_ONLY = new Set([
+  "llm.total_timeout_seconds", "llm.call_timeout_seconds", "llm.max_concurrency",
+  "sentiment.batch_interval_seconds", "sentiment.batch_max_messages", "sentiment.buffer_max_messages",
+  "sentiment.global_buffer_max_messages", "sentiment.context_messages", "sentiment.message_max_chars",
+]);
 
 const MESSAGE_LABELS = {
   draw_wife: "抽到老婆", draw_husband: "抽到老公", draw_member: "抽到群友",
@@ -374,7 +410,7 @@ function configGroup(path) {
 
 export function configIsGlobalOnly(path) {
   return path === "schema_version" || path.startsWith("access.groups.") || path === "access.extra_admin_ids" || path.startsWith("batch_import.") ||
-    path.startsWith("resources.") || path.startsWith("history.");
+    path.startsWith("resources.") || path.startsWith("history.") || AI_GLOBAL_ONLY.has(path);
 }
 
 function configLabel(path) {
@@ -382,6 +418,8 @@ function configLabel(path) {
   if (parts[0] === "reply_enabled") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}启用回复`;
   if (parts[0] === "reply_quote") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}引用消息源`;
   if (parts[0] === "reply_variants") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}其余回复`;
+  if (parts[0] === "reply_llm") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}使用 AI 生成`;
+  if (PATH_LABELS[path]) return PATH_LABELS[path];
   if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
   if (parts[0] === "commands" && parts[1] === "keywords") return `${name}关键词`;
@@ -397,6 +435,24 @@ function configLabel(path) {
 
 function isPoolConfig(path) {
   return path === "modes.wife.pool_ids" || path === "modes.husband.pool_ids";
+}
+
+function renderProviderPicker(card, input) {
+  const selected = input.value.split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
+  const picker = card.querySelector(".provider-picker");
+  picker.replaceChildren();
+  const known = state.llmProviders.map((item) => item.id);
+  for (const id of [...known, ...selected.filter((item) => !known.includes(item))]) {
+    const provider = state.llmProviders.find((item) => item.id === id);
+    const label = document.createElement("label"); label.className = "pool-option";
+    const check = document.createElement("input"); check.type = "checkbox"; check.value = id; check.checked = selected.includes(id); check.disabled = input.disabled;
+    const name = document.createElement("span");
+    const order = selected.indexOf(id);
+    name.textContent = `${order >= 0 ? `第 ${order + 1} 顺位 · ` : ""}${id}`;
+    const detail = document.createElement("small"); detail.textContent = provider ? provider.model || "对话模型" : "宿主中已不存在";
+    label.append(check, name, detail); picker.append(label);
+  }
+  if (!picker.children.length) { const empty = document.createElement("small"); empty.className = "config-note"; empty.textContent = "没有读取到宿主中的对话模型；请先在 AstrBot 中配置模型提供商。"; picker.append(empty); }
 }
 
 function renderPoolPicker(card, input) {
@@ -587,10 +643,15 @@ function createConfigField(path, value) {
   const globalOnly = configIsGlobalOnly(path);
   const overridden = state.scopeId !== "global" && state.overridePaths.has(path);
   let input;
-  if (isPoolConfig(path)) {
+  if (isPoolConfig(path) || path === "llm.provider_ids") {
     input = document.createElement("input");
     input.type = "hidden";
     input.value = value.join("\n");
+  } else if (path === "llm.persona_id") {
+    input = document.createElement("select");
+    input.add(new Option("请选择人格", ""));
+    for (const name of new Set([...state.llmPersonas, ...(value ? [value] : [])])) input.add(new Option(name, name));
+    input.value = value;
   } else if (isVariantPath(path)) {
     input = document.createElement("input");
     input.type = "hidden";
@@ -599,6 +660,13 @@ function createConfigField(path, value) {
     input.rows = Math.min(Math.max(value.length + 1, 2), 5);
     input.value = value.join("\n");
     input.placeholder = "每行一项";
+  } else if (PROMPT_FIELDS[path]) {
+    const [rows, maxLength, placeholder] = PROMPT_FIELDS[path];
+    input = document.createElement("textarea");
+    input.rows = rows;
+    input.maxLength = maxLength;
+    input.placeholder = path === "llm_replies.system_prompt" ? state.llmReplyPrompt || placeholder : placeholder;
+    input.value = value;
   } else if (path.startsWith("messages.")) {
     input = document.createElement("textarea");
     input.rows = 3;
@@ -657,6 +725,43 @@ function createConfigField(path, value) {
     });
     controls.append(picker);
   }
+  if (path === "llm.provider_ids") {
+    const picker = document.createElement("div");
+    picker.className = "pool-picker provider-picker";
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", configLabel(path));
+    picker.addEventListener("change", (event) => {
+      if (!event.target.matches('input[type="checkbox"]')) return;
+      // 勾选顺序即回退顺序：新勾选的排在最后，取消勾选的移除。
+      const current = input.value.split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
+      const id = event.target.value;
+      const next = event.target.checked ? [...current.filter((item) => item !== id), id] : current.filter((item) => item !== id);
+      input.value = next.join("\n");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      renderProviderPicker(card, input);
+    });
+    controls.append(picker);
+  }
+  if (path === "llm_replies.system_prompt") {
+    const actions = document.createElement("div"); actions.className = "actions";
+    const fill = document.createElement("button"); fill.type = "button"; fill.className = "btn btn-ghost btn-sm"; fill.textContent = "填入内置提示词";
+    fill.addEventListener("click", () => {
+      if (!state.llmReplyPrompt) { showNotice("没有读取到内置提示词，请刷新页面后重试。", "error"); return; }
+      input.value = state.llmReplyPrompt; input.dispatchEvent(new Event("input", { bubbles: true })); input.focus();
+    });
+    const reset = document.createElement("button"); reset.type = "button"; reset.className = "btn btn-ghost btn-sm"; reset.textContent = "恢复内置（清空）";
+    reset.addEventListener("click", () => { input.value = ""; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    actions.append(fill, reset); controls.append(actions);
+  }
+  if (path === "sentiment.enabled") {
+    input.addEventListener("change", async () => {
+      if (!input.checked) return;
+      const ok = await confirmAction("开启后，本群的聊天原文会发送给所选模型的提供方，用于判断谁在对谁说话以及态度，并据此加减亲密度。原文只在内存中暂存，不写入磁盘。确认开启？");
+      if (ok) return;
+      input.checked = false;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
   if (state.scopeId !== "global" && !globalOnly) {
     const override = document.createElement("label");
     override.className = "config-override";
@@ -673,6 +778,7 @@ function createConfigField(path, value) {
         state.draftValues[path] = displayValue(path, configAt(state.globalConfig, path));
         writeInputValue(input, state.draftValues[path]);
         if (isPoolConfig(path)) renderPoolPicker(card, input);
+        if (path === "llm.provider_ids") renderProviderPicker(card, input);
         if (isVariantPath(path)) refreshVariantCard(card, input);
       }
       card.classList.toggle("inherited", !toggle.checked);
@@ -691,11 +797,13 @@ function createConfigField(path, value) {
   }
   writeInputValue(input, state.draftValues[path]);
   if (isPoolConfig(path)) renderPoolPicker(card, input);
+  if (path === "llm.provider_ids") renderProviderPicker(card, input);
   if (isVariantPath(path)) renderVariantEditors(card, input);
   const hint = CONFIG_HINTS[path] ||
     (path.startsWith("messages.") ? templateHint(path) :
     isVariantPath(path) ? templateHint(path.replace(/^reply_variants\./, "messages.")) :
     path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
+    path.startsWith("reply_llm.") ? "开启后由模型根据本次的人物和结果现写一条；超时、失败或达到频率上限时发送上面的预设文案，预设也会作为风格示例。每次都会实际调用模型。" :
     path.startsWith("commands.keywords.") ? "每行一个别名，至少一项。" : "");
   if (hint) {
     const help = document.createElement("small");
@@ -1057,7 +1165,7 @@ function initReplyBulk() {
     }
     const action = button.dataset.replyBulk; if (!action) return;
     for (const path of state.selectedReplies) {
-      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote."]) assignDraftField(path.replace("messages.", prefix), null, true);
+      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote.", "reply_llm."]) assignDraftField(path.replace("messages.", prefix), null, true);
       else assignDraftField(path.replace("messages.", ["enable", "disable"].includes(action) ? "reply_enabled." : "reply_quote."), ["enable", "quote"].includes(action));
     }
     renderTemplatePreview(); updateReplySelection();
@@ -1106,10 +1214,11 @@ function selectTemplate(path) {
   for (const id of ["reply-editor", "reply-quote"]) for (const card of [...$("#" + id).children]) store.append(card);
   $("#reply-editor").append(fieldCards.get(path));
   if (variantParts(path)) $("#reply-editor").append(variantParts(path).card);
-  for (const prefix of ["reply_enabled.", "reply_quote."]) {
+  for (const prefix of ["reply_enabled.", "reply_quote.", "reply_llm."]) {
     const optionPath = path.replace(/^messages\./, prefix);
     if (fieldCards.has(optionPath)) $("#reply-quote").append(fieldCards.get(optionPath));
   }
+  if (fieldCards.has(path.replace(/^messages\./, "reply_llm."))) $("#reply-quote").append(llmPreviewBox(path));
   $("#template-name").textContent = configLabel(path);
   const variables = $("#template-variables"); variables.replaceChildren();
   for (const variable of state.templateFields[path]?.allowed || []) {
@@ -1123,6 +1232,28 @@ function selectTemplate(path) {
   if (!variables.children.length) variables.textContent = "本条没有可插入变量。";
   for (const button of document.querySelectorAll("[data-template-path]")) button.setAttribute("aria-pressed", String(button.dataset.templatePath === path));
   showVariant(activeVariant);
+}
+
+// AI 文案试生成：使用当前草稿和示例人物实际调用一次模型，结果只显示在页面上。
+function llmPreviewBox(path) {
+  const box = document.createElement("div"); box.className = "llm-preview";
+  const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-ghost btn-sm"; button.textContent = "试生成一条";
+  const result = document.createElement("p"); result.className = "hint"; result.setAttribute("role", "status");
+  result.textContent = "使用草稿配置和示例人物，结果只显示在这里，不发送到群。";
+  button.addEventListener("click", async () => {
+    if (!await confirmAction("试生成会实际调用一次模型，可能产生费用。继续？")) return;
+    let draft;
+    try { ({ draft } = serializeDraft(state.savedConfig, state.globalConfig, state.draftValues, state.overridePaths, state.scopeId !== "global", FLOAT_CONFIG_PATHS)); }
+    catch (error) { result.textContent = error.message || "草稿有误，请先修正。"; return; }
+    button.disabled = true; button.textContent = "生成中…";
+    try {
+      const response = await apiPost("llm/preview", { key: path.split(".").at(-1), scope_id: state.scopeId, draft: fromUiConfig(draft) });
+      result.textContent = `生成结果：${response.data.text}`;
+    } catch (error) { result.textContent = error.message || "生成失败，群里会改发预设文案。"; }
+    finally { button.disabled = false; button.textContent = "试生成一条"; }
+  });
+  box.append(button, result);
+  return box;
 }
 
 export function renderTemplatePreview() {
@@ -1159,6 +1290,7 @@ const ADVANCED_GROUPS = [
   ["commands", "指令", ["commands"]],
   ["stats", "统计与权重", ["statistics", "weights"]],
   ["display", "展示与回复形式", ["render", "display"]],
+  ["ai", "AI 功能", ["llm", "llm_replies", "sentiment"]],
   ["system", "运行与存储", ["members", "history", "resources", "batch_import"]],
 ];
 

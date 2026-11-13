@@ -10,11 +10,17 @@ import uuid
 from collections.abc import Mapping
 from typing import Any
 
+from astrbot.api import logger
 from astrbot.api.web import json_response, request
 
 from ..models.errors import ConfigurationError, InvalidInputError, StorageError
 from .message_templates import template_fields
-from .settings import SCOPE_OVERRIDABLE, effective_config, validate_config
+from .settings import (
+    GLOBAL_ONLY_FIELDS,
+    SCOPE_OVERRIDABLE,
+    effective_config,
+    validate_config,
+)
 
 
 class ConfigRoutes:
@@ -70,6 +76,7 @@ class ConfigRoutes:
             scope_id, stored, effective = await asyncio.to_thread(
                 self._prepare_draft, payload
             )
+            self._validate_llm_references(effective)
             impacted_scopes = await asyncio.to_thread(
                 self._validate_effective_scopes, scope_id, effective
             )
@@ -158,6 +165,7 @@ class ConfigRoutes:
             scope_id, stored, effective = await asyncio.to_thread(
                 self._prepare_draft, payload
             )
+            self._validate_llm_references(effective)
             await asyncio.to_thread(
                 self._validate_effective_scopes, scope_id, effective
             )
@@ -181,6 +189,13 @@ class ConfigRoutes:
             global_revision = (
                 saved_request["global_revision"] if saved_request else revision
             )
+            if self.config_saved is not None:
+                try:
+                    await self.config_saved(scope_id)
+                except Exception:  # noqa: BLE001 - 回调失败不影响已保存的配置
+                    logger.warning(
+                        "今日姻缘：配置保存后的缓冲回收失败。", exc_info=True
+                    )
             return json_response(
                 {
                     "ok": True,
@@ -243,6 +258,22 @@ class ConfigRoutes:
         validate_config(effective)
         return scope_id, sparse, effective
 
+    def _validate_llm_references(self, config: Mapping[str, Any]) -> None:
+        """指定的模型与人格必须存在于宿主中；宿主列表读不到时不阻止保存。"""
+
+        if self.llm is None:
+            return
+        settings = config["llm"]
+        if settings["provider_mode"] == "custom":
+            known = {item["id"] for item in self.llm.list_providers()}
+            missing = [item for item in settings["provider_ids"] if item not in known]
+            if known and missing:
+                raise ConfigurationError(f"宿主中没有这些模型：{'、'.join(missing)}")
+        if settings["persona_mode"] == "custom":
+            personas = set(self.llm.list_personas())
+            if personas and settings["persona_id"] not in personas:
+                raise ConfigurationError(f"宿主中没有人格：{settings['persona_id']}")
+
     def _requested_scope_id(self, payload: Mapping[str, Any]) -> int | None:
         raw_scope = payload.get("scope_id")
         if raw_scope in (None, "", "global"):
@@ -303,3 +334,6 @@ def _validate_scope_override(value: Mapping[str, Any]) -> None:
     access = value.get("access", {})
     if not isinstance(access, dict) or set(access) - {"users", "extra_bot_ids"}:
         raise ConfigurationError("群覆盖只能设置用户规则和补充机器人名单。")
+    for section, fields in GLOBAL_ONLY_FIELDS.items():
+        if isinstance(value.get(section), dict) and set(value[section]) & fields:
+            raise ConfigurationError(f"群覆盖不能设置 {section} 的全局资源参数。")

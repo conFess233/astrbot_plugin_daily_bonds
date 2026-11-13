@@ -66,6 +66,10 @@ export const state = {
   catalogBusy: false,
   catalogSyncBusy: false,
   pools: [],
+  // 宿主中可选的对话模型与人格，供 AI 模型设置使用。
+  llmProviders: [],
+  llmPersonas: [],
+  llmReplyPrompt: "",
   characterRevision: 0,
   characterImages: [],
   characterSaved: null,
@@ -186,12 +190,16 @@ export const CONFIG_OPTIONS = {
   "access.groups.mode": [["unrestricted", "不限制"], ["blacklist", "黑名单"], ["whitelist", "白名单"]],
   "access.users.mode": [["unrestricted", "不限制"], ["blacklist", "黑名单"], ["whitelist", "白名单"]],
   "render.mode": [["card", "卡片（t2i 渲染）"], ["text", "纯文本"]],
+  "llm.provider_mode": [["follow", "跟随当前会话"], ["custom", "指定模型"]],
+  "llm.persona_mode": [["follow", "跟随当前会话"], ["custom", "指定人格"], ["none", "不加载人格"]],
+  "sentiment.mode": [["bidirectional", "可加可减"], ["positive_only", "只加不减"]],
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
     [`render.types.${kind}`, [["inherit", "跟随默认形式"], ["card", "卡片"], ["text", "纯文本"]]])),
 };
 export const FLOAT_CONFIG_PATHS = new Set([
   "weights.base", "weights.per_intimacy_point", "weights.maximum",
   "weights.activity_floor",
+  "sentiment.attitude_factor", "sentiment.passive_ratio", "sentiment.min_confidence",
   "modes.member.force_intimacy_bonus", "modes.member.force_probability_max",
   ...["wife", "husband", "member"].flatMap((mode) => [`modes.${mode}.steal_intimacy_bonus`, `modes.${mode}.steal_probability_max`]),
 ]);
@@ -224,6 +232,36 @@ export const CONFIG_HINTS = {
   "display.rank_merge_rows": "1～100；列表每张卡片最多显示的行数，排行每张最多 50 行（5 列）；超出时分成多张。",
   "statistics.reply_active_points": "回复某人的消息时给回复者加的分；同一条消息里也 @ 了对方时只按 @ 计。0 关闭。",
   "statistics.reply_passive_points": "被回复的人加的分。依赖 AstrBot 取回被回复的原消息，取不到时不计分。",
+  "llm.provider_mode": "跟随当前会话：使用该群正在用的聊天模型；指定模型：按勾选顺序依次尝试，前一个失败或超时再用下一个。",
+  "llm.provider_ids": "勾选的顺序就是回退顺序。",
+  "llm.persona_mode": "人格只作为文风参考；跟随当前会话时读取该群配置文件的默认人格，不含对话中临时切换的人格。",
+  "llm.persona_id": "指定人格时选择宿主中的一个人格。",
+  "llm.total_timeout_seconds": "1～60 秒；一次回复最多等待这么久，超时改发预设文案。",
+  "llm.call_timeout_seconds": "1～60 秒，且不大于总时限；单个模型超时后换下一个。",
+  "llm.max_concurrency": "1～16；同时进行的模型调用上限。聊天回复遇到已满时直接发预设文案，不排队。",
+  "llm.group_calls_per_minute": "1～600；每群每分钟的模型调用上限（AI 文案与好感度评估合计），超出时文案改发预设、评估顺延。",
+  "llm_replies.system_prompt": "留空使用内置提示词（灰色占位文字即内置内容）。最多 3000 字，可用变量 {max_chars}（字数上限），字面大括号写 {{ 或 }}。无论怎么改，输出都会被清理掉 @、链接和 QQ 号，超长视为失败。",
+  "sentiment.extra_prompt": "可选，最多 1000 字；告诉模型本群的说话习惯，例如“群里互称‘老婆’是玩笑”“‘草’是语气词不是骂人”。只作为补充，判断规则和输出格式不能被它改变。",
+  "llm_replies.style_prompt": "可选，最多 1000 字；追加给模型的文风要求，例如“像相声捧哏一样夸张”。",
+  "llm_replies.max_chars": "10～500；生成文案的字数上限，超出视为失败并改发预设。",
+  "sentiment.enabled": "开启后，本群聊天原文会发送给所选模型的提供方，用于判断谁在对谁说话及态度；原文只在内存中暂存，不写入磁盘。",
+  "sentiment.mode": "可加可减：善意加分、恶意扣分；只加不减：只加分，适合互损、玩梗多的群。",
+  "sentiment.daily_cap": "0～100000；每一对每天加分、扣分各自的上限，0 表示不限。",
+  "sentiment.base_points": "0～100；模型确认的隐式对话（没有 @ 或回复）的互动底分；有 @ 或回复的对话已有固定分，不再给底分。",
+  "sentiment.attitude_factor": "0～100；态度分（-3～3）乘以此值后计入。",
+  "sentiment.passive_ratio": "0～1；加分时，被说话的人对说话人也加 加分 × 此值，0 表示不加。",
+  "sentiment.min_confidence": "0～1；模型对“说话对象”的把握低于此值的隐式对话不计分。",
+  "sentiment.diminish_after": "0～100000；同一对当天累计变化超过此值后，之后的加减分减半；0 不递减。",
+  "sentiment.send_names": "关闭后只发送 P1、P2 这样的代号，不发送群名片和昵称；QQ 号始终不发送。",
+  "sentiment.name_min_chars": "1～32；消息里出现这么长以上的群名片或昵称时，作为“点名”提示交给模型。",
+  "sentiment.adjacency_seconds": "0～600；某人刚说完话、这么多秒内只有两人在聊时，把接话的人当作可能在回应他；0 关闭。",
+  "sentiment.min_chars": "0～50；少于这么多字的消息（如“嗯”“1”）不参与态度评分。",
+  "sentiment.batch_interval_seconds": "60～86400 秒；最早的未评估消息等待这么久后发起一次评估。",
+  "sentiment.batch_max_messages": "5～200；本群积累到这么多条未评估消息时立即评估一次。",
+  "sentiment.buffer_max_messages": "10～1000；每群在内存中最多暂存的消息条数，超出丢最旧的。",
+  "sentiment.global_buffer_max_messages": "100～100000；所有群合计的暂存上限，超出时先删最久没有新消息的群。",
+  "sentiment.context_messages": "0～50；每批附带的上一批末尾消息条数，只作上下文，不重复计分。",
+  "sentiment.message_max_chars": "20～1000；每条消息暂存和发送的最大字数。",
   "render.mode": "卡片由 AstrBot 的 t2i 服务渲染，会把群名片、头像和角色图发送到该服务；选择纯文本则不发送。渲染失败时自动改发文字。",
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
     [`render.types.${kind}`, "跟随默认形式，或为这一类回复单独选择卡片或纯文本。"])),
@@ -397,6 +435,10 @@ async function refreshAll() {
     try { await loadScopes(); setConnection(true); } catch (error) { setConnection(false); showNotice(error.message || "群列表读取失败。", "error"); }
     await loadOverview();
     try { state.pools = (await apiGet("pools")).data; renderPools(); } catch (error) { showNotice(error.message || "角色池读取失败。", "error"); }
+    try {
+      const options = (await apiGet("llm/options")).data;
+      state.llmProviders = options.providers || []; state.llmPersonas = options.personas || []; state.llmReplyPrompt = options.reply_system_prompt || "";
+    } catch { state.llmProviders = []; state.llmPersonas = []; }
     await loadConfig();
   } catch (error) { configFeedback(error.message || "读取配置失败，可重试；已有草稿仍保留。"); }
   finally { setBusy(false); updateDirtyState(); }
@@ -926,7 +968,8 @@ document.querySelectorAll("button[data-query]").forEach((button) => button.addEv
     } else if (kind === "intimacy") { if (userId) params.source_id = userId; }
     else if (kind === "activity") { params.window_days = $("#data-window").value; if (userId) params.user_id = userId; }
     else if (kind === "invites") params.state = "pending";
-    if (["invites", "history"].includes(kind) && userId) throw new Error("此查询接口不支持用户过滤，请清空用户 ID 后按群查询。");
+    else if (kind === "sentiment") endpoint = "sentiment/batches";
+    if (["invites", "history", "sentiment"].includes(kind) && userId) throw new Error("此查询接口不支持用户过滤，请清空用户 ID 后按群查询。");
     for (const other of document.querySelectorAll("button[data-query]")) other.setAttribute("aria-pressed", String(other === button));
     const name = button.textContent;
     await busyButton(button, "查询中", () => runQuery({ endpoint, params, kind, name }));
