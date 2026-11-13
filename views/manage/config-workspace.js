@@ -305,7 +305,7 @@ const MESSAGE_LABELS = {
   draw_wife: "抽到老婆", draw_husband: "抽到老公", draw_member: "抽到群友",
   draw_member_mutual: "群友双向奔赴", my_status: "我的姻缘", help: "姻缘帮助", my_collection: "我的图鉴",
   status: "我的姻缘标题", collection: "我的图鉴标题",
-  force_success: "强娶成功", force_failed: "强娶失败", force_limit: "强娶次数用完", force_target_taken: "强娶目标已被娶走",
+  force_success: "强娶成功", force_failed: "强娶失败", force_limit: "强娶次数用完", force_target_taken: "强娶时对方刚被别人娶走",
   force_disabled: "强娶关闭", force_target_required: "强娶没有 @ 目标",
   target_is_self: "目标是自己", target_is_bot: "目标是机器人", target_ineligible: "目标暂时不能参与",
   character_info: "角色信息回复", character_info_missing: "未找到角色", character_info_ambiguous: "角色有多个匹配", group_stats: "本群统计回复",
@@ -524,6 +524,7 @@ const MESSAGE_SCENES = {
   designated_husband: "发送时机：用户用“今日老公 角色名”指定角色成功（不是强娶）。",
   admin_set_wife: "发送时机：管理员用“/设置老婆 角色名”设置成功（不是强娶）。",
   force_target_required: "发送时机：强娶时没有 @ 任何人。",
+  force_target_taken: "发送时机：强娶时对方恰好刚被别人娶走（极少见）；对方早已被娶走时会直接转为争夺，不发这条。",
   target_ineligible: "发送时机：强娶、抢夺、赠送 @ 的人被管理员排除、已退群，或插件还没记录到 ta。",
 };
 

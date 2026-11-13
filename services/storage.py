@@ -32,7 +32,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 20
+_SCHEMA_VERSION = 21
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -582,9 +582,10 @@ class SQLiteStorage:
             migration_dir / "018_sentiment_daily.sql",
             migration_dir / "019_scope_identity.sql",
             migration_dir / "020_refresh_defaults.sql",
+            migration_dir / "021_refresh_defaults.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
-        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20}
+        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20, 21: _upgrade_v20}
         variants = [_checksum_variants(path) for path in migration_files]
         # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
         checksums = [lf for lf, _crlf in variants]

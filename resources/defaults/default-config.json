@@ -320,7 +320,7 @@
         "quote": false
       },
       "force_target_taken": {
-        "text": "{subject_name}已经被{owner_name}娶走了，不能强娶；可以试试抢夺。",
+        "text": "{subject_name}刚被{owner_name}娶走，请重新强娶一次。",
         "alternatives": [],
         "enabled": true,
         "quote": false

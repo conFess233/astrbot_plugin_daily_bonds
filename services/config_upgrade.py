@@ -120,6 +120,8 @@ SUPERSEDED_MESSAGES: dict[str, str | tuple[str, ...]] = {
     # 0.3.0 的默认文案：误导或缺少引导，0.3.1 改写。
     "results.relationship_not_found": "没有找到可处理的关系；发送“我的姻缘”查看当前关系。",
     "errors.divorce_relation_missing": "没有找到匹配的当前关系。",
+    # 0.3.2：强娶已被娶走的人改为争夺，这条只在并发时出现。
+    "results.force_target_taken": "{subject_name}已经被{owner_name}娶走了，不能强娶；可以试试抢夺。",
     "errors.steal_relation_missing": "该持有者没有匹配的关系，请检查名称或 #ID。",
 }
 

@@ -42,6 +42,18 @@ def steal_probability(
     return min(1.0, max(0.0, min(boosted, max(maximum, base))))
 
 
+CONTEST_FLOOR = 0.05
+
+
+def contested_probability(attacker: float, defender: float) -> float:
+    """强娶已被娶走的人：发起者的成功率减去持有者按同一公式算出的成功率。
+
+    两人与对象的亲密度相同时降到保底，最低 5%。
+    """
+
+    return min(1.0, max(CONTEST_FLOOR, attacker - defender))
+
+
 def format_reset(ends_at: int, timezone: str, now: int) -> str:
     """把周期结束时刻写成“今天 00:00 / 明天 00:00 / 3月5日 00:00”。"""
 

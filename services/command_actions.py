@@ -85,6 +85,19 @@ class ActionHandler:
         )
         return "target_is_bot" if is_bot else "target_ineligible"
 
+    def _member_holder(
+        self, scope_id: int, period_id: str, subject_id: str
+    ) -> str | None:
+        """当前娶了这位群友的人；没人娶时返回 None。"""
+
+        with self.storage.read() as db:
+            row = db.execute(
+                """SELECT owner_id FROM relationships WHERE scope_id=? AND period_id=?
+                   AND mode='member' AND subject_id=? AND state='active' LIMIT 1""",
+                (scope_id, period_id, subject_id),
+            ).fetchone()
+        return str(row["owner_id"]) if row else None
+
     def _known_bot(self, scope_id: int, user_id: str) -> bool:
         with self.storage.read() as db:
             row = db.execute(
@@ -169,6 +182,21 @@ class ActionHandler:
             if problem:
                 return render_message(config, "errors", problem)
             set_message_values(subject_name=names.get(target_id, "群友"))
+            probability = await self._steal_probability(
+                values["scope_id"], actor_id, target_id, mode_config, "force"
+            )
+            # 对方已被别人娶走时转为争夺：成功率减去持有者按同一公式算出的成功率。
+            holder_id = await asyncio.to_thread(
+                self._member_holder, values["scope_id"], values["period_id"], target_id
+            )
+            holder_probabilities = {}
+            if holder_id and holder_id != actor_id:
+                defender = await self._steal_probability(
+                    values["scope_id"], holder_id, target_id, mode_config, "force"
+                )
+                holder_probabilities[holder_id] = rules.contested_probability(
+                    probability, defender
+                )
             result = await asyncio.to_thread(
                 self.gameplay.force_marry,
                 scope_id=values["scope_id"],
@@ -177,9 +205,8 @@ class ActionHandler:
                 target_id=target_id,
                 capacity=mode_config["capacity"],
                 limit=mode_config["force_limit"],
-                probability=await self._steal_probability(
-                    values["scope_id"], actor_id, target_id, mode_config, "force"
-                ),
+                probability=probability,
+                holder_probabilities=holder_probabilities,
                 event_key=values["event_key"],
                 payload_hash=values["payload_hash"],
                 config_revision=values["revision"],
