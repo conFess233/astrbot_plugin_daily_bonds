@@ -30,6 +30,8 @@ class LLMService:
         self._calls: dict[int, deque[float]] = {}
         self._semaphore: asyncio.Semaphore | None = None
         self._semaphore_size = 0
+        # 后台评估单独一个名额排队，不占聊天回复的并发。
+        self._background = asyncio.Semaphore(1)
         self._closed = False
 
     def close(self) -> None:
@@ -37,6 +39,15 @@ class LLMService:
 
         self._closed = True
         self._calls.clear()
+
+    def has_quota(self, scope_id: int, per_minute: int) -> bool:
+        """本群当前是否还有调用额度（不占用）。"""
+
+        now = self._clock()
+        calls = self._calls.get(scope_id)
+        if calls is None:
+            return True
+        return sum(1 for item in calls if item > now - _WINDOW_SECONDS) < per_minute
 
     def take_quota(self, scope_id: int, per_minute: int) -> bool:
         """占用本群一次调用额度；超出每分钟上限时返回 False。"""
@@ -83,21 +94,26 @@ class LLMService:
         system_prompt: str,
         prompt: str,
         accept: Callable[[str], T | None],
-        wait_for_slot: bool = False,
+        background: bool = False,
         timeout_seconds: float | None = None,
     ) -> T | None:
         """依次尝试 provider，返回第一个通过 accept 的结果；全部失败返回 None。
 
         accept 负责校验和清洗输出，返回 None 表示不合格，继续下一个 provider。
-        wait_for_slot 为 False 时并发已满立即放弃（聊天回复不排队）。
+        聊天回复（background=False）共用 max_concurrency 个名额，已满时立即放弃、
+        不排队；后台评估（background=True）排队使用自己的一个名额，不挤占回复。
         timeout_seconds 给后台任务单独的单次超时，总时长按 provider 个数放宽，
         不受聊天回复的超时限制。
         """
 
         if self._closed:
             return None
-        limiter = self._limiter(int(settings["max_concurrency"]))
-        if not wait_for_slot and limiter.locked():
+        limiter = (
+            self._background
+            if background
+            else self._limiter(int(settings["max_concurrency"]))
+        )
+        if not background and limiter.locked():
             return None
         if not self.take_quota(scope_id, int(settings["group_calls_per_minute"])):
             return None

@@ -295,6 +295,11 @@ class SentimentService:
             )
             if not due:
                 continue
+            # 本群调用额度已被文案用完时顺延到下一轮，消息留在缓冲里。
+            if not self.llm.has_quota(
+                scope_id, int(config["llm"]["group_calls_per_minute"])
+            ):
+                continue
             buffer.busy = True
             try:
                 await self._process(scope_id, buffer, config, now)
@@ -334,7 +339,7 @@ class SentimentService:
             system_prompt=system_prompt(str(settings["extra_prompt"])),
             prompt=prompt,
             accept=lambda output: parse_segments(output, aliases, batch, len(context)),
-            wait_for_slot=True,
+            background=True,
             timeout_seconds=float(settings["call_timeout_seconds"]),
         )
         batch_id = str(uuid.uuid4())
