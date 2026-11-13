@@ -349,6 +349,7 @@ def _validate_llm(config: Mapping[str, Any]) -> None:
         _integer(config, path, *bounds)
     if config["llm"]["call_timeout_seconds"] > config["llm"]["total_timeout_seconds"]:
         raise ConfigurationError("单次调用超时不能大于总时限")
+    _boolean(config, "llm_replies.use_examples")
     style = config["llm_replies"]["style_prompt"]
     if not isinstance(style, str) or len(style) > 1000:
         raise ConfigurationError("llm_replies.style_prompt 最多 1000 字符")

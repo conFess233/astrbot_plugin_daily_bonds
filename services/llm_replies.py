@@ -51,11 +51,25 @@ SYSTEM_PROMPT = """你是 QQ 群娱乐插件“今日姻缘”的文案助手，
 1. 只输出回复正文，一段中文，不超过 {max_chars} 字。
 2. 只能使用给出的人物和事件，不编造其他人物、数值或经历。
 3. 不使用 @、链接、QQ 号或表情代码。
-4. 语气轻松有趣，可以参考示例的风格，但不要照抄示例。"""
+4. 语气轻松有趣；给了示例时可以参考风格，但不要照抄。"""
+
+# 无论系统提示词是否被替换，都附在事实后面的硬性要求。
+FACT_RULES = (
+    "写作要求：只描述上面给出的结果，成功就是成功、失败就是失败；"
+    "不要写出没有给出的数字，不要说亲密度或好感度上涨、下降，"
+    "不要编造关系的后续变化。"
+)
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+# 声称亲密度/好感度发生变化的说法；插件互动本身不改变亲密度。
+_AFFECTION_CHANGE = re.compile(
+    r"(亲密|好感|感情|羁绊)[^，。！？,.!?]{0,4}(涨|升|降|跌|增|减|加|掉|飙|暴|翻倍|拉满)"
+)
 
 
-def clean_reply(text: str, max_chars: int) -> str | None:
-    """清洗模型输出；为空或超长时返回 None。"""
+def clean_reply(
+    text: str, max_chars: int, allowed_numbers: frozenset[str] | None = None
+) -> str | None:
+    """清洗模型输出；为空、超长、写出未给出的数字或声称亲密度变化时返回 None。"""
 
     value = _CQ.sub("", text)
     value = _URL.sub("", value)
@@ -63,6 +77,12 @@ def clean_reply(text: str, max_chars: int) -> str | None:
     value = value.replace("@", "")
     value = " ".join(value.split()).strip().strip(_QUOTES).strip()
     if not value or len(value) > max_chars:
+        return None
+    if allowed_numbers is not None and any(
+        number not in allowed_numbers for number in _NUMBER.findall(value)
+    ):
+        return None
+    if _AFFECTION_CHANGE.search(value):
         return None
     return value
 
@@ -87,13 +107,16 @@ class LLMReplyWriter:
         if scope_id is None or not umo:
             return text
         max_chars = int(request["max_chars"])
+        prompt = await self._prompt(request, context)
+        # 只允许出现事实里给出的数字（例如亲密度数值），其余数字视为编造。
+        allowed = frozenset(_NUMBER.findall(prompt.split(FACT_RULES)[0]))
         generated = await self.llm.generate(
             umo=str(umo),
             scope_id=int(scope_id),
             settings=request["settings"],
             system_prompt=self._system_prompt(request, max_chars),
-            prompt=await self._prompt(request, context),
-            accept=lambda output: clean_reply(output, max_chars),
+            prompt=prompt,
+            accept=lambda output: clean_reply(output, max_chars, allowed),
         )
         if generated is None:
             return text
@@ -124,9 +147,13 @@ class LLMReplyWriter:
         intimacy = await self._intimacy_line(context, facts)
         if intimacy:
             lines.append(intimacy)
-        examples = [example for example in request["examples"] if example]
+        lines.append(FACT_RULES)
+        event_prompt = str(request.get("event_prompt") or "").strip()
+        if event_prompt:
+            lines.append(f"群管理员对这类回复的要求：\n{event_prompt}")
+        examples = [example for example in request.get("examples", ()) if example]
         if examples:
-            lines.append("参考风格的示例回复：")
+            lines.append("参考风格的示例回复（不要照抄，也不要沿用其中的数字和情节）：")
             lines.extend(f"- {example}" for example in examples)
         lines.append("请写一条新的回复。")
         return "\n".join(lines)
@@ -153,7 +180,8 @@ class LLMReplyWriter:
             return ""
         other = facts.get("name") or facts.get("subject_name") or "对方"
         return (
-            f"两人的亲密度：{facts.get('actor_name', '发起者')}对{other}为"
+            f"两人现有的亲密度（只用来判断关系远近，这次互动没有改变它）："
+            f"{facts.get('actor_name', '发起者')}对{other}为"
             f" {scores['forward_score']}，{other}对{facts.get('actor_name', '发起者')}为"
             f" {scores['reverse_score']}。"
         )

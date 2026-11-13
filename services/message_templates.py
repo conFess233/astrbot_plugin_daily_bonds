@@ -196,9 +196,19 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
                 continue
             if not isinstance(entry, Mapping) or set(entry) != set(original_entry):
                 raise ConfigurationError(f"{path} 必须包含 {sorted(original_entry)}")
-            for flag in set(entry) - {"text", "alternatives"}:
+            for flag in set(entry) - {"text", "alternatives", "llm_prompt"}:
                 if not isinstance(entry[flag], bool):
                     raise ConfigurationError(f"{path}.{flag} 必须是布尔值")
+            if "llm_prompt" in entry:
+                prompt = entry["llm_prompt"]
+                if (
+                    not isinstance(prompt, str)
+                    or len(prompt) > 500
+                    or any(ord(char) < 32 and char != "\n" for char in prompt)
+                ):
+                    raise ConfigurationError(
+                        f"{path}.llm_prompt 必须是最多 500 字符、不含控制字符的文本"
+                    )
             alternatives = entry["alternatives"]
             if len(alternatives) > MAX_REPLY_VARIANTS - 1:
                 raise ConfigurationError(f"{path} 最多 {MAX_REPLY_VARIANTS} 条回复")
@@ -316,7 +326,11 @@ def render_message(
                 for field in (*NAME_FIELDS, "name")
                 if explicit.get(field) not in (None, "")
             },
-            "examples": _examples(templates[:5], values),
+            # 预设文案默认不发给模型，避免照着套写或沿用其中的说法；可在管理页打开。
+            "examples": _examples(templates[:5], values)
+            if config["llm_replies"].get("use_examples")
+            else [],
+            "event_prompt": str(entry.get("llm_prompt") or "").strip(),
             "has_image": IMAGE_TOKEN in text,
             "settings": config["llm"],
             "system_prompt": config["llm_replies"]["system_prompt"],

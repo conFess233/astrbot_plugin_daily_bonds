@@ -214,21 +214,24 @@
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "draw_husband": {
         "text": "{actor_name}娶到老公：{name}{image}",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "draw_member": {
         "text": "{actor_name}娶到群友：{name}{image}",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "capacity_full": {
         "text": "持有名额已满：{names}。",
@@ -283,28 +286,32 @@
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "stolen": {
         "text": "{actor_name}从{owner_name}处抢到了{subject_name}，{owner_name}可以再次抽取。",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "force_success": {
         "text": "{actor_name}强娶了{name}！{image}",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "force_failed": {
         "text": "{actor_name}强娶{subject_name}失败了。",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "force_limit": {
         "text": "本周期强娶次数已用完，{reset_at} 重置。",
@@ -329,14 +336,16 @@
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "gifted": {
         "text": "{sender_name}将{subject_name}赠送给了{recipient_name}。",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "recipient_full": {
         "text": "{recipient_name}的持有名额已满，暂时不能接收赠送。",
@@ -361,7 +370,8 @@
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "invite_rejected": {
         "text": "{actor_name}已拒绝{sender_name}赠送{subject_name}的邀请。",
@@ -482,14 +492,16 @@
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "designated_husband": {
         "text": "{actor_name}指定老公：{name}{image}",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "designated_disabled": {
         "text": "指定抽取当前已关闭。",
@@ -568,14 +580,16 @@
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "mutual_formed": {
         "text": "{owner_name}和{subject_name}双向奔赴啦！",
         "alternatives": [],
         "enabled": true,
         "quote": false,
-        "llm": false
+        "llm": false,
+        "llm_prompt": ""
       },
       "my_status": {
         "text": "{lines}{image}",
@@ -891,6 +905,7 @@
   "llm_replies": {
     "system_prompt": "",
     "style_prompt": "",
+    "use_examples": false,
     "max_chars": 80
   },
   "sentiment": {

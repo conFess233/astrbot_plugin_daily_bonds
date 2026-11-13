@@ -42,6 +42,11 @@ function fieldConditions(path) {
     "llm.provider_ids": ["llm.provider_mode", (mode) => mode === "custom"],
     "llm.persona_id": ["llm.persona_mode", (mode) => mode === "custom"],
   }[path];
+  // 这条回复没有开启 AI 生成时，专属提示词收起。
+  if (parts[0] === "reply_llm_prompt") {
+    const toggle = path.replace(/^reply_llm_prompt\./, "reply_llm.");
+    return [[toggle, () => value(toggle) === true, "未开启 AI 生成"]];
+  }
   // AI 好感度评估关闭时，其余评估参数收起。
   if (path.startsWith("sentiment.") && path !== "sentiment.enabled") return [["sentiment.enabled", () => value("sentiment.enabled") !== false, "AI 好感度评估未开启"]];
   return simple ? [[simple[0], () => simple[1](value(simple[0])), ""]] : [];
@@ -269,7 +274,7 @@ const PATH_LABELS = {
   "llm.provider_mode": "模型来源", "llm.provider_ids": "指定的模型", "llm.persona_mode": "人格来源", "llm.persona_id": "指定的人格",
   "llm.total_timeout_seconds": "每条回复最多等待（秒）", "llm.call_timeout_seconds": "单个模型超时（秒）",
   "llm.max_concurrency": "同时调用上限", "llm.group_calls_per_minute": "每群每分钟调用上限",
-  "llm_replies.system_prompt": "系统提示词", "llm_replies.style_prompt": "文风要求", "llm_replies.max_chars": "文案字数上限",
+  "llm_replies.system_prompt": "系统提示词", "llm_replies.style_prompt": "文风要求", "llm_replies.use_examples": "把预设文案作为示例发给模型", "llm_replies.max_chars": "文案字数上限",
   "sentiment.extra_prompt": "本群语境说明",
   "sentiment.enabled": "启用 AI 好感度评估", "sentiment.mode": "加减方式", "sentiment.daily_cap": "每对每天加减上限",
   "sentiment.base_points": "隐式对话底分", "sentiment.attitude_factor": "态度分系数", "sentiment.passive_ratio": "被说话方加分比例",
@@ -420,6 +425,7 @@ function configLabel(path) {
   if (parts[0] === "reply_quote") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}引用消息源`;
   if (parts[0] === "reply_variants") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}其余回复`;
   if (parts[0] === "reply_llm") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}使用 AI 生成`;
+  if (parts[0] === "reply_llm_prompt") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}的 AI 提示词`;
   if (PATH_LABELS[path]) return PATH_LABELS[path];
   if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
@@ -668,6 +674,12 @@ function createConfigField(path, value) {
     input.maxLength = maxLength;
     input.placeholder = path === "llm_replies.system_prompt" ? state.llmReplyPrompt || placeholder : placeholder;
     input.value = value;
+  } else if (path.startsWith("reply_llm_prompt.")) {
+    input = document.createElement("textarea");
+    input.rows = 3;
+    input.maxLength = 500;
+    input.placeholder = "可选，例如：语气调侃但别嘲讽失败的人，可以安慰一句";
+    input.value = value;
   } else if (path.startsWith("messages.")) {
     input = document.createElement("textarea");
     input.rows = 3;
@@ -804,7 +816,8 @@ function createConfigField(path, value) {
     (path.startsWith("messages.") ? templateHint(path) :
     isVariantPath(path) ? templateHint(path.replace(/^reply_variants\./, "messages.")) :
     path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
-    path.startsWith("reply_llm.") ? "开启后由模型根据本次的人物和结果现写一条；超时、失败或达到频率上限时发送上面的预设文案，预设也会作为风格示例。每次都会实际调用模型。" :
+    path.startsWith("reply_llm.") ? "开启后由模型根据本次的人物和结果现写一条；超时、失败或达到频率上限时发送上面的预设文案。每次都会实际调用模型。" :
+    path.startsWith("reply_llm_prompt.") ? "可选，最多 500 字；只对这一类回复生效，补充在全局文风要求之后。插件已固定要求模型只写真实结果、不编数字，这里写语气和侧重点即可。" :
     path.startsWith("commands.keywords.") ? "每行一个别名，至少一项。" : "");
   if (hint) {
     const help = document.createElement("small");
@@ -1166,7 +1179,7 @@ function initReplyBulk() {
     }
     const action = button.dataset.replyBulk; if (!action) return;
     for (const path of state.selectedReplies) {
-      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote.", "reply_llm."]) assignDraftField(path.replace("messages.", prefix), null, true);
+      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote.", "reply_llm.", "reply_llm_prompt."]) assignDraftField(path.replace("messages.", prefix), null, true);
       else assignDraftField(path.replace("messages.", ["enable", "disable"].includes(action) ? "reply_enabled." : "reply_quote."), ["enable", "quote"].includes(action));
     }
     renderTemplatePreview(); updateReplySelection();
@@ -1215,7 +1228,7 @@ function selectTemplate(path) {
   for (const id of ["reply-editor", "reply-quote"]) for (const card of [...$("#" + id).children]) store.append(card);
   $("#reply-editor").append(fieldCards.get(path));
   if (variantParts(path)) $("#reply-editor").append(variantParts(path).card);
-  for (const prefix of ["reply_enabled.", "reply_quote.", "reply_llm."]) {
+  for (const prefix of ["reply_enabled.", "reply_quote.", "reply_llm.", "reply_llm_prompt."]) {
     const optionPath = path.replace(/^messages\./, prefix);
     if (fieldCards.has(optionPath)) $("#reply-quote").append(fieldCards.get(optionPath));
   }

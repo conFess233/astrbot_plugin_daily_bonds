@@ -4,7 +4,7 @@ export function isPercentPath(path) {
 }
 
 // 回复模板相关的叶子路径：文案、启用、引用与同一条回复的其余预设。
-export const REPLY_PATH = /^(messages|reply_quote|reply_enabled|reply_variants|reply_llm)\./;
+export const REPLY_PATH = /^(messages|reply_quote|reply_enabled|reply_variants|reply_llm|reply_llm_prompt)\./;
 
 export function isVariantPath(path) {
   return path.startsWith("reply_variants.");
@@ -113,8 +113,8 @@ export function templateParts(text, fields, path = "模板") {
 // 服务端 schema 2 中每条文案是 {text, alternatives, enabled, quote}；编辑器沿用四类叶子路径：
 // messages.<分类>.<键>、reply_variants.<分类>.<键>、reply_enabled.<分类>.<键>、reply_quote.<分类>.<键>。
 // 读取时展开，提交前合并，编辑器其余逻辑无需感知结构变化。
-// llm 只出现在支持 AI 生成的互动结果回复上。
-const MESSAGE_FLAGS = { alternatives: "reply_variants", enabled: "reply_enabled", quote: "reply_quote", llm: "reply_llm" };
+// llm 与 llm_prompt 只出现在支持 AI 生成的互动结果回复上。
+const MESSAGE_FLAGS = { alternatives: "reply_variants", enabled: "reply_enabled", quote: "reply_quote", llm: "reply_llm", llm_prompt: "reply_llm_prompt" };
 
 export function toUiConfig(config) {
   if (!config || typeof config !== "object") return config;
