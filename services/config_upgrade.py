@@ -74,7 +74,7 @@ _REMOVED_MESSAGES = {
     "notifications.member_redraw",
 }
 # 0.2.2 的默认文案：删除补抽并统一术语后改写；自定义文案保留。
-SUPERSEDED_MESSAGES = {
+SUPERSEDED_MESSAGES: dict[str, str | tuple[str, ...]] = {
     "results.capacity_full": "持有名额已满：{names}。可以先发送“离婚”解除一段普通关系。",
     "results.relationship_locked": "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
     "results.steal_slot_locked": "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
@@ -103,6 +103,30 @@ SUPERSEDED_MESSAGES = {
     "titles.rank_activity": "{群名}的活跃度排行",
     "titles.query_affection": "{name}与{target_name}的好感度",
 }
+
+
+# 以前的默认配置值；已保存配置里仍是旧默认值时换成当前默认值，自定义值保留。
+SUPERSEDED_VALUES: dict[str, tuple[Any, ...]] = {
+    # 0.3.0：每批 50 条在 5 秒超时下经常作废，降为 20 条。
+    "sentiment.batch_max_messages": (50,),
+}
+
+
+def refresh_superseded_values(value: dict[str, Any]) -> bool:
+    """就地把仍是旧默认值的配置项换成当前默认值；返回是否有改动。"""
+
+    defaults = _defaults()
+    changed = False
+    for path, olds in SUPERSEDED_VALUES.items():
+        section, key = path.split(".", 1)
+        current = value.get(section)
+        if not isinstance(current, dict) or key not in current:
+            continue
+        default = defaults[section][key]
+        if current[key] in olds and current[key] != default:
+            current[key] = default
+            changed = True
+    return changed
 
 
 def _defaults() -> dict[str, Any]:
@@ -278,10 +302,12 @@ def refresh_superseded_messages(value: dict[str, Any]) -> bool:
             continue
         entry = entries.get(key)
         current = defaults[section][key]
-        if isinstance(entry, dict) and entry.get("text") == old:
-            entry["text"] = current["text"]
-            changed = True
-        elif entry == old:
+        olds = (old,) if isinstance(old, str) else old
+        if isinstance(entry, dict) and entry.get("text") in olds:
+            if entry["text"] != current["text"]:
+                entry["text"] = current["text"]
+                changed = True
+        elif isinstance(entry, str) and entry in olds:
             entries[key] = current
             changed = True
     for section in [name for name, entries in messages.items() if entries == {}]:

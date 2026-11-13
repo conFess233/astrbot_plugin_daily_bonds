@@ -136,11 +136,12 @@ class LLMRoutes:
         )
 
     def _sentiment_rows(self, scope_id: int | None) -> list[dict[str, Any]]:
-        """最近 30 个评估批次：时间、对数、加减合计与每对的变化（用成员名称显示）。"""
+        """最近 30 个评估批次：时间、结果、对数、加减合计与每对的变化（用成员名称显示）。"""
 
         with self.storage.read() as db:
             rows = db.execute(
-                """SELECT o.created_at,o.scope_id,o.data_json,s.group_id FROM operation_log o
+                """SELECT o.created_at,o.scope_id,o.result_code,o.data_json,s.group_id
+                   FROM operation_log o
                    JOIN scopes s ON s.id=o.scope_id
                    WHERE o.kind='sentiment_adjust' AND (? IS NULL OR o.scope_id=?)
                    ORDER BY o.created_at DESC LIMIT 30""",
@@ -163,6 +164,10 @@ class LLMRoutes:
             result.append(
                 {
                     "created_at": int(row["created_at"]),
+                    "status": _BATCH_STATUS.get(
+                        str(row["result_code"]), str(row["result_code"])
+                    ),
+                    "summary": _batch_summary(data),
                     "pairs": len(items),
                     "gained": sum(max(int(item["delta"]), 0) for item in items),
                     "lost": sum(max(-int(item["delta"]), 0) for item in items),
@@ -175,3 +180,25 @@ class LLMRoutes:
                 }
             )
         return result
+
+
+_BATCH_STATUS = {
+    "APPLIED": "已计分",
+    "EMPTY": "没有可计分的对话",
+    "VOID": "作废：模型超时、限流或输出无法解析",
+}
+
+
+def _batch_summary(data: Mapping[str, Any]) -> str:
+    """批次概况；旧记录没有这些字段时返回空。"""
+
+    if "messages" not in data:
+        return ""
+    parts = [f"{int(data['messages'])} 条消息"]
+    if "segments" in data:
+        parts.append(
+            f"模型给出 {int(data['segments']) + int(data.get('dropped', 0))} 段"
+            f"（丢弃 {int(data.get('dropped', 0))} 段不合规）"
+        )
+        parts.append(f"计分 {int(data.get('scored', 0))} 对")
+    return "，".join(parts)

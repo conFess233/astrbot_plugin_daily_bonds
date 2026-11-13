@@ -84,11 +84,14 @@ class LLMService:
         prompt: str,
         accept: Callable[[str], T | None],
         wait_for_slot: bool = False,
+        timeout_seconds: float | None = None,
     ) -> T | None:
         """依次尝试 provider，返回第一个通过 accept 的结果；全部失败返回 None。
 
         accept 负责校验和清洗输出，返回 None 表示不合格，继续下一个 provider。
         wait_for_slot 为 False 时并发已满立即放弃（聊天回复不排队）。
+        timeout_seconds 给后台任务单独的单次超时，总时长按 provider 个数放宽，
+        不受聊天回复的超时限制。
         """
 
         if self._closed:
@@ -102,7 +105,14 @@ class LLMService:
             if self._closed:
                 return None
             loop = asyncio.get_running_loop()
-            deadline = loop.time() + float(settings["total_timeout_seconds"])
+            started_at = loop.time()
+            providers = await self._provider_ids(umo, settings)
+            if timeout_seconds is None:
+                per_call = float(settings["call_timeout_seconds"])
+                deadline = started_at + float(settings["total_timeout_seconds"])
+            else:
+                per_call = float(timeout_seconds)
+                deadline = started_at + per_call * max(1, len(providers))
             persona = await self._persona_prompt(umo, settings)
             system = "\n\n".join(
                 part
@@ -112,7 +122,7 @@ class LLMService:
                 )
                 if part
             )
-            for provider_id in await self._provider_ids(umo, settings):
+            for provider_id in providers:
                 remaining = deadline - loop.time()
                 if remaining <= 0:
                     break
@@ -124,11 +134,13 @@ class LLMService:
                             system_prompt=system,
                             prompt=prompt,
                         ),
-                        timeout=min(float(settings["call_timeout_seconds"]), remaining),
+                        timeout=min(per_call, remaining),
                     )
                 except TimeoutError:
                     logger.warning(
-                        "今日姻缘：模型 %s 调用超时，尝试下一个。", provider_id
+                        "今日姻缘：模型 %s 调用超时（%.0f 秒），尝试下一个。",
+                        provider_id,
+                        loop.time() - started,
                     )
                     continue
                 except Exception as exc:  # noqa: BLE001 - provider 边界：换下一个

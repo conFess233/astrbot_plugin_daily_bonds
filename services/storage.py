@@ -17,7 +17,12 @@ from zoneinfo import ZoneInfo
 
 from ..models.errors import StorageError
 from ..models.scope import Scope
-from .config_upgrade import is_legacy, refresh_superseded_messages, upgrade_config
+from .config_upgrade import (
+    is_legacy,
+    refresh_superseded_messages,
+    refresh_superseded_values,
+    upgrade_config,
+)
 from .settings import (
     GLOBAL_ONLY_FIELDS,
     SCOPE_OVERRIDABLE,
@@ -27,7 +32,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 19
+_SCHEMA_VERSION = 20
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -576,9 +581,10 @@ class SQLiteStorage:
             migration_dir / "017_remove_redraw_credits.sql",
             migration_dir / "018_sentiment_daily.sql",
             migration_dir / "019_scope_identity.sql",
+            migration_dir / "020_refresh_defaults.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
-        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19}
+        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20}
         variants = [_checksum_variants(path) for path in migration_files]
         # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
         checksums = [lf for lf, _crlf in variants]
@@ -875,6 +881,22 @@ def _upgrade_v19(connection: sqlite3.Connection, _from_version: int) -> None:
     """迁移 019：合并平台适配器改名前后留下的重复作用域。"""
 
     merge_duplicate_scopes(connection)
+
+
+def _upgrade_v20(connection: sqlite3.Connection, _from_version: int) -> None:
+    """迁移 020：已保存配置里仍是旧默认值的文案与参数换成当前默认值。"""
+
+    for row in connection.execute(
+        "SELECT scope_key,value_json FROM settings"
+    ).fetchall():
+        value = json.loads(row["value_json"])
+        messages = refresh_superseded_messages(value)
+        values = refresh_superseded_values(value)
+        if messages or values:
+            connection.execute(
+                "UPDATE settings SET value_json=? WHERE scope_key=?",
+                (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+            )
 
 
 def _upgrade_settings_v2(connection: sqlite3.Connection, from_version: int) -> None:

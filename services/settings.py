@@ -52,6 +52,7 @@ GLOBAL_ONLY_FIELDS = {
         {
             "batch_interval_seconds",
             "batch_max_messages",
+            "call_timeout_seconds",
             "buffer_max_messages",
             "global_buffer_max_messages",
             "context_messages",
@@ -384,6 +385,7 @@ def _validate_sentiment(config: Mapping[str, Any]) -> None:
         "sentiment.min_chars": (0, 50),
         "sentiment.batch_interval_seconds": (60, 86400),
         "sentiment.batch_max_messages": (5, 200),
+        "sentiment.call_timeout_seconds": (5, 300),
         "sentiment.buffer_max_messages": (10, 1000),
         "sentiment.global_buffer_max_messages": (100, 100000),
         "sentiment.context_messages": (0, 50),

@@ -277,6 +277,7 @@ const PATH_LABELS = {
   "sentiment.send_names": "发送群名片和昵称", "sentiment.name_min_chars": "点名的最短名称长度",
   "sentiment.adjacency_seconds": "接话判断时间（秒）", "sentiment.min_chars": "参与态度评分的最短字数",
   "sentiment.batch_interval_seconds": "评估间隔（秒）", "sentiment.batch_max_messages": "积累多少条立即评估",
+  "sentiment.call_timeout_seconds": "每批评估超时（秒）",
   "sentiment.buffer_max_messages": "每群暂存上限（条）", "sentiment.global_buffer_max_messages": "全部群暂存上限（条）",
   "sentiment.context_messages": "附带上下文条数", "sentiment.message_max_chars": "每条消息最多字数",
 };
@@ -291,7 +292,7 @@ const PROMPT_FIELDS = {
 // 只能全局设置的 AI 资源参数，与服务端 GLOBAL_ONLY_FIELDS 一致。
 const AI_GLOBAL_ONLY = new Set([
   "llm.total_timeout_seconds", "llm.call_timeout_seconds", "llm.max_concurrency",
-  "sentiment.batch_interval_seconds", "sentiment.batch_max_messages", "sentiment.buffer_max_messages",
+  "sentiment.batch_interval_seconds", "sentiment.batch_max_messages", "sentiment.call_timeout_seconds", "sentiment.buffer_max_messages",
   "sentiment.global_buffer_max_messages", "sentiment.context_messages", "sentiment.message_max_chars",
 ]);
 

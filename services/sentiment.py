@@ -327,7 +327,7 @@ class SentimentService:
             names if settings["send_names"] else {},
             config["reset"]["timezone"],
         )
-        segments = await self.llm.generate(
+        parsed = await self.llm.generate(
             umo=buffer.umo,
             scope_id=scope_id,
             settings=config["llm"],
@@ -335,22 +335,82 @@ class SentimentService:
             prompt=prompt,
             accept=lambda output: parse_segments(output, aliases, batch, len(context)),
             wait_for_slot=True,
+            timeout_seconds=float(settings["call_timeout_seconds"]),
         )
         batch_id = str(uuid.uuid4())
-        if segments is None:
+        summary: dict[str, Any] = {"messages": len(batch)}
+        if parsed is None:
             logger.warning(
-                "今日姻缘：好感度评估批次作废，本批 %d 条消息不计分。", len(batch)
+                "今日姻缘：好感度评估没有拿到可用结果（超时、限流或输出无法解析），"
+                "本批 %d 条消息不计分。",
+                len(batch),
+            )
+            await asyncio.to_thread(
+                self.record_batch, scope_id, batch_id, "VOID", summary, now
             )
             return
-        adjustments = score_segments(segments, batch, len(context), settings)
-        if not adjustments:
-            return
-        # 模型调用期间配置可能已改，按写入时的最新配置复查开关与上限。
-        latest, _ = await asyncio.to_thread(self.storage.get_settings, scope_id)
-        applied = await asyncio.to_thread(
-            self.apply, scope_id, batch_id, adjustments, latest, now
+        adjustments = score_segments(parsed.segments, batch, len(context), settings)
+        summary.update(
+            segments=len(parsed.segments),
+            dropped=parsed.dropped,
+            scored=len(adjustments),
         )
-        logger.info("今日姻缘：好感度评估完成，调整 %d 对。", applied)
+        applied = 0
+        if adjustments:
+            # 模型调用期间配置可能已改，按写入时的最新配置复查开关与上限。
+            latest, _ = await asyncio.to_thread(self.storage.get_settings, scope_id)
+            applied = await asyncio.to_thread(
+                self.apply, scope_id, batch_id, adjustments, latest, now, summary
+            )
+        if not applied:
+            await asyncio.to_thread(
+                self.record_batch, scope_id, batch_id, "EMPTY", summary, now
+            )
+        logger.info(
+            "今日姻缘：好感度评估完成：%d 条消息，模型给出 %d 段（丢弃 %d 段不合规），"
+            "计分 %d 对，实际调整 %d 对。",
+            len(batch),
+            len(parsed.segments) + parsed.dropped,
+            parsed.dropped,
+            len(adjustments),
+            applied,
+        )
+
+    def record_batch(
+        self,
+        scope_id: int,
+        batch_id: str,
+        code: str,
+        summary: Mapping[str, Any],
+        now: int,
+    ) -> None:
+        """记下没有调整的批次（作废或无可计分对话），供管理页排查。"""
+
+        with self.storage.transaction() as db:
+            period = db.execute(
+                "SELECT id FROM periods WHERE scope_id=? AND state='current'",
+                (scope_id,),
+            ).fetchone()
+            if period is None or db.execute(
+                "SELECT 1 FROM operation_log WHERE id=?", (batch_id,)
+            ).fetchone():
+                return
+            db.execute(
+                """INSERT INTO operation_log(id,scope_id,period_id,mode,kind,actor_id,actor_type,
+                   result_code,config_revision,data_json,reason,created_at)
+                   VALUES(?,?,?,NULL,'sentiment_adjust','system','system',?,'',?,NULL,?)""",
+                (
+                    batch_id,
+                    scope_id,
+                    str(period["id"]),
+                    code,
+                    json.dumps(
+                        {"batch_id": batch_id, "adjustments": [], **summary},
+                        ensure_ascii=False,
+                    ),
+                    now,
+                ),
+            )
 
     def _member_names(self, scope_id: int) -> dict[str, str]:
         with self.storage.read() as db:
@@ -372,6 +432,7 @@ class SentimentService:
         adjustments: Sequence[Adjustment],
         config: Mapping[str, Any],
         now: int,
+        summary: Mapping[str, Any] | None = None,
     ) -> int:
         """在一个写事务中复查资格、按每日上限与递减写入亲密度并记录操作。"""
 
@@ -485,7 +546,11 @@ class SentimentService:
                         scope_id,
                         period_id,
                         json.dumps(
-                            {"batch_id": batch_id, "adjustments": applied},
+                            {
+                                "batch_id": batch_id,
+                                "adjustments": applied,
+                                **(summary or {}),
+                            },
                             ensure_ascii=False,
                         ),
                         now,
@@ -603,68 +668,112 @@ class Segment:
     attitude: int
 
 
+@dataclass(frozen=True, slots=True)
+class ParsedBatch:
+    """解析结果：有效的对话段，以及模型给出但被丢弃的项数。"""
+
+    segments: list[Segment]
+    dropped: int = 0
+
+
+def _number(value: Any) -> float | None:
+    """接受数字或数字字符串；布尔值和非有限数不算。"""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        try:
+            value = float(value.strip())
+        except ValueError:
+            return None
+    if not isinstance(value, (int, float)) or not math.isfinite(value):
+        return None
+    return float(value)
+
+
+def _integer(value: Any) -> int | None:
+    number = _number(value)
+    return int(number) if number is not None and number.is_integer() else None
+
+
+def _json_object(output: str) -> Any:
+    """取出输出里的 JSON：容忍代码块标记和前后说明文字。"""
+
+    text = output.strip()
+    pairs = [("{", "}"), ("[", "]")]
+    # 先试最先出现的括号：顶层是数组时不要只取出其中第一个对象。
+    pairs.sort(key=lambda pair: (text.find(pair[0]) == -1, text.find(pair[0])))
+    for start, end in pairs:
+        left, right = text.find(start), text.rfind(end)
+        if left != -1 and right > left:
+            try:
+                return json.loads(text[left : right + 1])
+            except ValueError:
+                continue
+    return None
+
+
 def parse_segments(
     output: str,
     aliases: Mapping[str, str],
     batch: Sequence[BufferedMessage],
     offset: int,
-) -> list[Segment] | None:
-    """严格校验模型输出；任何一项不合规都作废整批（返回 None）。"""
+) -> ParsedBatch | None:
+    """逐项校验模型输出：不合规的项丢弃，其余照常计分。
 
-    text = output.strip()
-    if text.startswith("```"):
-        text = text.strip("`")
-        text = text[text.find("{") :] if "{" in text else text
-    try:
-        value = json.loads(text[text.find("{") : text.rfind("}") + 1])
-    except (ValueError, TypeError):
-        return None
+    输出不是 JSON、或模型给出的项全部不合规时返回 None，交给下一个模型重试。
+    单条消息编号不合规（越界、不是该说话人说的）只丢这一条编号。
+    """
+
+    value = _json_object(output)
+    if isinstance(value, list):
+        value = {"segments": value}
     if not isinstance(value, Mapping) or not isinstance(value.get("segments"), list):
         return None
+    items = value["segments"]
     result = []
-    for item in value["segments"]:
+    for item in items:
         if not isinstance(item, Mapping):
-            return None
+            continue
         source, target = item.get("from"), item.get("to")
-        messages, confidence, attitude = (
-            item.get("messages"),
-            item.get("confidence"),
-            item.get("attitude"),
-        )
+        messages = item.get("messages")
+        confidence = _number(item.get("confidence"))
+        attitude = _integer(item.get("attitude"))
         if (
             source not in aliases
             or target not in aliases
             or source == target
             or not isinstance(messages, list)
-            or not messages
-            or isinstance(confidence, bool)
-            or not isinstance(confidence, (int, float))
+            or confidence is None
             or not 0 <= confidence <= 1
-            or isinstance(attitude, bool)
-            or not isinstance(attitude, int)
+            or attitude is None
             or not -3 <= attitude <= 3
         ):
-            return None
+            continue
         indexes = []
-        for number in messages:
+        for raw in messages:
+            number = _integer(raw)
             if (
-                isinstance(number, bool)
-                or not isinstance(number, int)
+                number is None
                 or not offset < number <= offset + len(batch)
                 or batch[number - offset - 1].speaker != aliases[source]
             ):
-                return None
+                continue
             indexes.append(number - offset - 1)
+        if not indexes:
+            continue
         result.append(
             Segment(
                 aliases[source],
                 aliases[target],
                 tuple(dict.fromkeys(indexes)),
-                float(confidence),
+                confidence,
                 attitude,
             )
         )
-    return result
+    if items and not result:
+        return None
+    return ParsedBatch(result, len(items) - len(result))
 
 
 def score_segments(
