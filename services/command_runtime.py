@@ -38,6 +38,7 @@ from .message_templates import (
     set_message_values,
 )
 from .onebot import OneBotAdapter, mentioned_user_ids, replied_user_id
+from .sentiment import SentimentService
 from .statistics import StatisticsService, event_key_for
 from .storage import SQLiteStorage
 
@@ -98,9 +99,11 @@ class CommandRuntime:
         statistics: StatisticsService,
         render_html: RenderHtml | None = None,
         llm: LLMService | None = None,
+        sentiment: SentimentService | None = None,
     ) -> None:
         self.context = context
         self.llm = llm
+        self.sentiment = sentiment
         self.storage = storage
         self.adapter = adapter
         self.access = access
@@ -305,6 +308,27 @@ class CommandRuntime:
                 logger.warning("今日姻缘：记录消息统计失败。", exc_info=True)
         if raw_event.sender_id not in eligible:
             return None
+        if (
+            self.sentiment is not None
+            and command is None
+            and syntax_error is None
+            and raw_event.sender_id not in bot_ids
+        ):
+            replied = replied_user_id(event)
+            self.sentiment.enqueue(
+                scope_id=scope_id,
+                umo=str(getattr(event, "unified_msg_origin", "") or ""),
+                config=config,
+                sender_id=raw_event.sender_id,
+                segments=raw_event.segments,
+                explicit_targets=(
+                    *mentioned_user_ids(raw_event.segments),
+                    *((replied,) if replied else ()),
+                ),
+                names=names,
+                eligible=eligible,
+                now=raw_event.observed_at,
+            )
 
         if syntax_error is not None:
             event.should_call_llm(True)

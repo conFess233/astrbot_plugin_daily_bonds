@@ -893,6 +893,27 @@
     "style_prompt": "",
     "max_chars": 80
   },
+  "sentiment": {
+    "enabled": false,
+    "mode": "bidirectional",
+    "extra_prompt": "",
+    "daily_cap": 10,
+    "base_points": 1,
+    "attitude_factor": 1.0,
+    "passive_ratio": 0.0,
+    "min_confidence": 0.5,
+    "diminish_after": 5,
+    "send_names": true,
+    "name_min_chars": 3,
+    "adjacency_seconds": 60,
+    "min_chars": 2,
+    "batch_interval_seconds": 1800,
+    "batch_max_messages": 50,
+    "buffer_max_messages": 200,
+    "global_buffer_max_messages": 5000,
+    "context_messages": 5,
+    "message_max_chars": 200
+  },
   "history": {
     "retention_days": 30
   },

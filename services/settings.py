@@ -40,12 +40,23 @@ SCOPE_OVERRIDABLE = frozenset(
         "render",
         "llm",
         "llm_replies",
+        "sentiment",
     }
 )
 # 可群级覆盖的顶层字段中，仍只能全局设置的子字段（资源与批处理参数）。
 GLOBAL_ONLY_FIELDS = {
     "llm": frozenset(
         {"total_timeout_seconds", "call_timeout_seconds", "max_concurrency"}
+    ),
+    "sentiment": frozenset(
+        {
+            "batch_interval_seconds",
+            "batch_max_messages",
+            "buffer_max_messages",
+            "global_buffer_max_messages",
+            "context_messages",
+            "message_max_chars",
+        }
     ),
 }
 RENDER_TYPES = ("draw", "status", "help", "list", "rank", "affection", "collection")
@@ -278,6 +289,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         raise ConfigurationError("导入展开上限不能小于上传上限")
 
     _validate_llm(config)
+    _validate_sentiment(config)
     _enum(config, "render.mode", {"card", "text"})
     for kind in RENDER_TYPES:
         _enum(config, f"render.types.{kind}", {"inherit", "card", "text"})
@@ -354,6 +366,43 @@ def _validate_llm(config: Mapping[str, Any]) -> None:
         raise ConfigurationError(
             "llm_replies.system_prompt 只能使用变量 {max_chars}；输出字面大括号请写 {{ 或 }}"
         )
+
+
+def _validate_sentiment(config: Mapping[str, Any]) -> None:
+    _boolean(config, "sentiment.enabled")
+    _boolean(config, "sentiment.send_names")
+    _enum(config, "sentiment.mode", {"bidirectional", "positive_only"})
+    extra = config["sentiment"]["extra_prompt"]
+    if not isinstance(extra, str) or len(extra) > 1000:
+        raise ConfigurationError("sentiment.extra_prompt 最多 1000 字符")
+    for path, bounds in {
+        "sentiment.daily_cap": (0, 100000),
+        "sentiment.base_points": (0, 100),
+        "sentiment.diminish_after": (0, 100000),
+        "sentiment.name_min_chars": (1, 32),
+        "sentiment.adjacency_seconds": (0, 600),
+        "sentiment.min_chars": (0, 50),
+        "sentiment.batch_interval_seconds": (60, 86400),
+        "sentiment.batch_max_messages": (5, 200),
+        "sentiment.buffer_max_messages": (10, 1000),
+        "sentiment.global_buffer_max_messages": (100, 100000),
+        "sentiment.context_messages": (0, 50),
+        "sentiment.message_max_chars": (20, 1000),
+    }.items():
+        _integer(config, path, *bounds)
+    for path, (minimum, maximum) in {
+        "sentiment.attitude_factor": (0, 100),
+        "sentiment.passive_ratio": (0, 1),
+        "sentiment.min_confidence": (0, 1),
+    }.items():
+        _finite_number(config, path)
+        if not minimum <= _value(config, path) <= maximum:
+            raise ConfigurationError(f"{path} 必须在 {minimum}～{maximum} 之间")
+    current = config["sentiment"]
+    if current["batch_max_messages"] > current["buffer_max_messages"]:
+        raise ConfigurationError("每批条数不能大于单群缓冲上限")
+    if current["buffer_max_messages"] > current["global_buffer_max_messages"]:
+        raise ConfigurationError("单群缓冲上限不能大于全部群合计上限")
 
 
 def validate_keywords(keywords: Mapping[str, Any]) -> None:

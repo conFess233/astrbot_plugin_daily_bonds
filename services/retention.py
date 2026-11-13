@@ -48,6 +48,12 @@ class RetentionService:
         cooldown_cutoff = now - 86400
         deleted: dict[str, int] = {}
         deleted["intimacy_decay"] = self._decay_intimacy(scope_statistics, now)
+        # 好感度评估的每周期累计只在当前周期内有用。
+        deleted["sentiment_daily"] = self._delete_batched(
+            "sentiment_daily",
+            "period_id NOT IN (SELECT id FROM periods WHERE state='current')",
+            (),
+        )
         # 每条消息都会写入的大表分批删除，批间释放写锁，消息处理不必等整次清理。
         deleted["activity_seconds"] = self._delete_batched(
             "activity_seconds", "observed_second<=?", (activity_cutoff,)
