@@ -13,6 +13,7 @@ from types import MappingProxyType
 from typing import Any
 
 from ..models.errors import ConfigurationError
+from .message_merge import MESSAGE_ALIASES, SYSTEM_MESSAGES
 
 _FORMATTER = string.Formatter()
 # 每条回复（含 text）最多的预设数量，管理页 + 号使用同一上限。
@@ -41,6 +42,10 @@ FIELD_DESCRIPTIONS = {
     "names": "当前持有的配偶名称列表",
     "image": "结果图片的插入位置，可代替必要文字变量",
     "role": "玩法名称：老婆、老公或群友",
+    "hint": "改用其他指令的建议，没有建议时为空",
+    "action": "用完次数的操作：强娶、抢夺、离婚或指定",
+    "feature": "被关闭的功能名称，如强娶、抢夺、亲密度排行",
+    "reason": "不能选这个人的原因，如“这是你自己”“ta 是机器人”",
     "invite_id": "当前赠送邀请编号",
     "accept_keyword": "接受赠送邀请的指令关键词",
     "limit": "待处理赠送邀请数量上限",
@@ -63,6 +68,17 @@ FIELD_DESCRIPTIONS = {
     "forward_score": "发起者对目标群员的亲密度",
     "reverse_score": "目标群员对发起者的亲密度",
 }
+# 合并后的条目使用的变量在缺少值时的兜底。
+_VARIABLE_DEFAULTS = {
+    "role": "关系",
+    "hint": "",
+    "action": "这个操作",
+    "feature": "这个功能",
+    "reason": "这个指令不能对 ta 使用",
+    "candidates": "",
+    "name": "",
+}
+
 MESSAGE_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
     "daily_bonds_reply", default=MappingProxyType({})
 )
@@ -76,8 +92,7 @@ def set_message_values(**values: Any) -> None:
 IMAGE_TOKEN = "\ue000image\ue001"
 IMAGE_KEYS = {
     "admin_set_wife",
-    "draw_wife",
-    "draw_husband",
+    "draw_character",
     "draw_member",
     "draw_member_mutual",
     "my_status",
@@ -86,11 +101,9 @@ IMAGE_KEYS = {
     "character_info",
     "group_stats",
     "force_success",
-    "designated_wife",
-    "designated_husband",
+    "designated",
     "capacity_full",
-    "capacity_full_single_wife",
-    "capacity_full_single_husband",
+    "capacity_full_single",
     "list_wife",
     "list_husband",
     "list_member",
@@ -104,8 +117,8 @@ EXTRA_FIELDS = {
     "member_removed": {"owner_id"},
     "owner_ineligible": {"owner_id"},
     "capacity_full": {"name"},
-    "capacity_full_single_wife": {"name", "names"},
-    "capacity_full_single_husband": {"name", "names"},
+    "capacity_full_single": {"name", "names"},
+    "character_ambiguous": {"name"},
     "rank_intimacy": {"title", "lines", "count", "group_name", "群名"},
     "rank_my_intimacy": {"title", "lines", "count", "group_name", "群名"},
     "rank_activity": {"title", "lines", "count", "days", "group_name", "群名"},
@@ -114,8 +127,7 @@ EXTRA_FIELDS = {
     "group_stats": {"group_name", "群名", "days"},
 }
 _REQUIRED = {
-    "messages.results.draw_wife": {"name"},
-    "messages.results.draw_husband": {"name"},
+    "messages.results.draw_character": {"name"},
     "messages.results.draw_member": {"name"},
     "messages.results.draw_member_mutual": {"name"},
     "messages.results.capacity_full": {"names"},
@@ -196,9 +208,23 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
                 continue
             if not isinstance(entry, Mapping) or set(entry) != set(original_entry):
                 raise ConfigurationError(f"{path} 必须包含 {sorted(original_entry)}")
-            for flag in set(entry) - {"text", "alternatives"}:
+            for flag in set(entry) - {"text", "alternatives", "llm_prompt", "quote"}:
                 if not isinstance(entry[flag], bool):
                     raise ConfigurationError(f"{path}.{flag} 必须是布尔值")
+            if "quote" in entry and entry["quote"] not in QUOTE_CHOICES:
+                raise ConfigurationError(
+                    f"{path}.quote 必须是 default（跟随默认）、on 或 off"
+                )
+            if "llm_prompt" in entry:
+                prompt = entry["llm_prompt"]
+                if (
+                    not isinstance(prompt, str)
+                    or len(prompt) > 500
+                    or any(ord(char) < 32 and char != "\n" for char in prompt)
+                ):
+                    raise ConfigurationError(
+                        f"{path}.llm_prompt 必须是最多 500 字符、不含控制字符的文本"
+                    )
             alternatives = entry["alternatives"]
             if len(alternatives) > MAX_REPLY_VARIANTS - 1:
                 raise ConfigurationError(f"{path} 最多 {MAX_REPLY_VARIANTS} 条回复")
@@ -212,10 +238,20 @@ def validate_messages(messages: Mapping[str, Any], defaults: Mapping[str, Any]) 
 class MessageText(str):
     """保留模板的引用开关，兼容已有文本与序列化调用。"""
 
-    def __new__(cls, text: str, *, quote_source: bool = False, fallback: str = ""):
+    def __new__(
+        cls,
+        text: str,
+        *,
+        quote_source: bool = False,
+        fallback: str = "",
+        llm: Mapping[str, Any] | None = None,
+    ):
         value = super().__new__(cls, text)
         value.quote_source = quote_source
         value.fallback = fallback
+        # 开启了 LLM 文案的回复携带生成请求，由异步回复流程替换文本。
+        value.llm = llm
+        value.generated = False
         return value
 
 
@@ -260,10 +296,8 @@ def template_fields() -> dict[str, dict[str, Any]]:
                 "affection_value",
             }:
                 result[path]["descriptions"]["name"] = "查询或排行所属的用户名称"
-            elif (
-                "name" in allowed
-                and key.startswith("admin_set_")
-                and section == "errors"
+            elif "name" in allowed and section == "errors" and (
+                key.startswith(("admin_set_", "character_"))
             ):
                 result[path]["descriptions"]["name"] = "指令中输入的角色名称或别名"
             elif "name" in allowed and key.startswith("capacity_full"):
@@ -273,9 +307,35 @@ def template_fields() -> dict[str, dict[str, Any]]:
     return result
 
 
+QUOTE_CHOICES = ("default", "on", "off")
+
+
+def quote_enabled(config: Mapping[str, Any], choice: Any) -> bool:
+    """单条回复的引用设置：on/off 优先，其余跟随 render.quote_default。"""
+
+    if choice == "on":
+        return True
+    if choice == "off":
+        return False
+    render = config.get("render")
+    return bool(render.get("quote_default", False)) if isinstance(render, Mapping) else False
+
+
 def render_message(
     config: Mapping[str, Any], section: str, key: str, **values: Any
 ) -> str:
+    # 合并过的旧键改用合并后的条目，场景差异作为变量填入（调用方的值优先）。
+    alias = MESSAGE_ALIASES.get((section, key))
+    if alias is not None:
+        section, key, extra = alias
+        values = {**extra, **values}
+    system = SYSTEM_MESSAGES.get(f"{section}.{key}")
+    if system is not None:
+        context = {**MESSAGE_CONTEXT.get(), "code": "", "detail": "", **values}
+        text = system.format_map(context)
+        return MessageText(
+            text, quote_source=quote_enabled(config, None), fallback=text
+        )
     entry = config["messages"][section][key]
     if isinstance(entry, Mapping) and not entry.get("enabled", True):
         return MessageText("")
@@ -283,10 +343,12 @@ def render_message(
     if not templates:
         return MessageText("")
     template = random.choice(templates)
+    explicit = {**MESSAGE_CONTEXT.get(), **values}
     values = {
         "group_name": "本群",
         **{key: "对象" if key == "subject_name" else "群友" for key in NAME_FIELDS},
         "reset_at": "下次重置",
+        **_VARIABLE_DEFAULTS,
         **MESSAGE_CONTEXT.get(),
         **values,
         "image": IMAGE_TOKEN,
@@ -295,5 +357,39 @@ def render_message(
     text = template.format_map(values)
     original = entry_text(_default_messages()[section][key])
     fallback = original.format_map(values).replace(IMAGE_TOKEN, "").strip()
-    quote = bool(entry.get("quote", False)) if isinstance(entry, Mapping) else False
-    return MessageText(text, quote_source=quote, fallback=fallback)
+    quote = quote_enabled(
+        config, entry.get("quote") if isinstance(entry, Mapping) else None
+    )
+    llm = None
+    if isinstance(entry, Mapping) and entry.get("llm") and "llm" in config:
+        llm = {
+            "key": key,
+            "facts": {
+                field: str(explicit[field])
+                for field in (*NAME_FIELDS, "name", "role")
+                if explicit.get(field) not in (None, "")
+            },
+            # 预设文案默认不发给模型，避免照着套写或沿用其中的说法；可在管理页打开。
+            "examples": _examples(templates[:5], values)
+            if config["llm_replies"].get("use_examples")
+            else [],
+            "event_prompt": str(entry.get("llm_prompt") or "").strip(),
+            "has_image": IMAGE_TOKEN in text,
+            "settings": config["llm"],
+            "system_prompt": config["llm_replies"]["system_prompt"],
+            "style": config["llm_replies"]["style_prompt"],
+            "max_chars": config["llm_replies"]["max_chars"],
+        }
+    return MessageText(text, quote_source=quote, fallback=fallback, llm=llm)
+
+
+def _examples(templates: list[str], values: Mapping[str, Any]) -> list[str]:
+    """预设文案代入本次变量后作为模型的风格示例；无法代入的条目跳过。"""
+
+    result = []
+    for template in templates:
+        try:
+            result.append(template.format_map(values).replace(IMAGE_TOKEN, "").strip())
+        except (KeyError, ValueError, IndexError):
+            continue
+    return result

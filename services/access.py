@@ -9,6 +9,20 @@ from typing import Any
 from ..models.scope import Scope
 
 
+def _same_group(entry: Any, scope: Scope) -> bool:
+    """名单项按机器人号与群号匹配；平台适配器改名不影响已登记的群。"""
+
+    try:
+        value = json.loads(str(entry))
+    except ValueError:
+        return False
+    return (
+        isinstance(value, list)
+        and len(value) == 3
+        and [str(value[1]), str(value[2])] == [scope.self_id, scope.group_id]
+    )
+
+
 class AccessService:
     """统一执行宿主总开关之外的插件群/用户准入规则。"""
 
@@ -28,7 +42,7 @@ class AccessService:
         groups = config["access"]["groups"]
         if groups["mode"] == "unrestricted":
             return True
-        listed = self.group_key(scope) in groups["ids"]
+        listed = any(_same_group(entry, scope) for entry in groups["ids"])
         return listed if groups["mode"] == "whitelist" else not listed
 
     @staticmethod

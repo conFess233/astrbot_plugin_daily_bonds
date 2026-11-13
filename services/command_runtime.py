@@ -29,13 +29,16 @@ from .command_parser import parse_command
 from .command_replies import ReplyBuilder, RuntimeReply
 from .game_status import StatusService
 from .gameplay import GameplayService
+from .llm import LLMService
+from .llm_replies import LLMReplyWriter
 from .members import reconcile_member_eligibility
 from .message_templates import (
     MESSAGE_CONTEXT,
     render_message,
     set_message_values,
 )
-from .onebot import OneBotAdapter, mentioned_user_ids
+from .onebot import OneBotAdapter, mentioned_user_ids, replied_user_id
+from .sentiment import SentimentService
 from .statistics import StatisticsService, event_key_for
 from .storage import SQLiteStorage
 
@@ -95,8 +98,12 @@ class CommandRuntime:
         gameplay: GameplayService,
         statistics: StatisticsService,
         render_html: RenderHtml | None = None,
+        llm: LLMService | None = None,
+        sentiment: SentimentService | None = None,
     ) -> None:
         self.context = context
+        self.llm = llm
+        self.sentiment = sentiment
         self.storage = storage
         self.adapter = adapter
         self.access = access
@@ -107,6 +114,8 @@ class CommandRuntime:
         self.avatar_cache = AvatarCache(storage.database_path.parent / "avatars")
         # 回复、列表、个人查询与关系操作各自持有所需服务，跨组件调用经由属性。
         self.replies = ReplyBuilder(storage, self.cards, self.avatar_cache)
+        if llm is not None:
+            self.replies.llm_writer = LLMReplyWriter(llm, statistics.pair_intimacy)
         self.listing = ListingHandler(
             storage, statistics, self.cards, self.avatar_cache, self.replies
         )
@@ -193,7 +202,9 @@ class CommandRuntime:
         set_message_values(
             render=config["render"],
             actor_name=names.get(raw_event.sender_id, "群友"),
+            actor_id=raw_event.sender_id,
             member_names=names,
+            umo=str(getattr(event, "unified_msg_origin", "") or ""),
         )
         set_message_values(
             reset_at=rules.format_reset(
@@ -286,12 +297,38 @@ class CommandRuntime:
                     timezone=config["reset"]["timezone"],
                     passive_points=config["statistics"]["mention_passive_points"],
                     now=raw_event.observed_at,
+                    replied_id=None
+                    if command is not None or syntax_error is not None
+                    else replied_user_id(event),
+                    reply_active_points=config["statistics"]["reply_active_points"],
+                    reply_passive_points=config["statistics"]["reply_passive_points"],
                 )
             except StorageError:
                 # 统计失败只丢这一条计分，不影响后面的指令。
                 logger.warning("今日姻缘：记录消息统计失败。", exc_info=True)
         if raw_event.sender_id not in eligible:
             return None
+        if (
+            self.sentiment is not None
+            and command is None
+            and syntax_error is None
+            and raw_event.sender_id not in bot_ids
+        ):
+            replied = replied_user_id(event)
+            self.sentiment.enqueue(
+                scope_id=scope_id,
+                umo=str(getattr(event, "unified_msg_origin", "") or ""),
+                config=config,
+                sender_id=raw_event.sender_id,
+                segments=raw_event.segments,
+                explicit_targets=(
+                    *mentioned_user_ids(raw_event.segments),
+                    *((replied,) if replied else ()),
+                ),
+                names=names,
+                eligible=eligible,
+                now=raw_event.observed_at,
+            )
 
         if syntax_error is not None:
             event.should_call_llm(True)
@@ -414,7 +451,7 @@ class CommandRuntime:
         matches = rules.match_candidates(candidates, command.argument)
         if not matches:
             return render_message(
-                config, "errors", "admin_set_missing", name=command.argument
+                config, "errors", "character_missing", name=command.argument
             )
         if len(matches) > 1:
             return render_message(
@@ -468,12 +505,15 @@ class CommandRuntime:
         if command.argument and mode in {"wife", "husband"}:
             selected = rules.match_candidates(candidates, command.argument)
             if not selected:
-                return render_message(config, "errors", "designated_missing")
+                return render_message(
+                    config, "errors", "character_missing", name=command.argument
+                )
             if len(selected) > 1:
                 return render_message(
                     config,
                     "errors",
-                    "designated_ambiguous",
+                    "character_ambiguous",
+                    name=command.argument,
                     candidates=rules.candidate_choices(selected),
                 )
             result = await asyncio.to_thread(

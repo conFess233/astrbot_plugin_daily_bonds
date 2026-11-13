@@ -23,6 +23,7 @@ from .web_batch import BatchRoutes
 from .web_catalog import CatalogRoutes
 from .web_config import ConfigRoutes
 from .web_data import DataRoutes
+from .web_llm import LLMRoutes
 from .web_maintenance import MaintenanceRoutes
 from .web_migration import MigrationRoutes
 
@@ -34,6 +35,7 @@ class WebManager(
     BatchRoutes,
     MaintenanceRoutes,
     MigrationRoutes,
+    LLMRoutes,
 ):
     """Register authenticated, revision-checked management APIs."""
 
@@ -53,6 +55,9 @@ class WebManager(
         self.runtime_reset = None
         # 由插件入口在运行时就绪后注入，用于卡片预览。
         self.runtime = None
+        # 模型调用层与配置保存后的回调（回收已关闭评估的群缓冲）。
+        self.llm = None
+        self.config_saved = None
         self.migration = MigrationService(storage, self._after_replace)
 
     def _after_replace(self) -> None:
@@ -99,6 +104,14 @@ class WebManager(
                 "Validate a configuration draft",
             ),
             ("config/save", self.save_config, ["POST"], "Save a configuration draft"),
+            ("llm/options", self.llm_options, ["GET"], "List chat models and personas"),
+            ("llm/preview", self.llm_preview, ["POST"], "Try generating an AI reply"),
+            (
+                "sentiment/batches",
+                self.sentiment_batches,
+                ["GET"],
+                "Recent AI intimacy evaluation batches",
+            ),
             ("characters", self.characters, ["GET"], "List catalog characters"),
             ("character", self.character, ["GET"], "Read catalog character by ID"),
             (

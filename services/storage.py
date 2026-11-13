@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
@@ -15,10 +16,20 @@ from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from ..models.errors import StorageError
+from ..models.errors import ConfigurationError, StorageError
 from ..models.scope import Scope
-from .config_upgrade import is_legacy, refresh_superseded_messages, upgrade_config
+from .config_upgrade import (
+    LEGACY_MESSAGES,
+    SUPERSEDED_MESSAGES,
+    convert_quotes,
+    is_legacy,
+    refresh_superseded_messages,
+    refresh_superseded_values,
+    upgrade_config,
+)
+from .message_merge import PATH_LABELS, merge_messages
 from .settings import (
+    GLOBAL_ONLY_FIELDS,
     SCOPE_OVERRIDABLE,
     default_config,
     effective_config,
@@ -26,7 +37,7 @@ from .settings import (
     validate_config,
 )
 
-_SCHEMA_VERSION = 17
+_SCHEMA_VERSION = 23
 _LOCAL_MIGRATION_CHECKSUMS = (
     "7c44e263ca99da770dd7d61d0aaa0cf5a5e879f1869d0a44dffc458db7e829d2",
     "bea912981c68fffc7c18e220f0b941441a2a390b606418e4ae27f0c5afeed4c6",
@@ -156,35 +167,40 @@ class SQLiteStorage:
                     raise StorageError(f"SQLite 提交失败：{exc}") from exc
 
     def ensure_scope(self, scope: Scope, umo: str, now: int) -> int:
-        """创建或刷新机器人/群作用域，并返回本地数据库 ID。"""
+        """创建或刷新机器人/群作用域，并返回本地数据库 ID。
+
+        同一机器人号在同一个群只对应一个作用域：平台适配器改名后沿用原作用域，
+        数据不会因为改名而从零开始。
+        """
 
         if not all((scope.platform_id, scope.self_id, scope.group_id, umo)):
             raise StorageError("作用域身份字段不得为空。")
         with self.transaction() as db:
+            existing = _scope_by_account(db, scope.self_id, scope.group_id)
+            if existing is None:
+                db.execute(
+                    """INSERT INTO scopes(platform_id,self_id,group_id,umo,created_at)
+                       VALUES(?,?,?,?,?)""",
+                    (scope.platform_id, scope.self_id, scope.group_id, umo, now),
+                )
+                existing = _scope_by_account(db, scope.self_id, scope.group_id)
+                assert existing is not None
+                return existing
+            # 适配器改名：已合并的旧行若占着新名字，先给它让出唯一键。
             db.execute(
-                """INSERT INTO scopes(platform_id,self_id,group_id,umo,created_at)
-                   VALUES(?,?,?,?,?) ON CONFLICT(platform_id,self_id,group_id)
-                   DO UPDATE SET umo=excluded.umo""",
-                (scope.platform_id, scope.self_id, scope.group_id, umo, now),
+                """UPDATE scopes SET platform_id=platform_id||'#merged'||id
+                   WHERE platform_id=? AND self_id=? AND group_id=? AND id<>?""",
+                (scope.platform_id, scope.self_id, scope.group_id, existing),
             )
-            row = db.execute(
-                "SELECT id FROM scopes WHERE platform_id=? AND self_id=? AND group_id=?",
-                (scope.platform_id, scope.self_id, scope.group_id),
-            ).fetchone()
-            assert row is not None
-            return int(row["id"])
+            db.execute(
+                "UPDATE scopes SET platform_id=?,umo=? WHERE id=?",
+                (scope.platform_id, umo, existing),
+            )
+            return existing
 
     def get_scope_id(self, scope: Scope) -> int | None:
         with self._lock:
-            row = (
-                self._connection()
-                .execute(
-                    "SELECT id FROM scopes WHERE platform_id=? AND self_id=? AND group_id=?",
-                    (scope.platform_id, scope.self_id, scope.group_id),
-                )
-                .fetchone()
-            )
-        return int(row["id"]) if row else None
+            return _scope_by_account(self._connection(), scope.self_id, scope.group_id)
 
     def get_settings(self, scope_id: int | None = None) -> tuple[dict[str, Any], int]:
         """返回全局值或指定群的全局合成快照与对应修订号。"""
@@ -278,6 +294,11 @@ class SQLiteStorage:
                     "extra_bot_ids",
                 }:
                     raise StorageError("群覆盖只能设置用户规则和补充机器人名单。")
+                for section, fields in GLOBAL_ONLY_FIELDS.items():
+                    if isinstance(value.get(section), Mapping) and (
+                        set(value[section]) & fields
+                    ):
+                        raise StorageError(f"群覆盖不能设置 {section} 的全局资源参数。")
                 defaults = default_config()
                 merged = merge_sparse(defaults, value)
                 validate_config(merged)
@@ -563,9 +584,15 @@ class SQLiteStorage:
             migration_dir / "015_split_intimacy_rank.sql",
             migration_dir / "016_cleanup_and_decay.sql",
             migration_dir / "017_remove_redraw_credits.sql",
+            migration_dir / "018_sentiment_daily.sql",
+            migration_dir / "019_scope_identity.sql",
+            migration_dir / "020_refresh_defaults.sql",
+            migration_dir / "021_refresh_defaults.sql",
+            migration_dir / "022_message_merge.sql",
+            migration_dir / "023_quote_default.sql",
         ]
         # 需要在 SQL 之后、同一事务内执行的 Python 数据迁移。
-        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17}
+        hooks = {14: _upgrade_settings_v2, 17: _upgrade_v17, 19: _upgrade_v19, 20: _upgrade_v20, 21: _upgrade_v20, 22: _upgrade_v22, 23: _upgrade_v23}
         variants = [_checksum_variants(path) for path in migration_files]
         # 新库记录 LF 版本；校验时同时接受 CRLF 检出得到的旧记录。
         checksums = [lf for lf, _crlf in variants]
@@ -766,6 +793,210 @@ def _upgrade_v17(connection: sqlite3.Connection, _from_version: int) -> None:
                 "UPDATE settings SET value_json=? WHERE scope_key=?",
                 (json.dumps(value, ensure_ascii=False), row["scope_key"]),
             )
+
+
+def _scope_by_account(
+    db: sqlite3.Connection, self_id: str, group_id: str
+) -> int | None:
+    """同一机器人号、同一个群里仍在使用的作用域。"""
+
+    row = db.execute(
+        """SELECT id FROM scopes WHERE self_id=? AND group_id=? AND merged_into IS NULL
+           ORDER BY id DESC LIMIT 1""",
+        (self_id, group_id),
+    ).fetchone()
+    return int(row["id"]) if row else None
+
+
+def merge_duplicate_scopes(connection: sqlite3.Connection) -> list[tuple[int, int]]:
+    """把同一机器人号、同一个群的多个作用域合并到最近活跃的那个。
+
+    只合并长期累积的数据：亲密度与图鉴次数相加，活跃度记录取并集；按周期计的
+    关系、次数和操作记录留在旧作用域作为历史，随历史清理删除。旧作用域的群级
+    配置在目标没有群级配置时转给目标。返回 (旧, 新) 列表。
+    """
+
+    groups = connection.execute(
+        """SELECT self_id, group_id FROM scopes WHERE merged_into IS NULL
+           GROUP BY self_id, group_id HAVING COUNT(*) > 1"""
+    ).fetchall()
+    merged: list[tuple[int, int]] = []
+    for group in groups:
+        rows = connection.execute(
+            """SELECT s.id, COALESCE((SELECT MAX(p.observed_at) FROM processed_events p
+                                      WHERE p.scope_id=s.id), s.created_at) AS seen
+               FROM scopes s
+               WHERE s.self_id=? AND s.group_id=? AND s.merged_into IS NULL
+               ORDER BY seen DESC, s.id DESC""",
+            (group["self_id"], group["group_id"]),
+        ).fetchall()
+        target = int(rows[0]["id"])
+        for row in rows[1:]:
+            _merge_scope_data(connection, int(row["id"]), target)
+            merged.append((int(row["id"]), target))
+    return merged
+
+
+def _merge_scope_data(connection: sqlite3.Connection, source: int, target: int) -> None:
+    connection.execute(
+        """INSERT INTO intimacy_edges(scope_id,source_id,target_id,score,updated_at)
+           SELECT ?,source_id,target_id,score,updated_at FROM intimacy_edges WHERE scope_id=?
+           ON CONFLICT(scope_id,source_id,target_id) DO UPDATE SET
+             score=intimacy_edges.score+excluded.score,
+             updated_at=MAX(intimacy_edges.updated_at,excluded.updated_at)""",
+        (target, source),
+    )
+    connection.execute(
+        """INSERT INTO collection_entries(scope_id,owner_id,mode,character_id,times,first_at,last_at)
+           SELECT ?,owner_id,mode,character_id,times,first_at,last_at
+           FROM collection_entries WHERE scope_id=?
+           ON CONFLICT(scope_id,owner_id,mode,character_id) DO UPDATE SET
+             times=collection_entries.times+excluded.times,
+             first_at=MIN(collection_entries.first_at,excluded.first_at),
+             last_at=MAX(collection_entries.last_at,excluded.last_at)""",
+        (target, source),
+    )
+    connection.execute(
+        """INSERT INTO activity_seconds(scope_id,user_id,observed_second,message_count)
+           SELECT ?,user_id,observed_second,message_count FROM activity_seconds WHERE scope_id=?
+           ON CONFLICT(scope_id,user_id,observed_second) DO UPDATE SET
+             message_count=activity_seconds.message_count+excluded.message_count""",
+        (target, source),
+    )
+    connection.execute(
+        """INSERT OR IGNORE INTO activity_pokes(scope_id,user_id,observed_second)
+           SELECT ?,user_id,observed_second FROM activity_pokes WHERE scope_id=?""",
+        (target, source),
+    )
+    for table in (
+        "intimacy_edges",
+        "collection_entries",
+        "activity_seconds",
+        "activity_pokes",
+    ):
+        connection.execute(f"DELETE FROM {table} WHERE scope_id=?", (source,))
+    if not connection.execute(
+        "SELECT 1 FROM settings WHERE scope_key=?", (f"scope:{target}",)
+    ).fetchone():
+        connection.execute(
+            "UPDATE settings SET scope_key=? WHERE scope_key=?",
+            (f"scope:{target}", f"scope:{source}"),
+        )
+    connection.execute("UPDATE scopes SET merged_into=? WHERE id=?", (target, source))
+
+
+def _upgrade_v19(connection: sqlite3.Connection, _from_version: int) -> None:
+    """迁移 019：合并平台适配器改名前后留下的重复作用域。"""
+
+    merge_duplicate_scopes(connection)
+
+
+def _upgrade_v20(connection: sqlite3.Connection, _from_version: int) -> None:
+    """迁移 020：已保存配置里仍是旧默认值的文案与参数换成当前默认值。"""
+
+    for row in connection.execute(
+        "SELECT scope_key,value_json FROM settings"
+    ).fetchall():
+        value = json.loads(row["value_json"])
+        messages = refresh_superseded_messages(value)
+        values = refresh_superseded_values(value)
+        if messages or values:
+            connection.execute(
+                "UPDATE settings SET value_json=? WHERE scope_key=?",
+                (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+            )
+
+
+def _upgrade_v22(connection: sqlite3.Connection, from_version: int) -> None:
+    """迁移 022：合并、拆分回复文案条目，并写一份升级报告给管理员。"""
+
+    history = {"legacy": LEGACY_MESSAGES, "superseded": SUPERSEDED_MESSAGES}
+    report: dict[str, list[str]] = {}
+    for row in connection.execute(
+        "SELECT scope_key,value_json FROM settings"
+    ).fetchall():
+        value = json.loads(row["value_json"])
+        before = json.dumps(value, ensure_ascii=False, sort_keys=True)
+        notes = merge_messages(value, history, PATH_LABELS)
+        notes += _drop_invalid_merged_texts(value)
+        if json.dumps(value, ensure_ascii=False, sort_keys=True) != before:
+            connection.execute(
+                "UPDATE settings SET value_json=? WHERE scope_key=?",
+                (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+            )
+        if notes:
+            report[row["scope_key"]] = notes
+    if from_version and report:
+        connection.execute(
+            "INSERT INTO migration_reports(id,source,from_version,to_version,report_json,created_at) VALUES(?,?,?,?,?,unixepoch())",
+            (
+                str(uuid.uuid4()),
+                "database",
+                from_version,
+                _SCHEMA_VERSION,
+                json.dumps({"settings": report}, ensure_ascii=False),
+            ),
+        )
+
+
+def _upgrade_v23(connection: sqlite3.Connection, from_version: int) -> None:
+    """迁移 023：引用改为全局默认加单条 default / on / off，写升级报告。"""
+
+    rows = connection.execute(
+        "SELECT scope_key,value_json FROM settings ORDER BY scope_key<>'global'"
+    ).fetchall()
+    report: dict[str, list[str]] = {}
+    global_default: bool | None = None
+    for row in rows:
+        value = json.loads(row["value_json"])
+        if row["scope_key"] == "global":
+            global_default, notes = convert_quotes(value)
+        else:
+            _default, notes = convert_quotes(value, bool(global_default))
+        connection.execute(
+            "UPDATE settings SET value_json=? WHERE scope_key=?",
+            (json.dumps(value, ensure_ascii=False), row["scope_key"]),
+        )
+        if notes:
+            report[row["scope_key"]] = notes
+    if from_version and report:
+        connection.execute(
+            "INSERT INTO migration_reports(id,source,from_version,to_version,report_json,created_at) VALUES(?,?,?,?,?,unixepoch())",
+            (
+                str(uuid.uuid4()),
+                "database",
+                from_version,
+                _SCHEMA_VERSION,
+                json.dumps({"settings": report}, ensure_ascii=False),
+            ),
+        )
+
+
+def _drop_invalid_merged_texts(value: dict[str, Any]) -> list[str]:
+    """合并后的自定义文案若用了新条目不支持的变量，改回默认文案并说明。"""
+
+    notes: list[str] = []
+    for _attempt in range(len(PATH_LABELS)):
+        try:
+            # 引用开关的类型在迁移 023 才转换，这里按转换后的样子校验。
+            candidate = copy.deepcopy(value)
+            convert_quotes(candidate, False)
+            validate_config(merge_sparse(default_config(), candidate))
+            return notes
+        except ConfigurationError as exc:
+            match = re.search(r"messages\.(results|errors)\.([a-z_]+)", str(exc))
+            entries = (value.get("messages") or {}).get(match.group(1)) if match else None
+            if not match or not isinstance(entries, dict) or match.group(2) not in entries:
+                raise
+            entry = entries[match.group(2)]
+            for field in ("text", "alternatives"):
+                if isinstance(entry, dict):
+                    entry.pop(field, None)
+            path = f"{match.group(1)}.{match.group(2)}"
+            notes.append(
+                f"{PATH_LABELS.get(path, path)}：合并来的自定义文案无法使用（{exc}），已改回默认文案。"
+            )
+    return notes
 
 
 def _upgrade_settings_v2(connection: sqlite3.Connection, from_version: int) -> None:

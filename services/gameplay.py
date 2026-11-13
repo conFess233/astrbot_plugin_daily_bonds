@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from ..models.gameplay import BusinessResult, Candidate
 from ..models.scope import Mode
@@ -605,7 +605,7 @@ class GameplayService(GiftMixin):
                     mode,
                     actor_id,
                     "steal",
-                    "INVALID_TARGET",
+                    "STEAL_OWN_PARTNER",
                     {},
                     config_revision,
                     now,
@@ -718,14 +718,17 @@ class GameplayService(GiftMixin):
         capacity: int,
         limit: int,
         probability: float,
+        holder_probabilities: Mapping[str, float] | None = None,
         event_key: str | None = None,
         payload_hash: str = "",
         config_revision: str = "",
         now: int,
     ) -> BusinessResult:
-        """强娶没有被任何人持有的群友：按成功率结缘，失败也消耗次数。
+        """强娶群友：按成功率结缘，失败也消耗次数。
 
-        已被人持有的群友要用抢夺；强娶得到的关系同抢来的一样本周期受保护。
+        对方已被人娶走时转为争夺：用 holder_probabilities 中该持有者对应的
+        成功率，无视对方关系的保护，成功后从持有者手里抢走（持有者返还一次
+        抽取）。强娶得到的关系同抢来的一样本周期受保护，只能再被强娶抢走。
         """
 
         operation_id = str(uuid.uuid4())
@@ -776,17 +779,20 @@ class GameplayService(GiftMixin):
             if int(counter["force_attempts"]) >= limit:
                 return finish("FORCE_LIMIT", {})
             holder = db.execute(
-                "SELECT owner_id FROM relationships WHERE scope_id=? AND period_id=? AND mode='member' AND subject_id=? AND state='active' LIMIT 1",
+                "SELECT * FROM relationships WHERE scope_id=? AND period_id=? AND mode='member' AND subject_id=? AND state='active' LIMIT 1",
                 (scope_id, period_id, target_id),
             ).fetchone()
-            if holder is not None:
-                return finish(
-                    "FORCE_TARGET_TAKEN",
-                    {
-                        "candidate": _candidate_dict(picked),
-                        "owner_id": str(holder["owner_id"]),
-                    },
-                )
+            contested = holder is not None
+            if contested:
+                holder_id = str(holder["owner_id"])
+                # 对方已被娶走：按持有者算好的争夺成功率直接抢，无视保护。
+                # 持有者在算概率后变了（并发），仍按“已被娶走”处理。
+                if holder_id not in (holder_probabilities or {}):
+                    return finish(
+                        "FORCE_TARGET_TAKEN",
+                        {"candidate": _candidate_dict(picked), "owner_id": holder_id},
+                    )
+                probability = float(holder_probabilities[holder_id])
             if not math_probability(probability):
                 return finish("INVALID_PROBABILITY", {})
             success = self.chooser.random() < probability
@@ -797,7 +803,36 @@ class GameplayService(GiftMixin):
             if not success:
                 return finish(
                     "FORCE_FAILED",
-                    {"candidate": _candidate_dict(picked), "probability": probability},
+                    {
+                        "candidate": _candidate_dict(picked),
+                        "probability": probability,
+                        **({"owner_id": holder_id} if contested else {}),
+                    },
+                )
+            if contested:
+                relationship_id = self._transfer(
+                    db, holder, actor_id, capacity, now, "stolen", "steal"
+                )
+                db.execute(
+                    "UPDATE relationships SET special_source='force' WHERE id=?",
+                    (relationship_id,),
+                )
+                db.execute(
+                    "UPDATE daily_counters SET stolen_successes=stolen_successes+1 WHERE scope_id=? AND period_id=? AND mode='member' AND user_id=?",
+                    (scope_id, period_id, holder_id),
+                )
+                self._return_draw(db, scope_id, period_id, "member", holder_id)
+                self._invalidate_relation_invites(
+                    db, holder["id"], now, "relationship_stolen"
+                )
+                return finish(
+                    "FORCED",
+                    {
+                        "relationship_id": relationship_id,
+                        "candidate": _candidate_dict(picked),
+                        "owner_id": holder_id,
+                        "probability": probability,
+                    },
                 )
             relationship_id = self.storage.create_relationship(
                 scope_id=scope_id,

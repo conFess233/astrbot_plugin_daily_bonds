@@ -15,6 +15,16 @@ export function beforeUnload(event) {
   event.returnValue = "";
 }
 
+// 单条回复的引用：跟随「回复形式」里的默认，或单独指定。
+const QUOTE_OPTIONS = [["default", "跟随默认"], ["on", "引用"], ["off", "不引用"]];
+
+function optionsFor(path) {
+  if (CONFIG_OPTIONS[path]) return CONFIG_OPTIONS[path];
+  if (path.endsWith(".gift_mode")) return [["direct", "直接赠送"], ["confirm", "等待确认"]];
+  if (path.startsWith("reply_quote.")) return QUOTE_OPTIONS;
+  return null;
+}
+
 // 次级设置的前置条件：[控制项, 判断, 收起时的说明]。全部满足才显示，数值始终保留。
 function fieldConditions(path) {
   const parts = path.split(".");
@@ -39,7 +49,16 @@ function fieldConditions(path) {
     "display.page_size": ["display.pagination_enabled", (on) => on !== false],
     "statistics.activity_window_days": ["statistics.activity_enabled", (on) => on !== false],
     "statistics.intimacy_decay_idle_days": ["statistics.intimacy_decay_percent", (percent) => Number(percent) > 0],
+    "llm.provider_ids": ["llm.provider_mode", (mode) => mode === "custom"],
+    "llm.persona_id": ["llm.persona_mode", (mode) => mode === "custom"],
   }[path];
+  // 这条回复没有开启 AI 生成时，专属提示词收起。
+  if (parts[0] === "reply_llm_prompt") {
+    const toggle = path.replace(/^reply_llm_prompt\./, "reply_llm.");
+    return [[toggle, () => value(toggle) === true, "未开启 AI 生成"]];
+  }
+  // AI 好感度评估关闭时，其余评估参数收起。
+  if (path.startsWith("sentiment.") && path !== "sentiment.enabled") return [["sentiment.enabled", () => value("sentiment.enabled") !== false, "AI 好感度评估未开启"]];
   return simple ? [[simple[0], () => simple[1](value(simple[0])), ""]] : [];
 }
 
@@ -98,7 +117,7 @@ function diffText(path, value) {
     value = `${list.length} 条：${list.join("、")}`;
   }
   if (typeof value === "boolean") return value ? "开启" : "关闭";
-  const choices = CONFIG_OPTIONS[path] || (path.endsWith(".gift_mode") ? [["direct", "直接赠送"], ["confirm", "等待确认"]] : null);
+  const choices = optionsFor(path);
   const choice = choices?.find(([key]) => key === value);
   if (choice) return choice[1];
   if (isPoolConfig(path)) {
@@ -257,14 +276,54 @@ const CONFIG_GROUPS = {
   "messages.notifications": "赠送与重启通知", "messages.titles": "标题与统计标签",
   "reply_quote.results": "结果回复引用", "reply_quote.errors": "错误回复引用",
   batch_import: "批量图片检测默认值", render: "回复形式",
+  llm: "AI 模型", llm_replies: "AI 文案", sentiment: "AI 好感度评估",
 };
+
+// 末段名称容易与其他分组重名的配置，按完整路径命名。
+const PATH_LABELS = {
+  "llm.provider_mode": "模型来源", "llm.provider_ids": "指定的模型", "llm.persona_mode": "人格来源", "llm.persona_id": "指定的人格",
+  "llm.total_timeout_seconds": "每条回复最多等待（秒）", "llm.call_timeout_seconds": "单个模型超时（秒）",
+  "llm.max_concurrency": "同时调用上限", "llm.group_calls_per_minute": "每群每分钟调用上限",
+  "llm_replies.system_prompt": "系统提示词", "llm_replies.style_prompt": "文风要求", "llm_replies.use_examples": "把预设文案作为示例发给模型", "llm_replies.max_chars": "文案字数上限",
+  "sentiment.extra_prompt": "本群语境说明",
+  "sentiment.enabled": "启用 AI 好感度评估", "sentiment.mode": "加减方式", "sentiment.daily_cap": "每对每天加减上限",
+  "sentiment.base_points": "隐式对话底分", "sentiment.attitude_factor": "态度分系数", "sentiment.passive_ratio": "被说话方加分比例",
+  "sentiment.min_confidence": "最低对象把握", "sentiment.diminish_after": "当天累计多少分后减半",
+  "sentiment.send_names": "发送群名片和昵称", "sentiment.name_min_chars": "点名的最短名称长度",
+  "sentiment.adjacency_seconds": "接话判断时间（秒）", "sentiment.min_chars": "参与态度评分的最短字数",
+  "sentiment.batch_interval_seconds": "评估间隔（秒）", "sentiment.batch_max_messages": "积累多少条立即评估",
+  "sentiment.call_timeout_seconds": "每批评估超时（秒）",
+  "sentiment.buffer_max_messages": "每群暂存上限（条）", "sentiment.global_buffer_max_messages": "全部群暂存上限（条）",
+  "sentiment.context_messages": "附带上下文条数", "sentiment.message_max_chars": "每条消息最多字数",
+};
+
+// 提示词类文本：[行数, 字数上限, 占位文字]。
+const PROMPT_FIELDS = {
+  "llm_replies.system_prompt": [8, 3000, "留空使用内置提示词"],
+  "llm_replies.style_prompt": [3, 1000, "可选，例如：像相声捧哏一样夸张"],
+  "sentiment.extra_prompt": [4, 1000, "可选，例如：群里互称“老婆”是玩笑，不算冒犯"],
+};
+
+// 只能全局设置的 AI 资源参数，与服务端 GLOBAL_ONLY_FIELDS 一致。
+const AI_GLOBAL_ONLY = new Set([
+  "llm.total_timeout_seconds", "llm.call_timeout_seconds", "llm.max_concurrency",
+  "sentiment.batch_interval_seconds", "sentiment.batch_max_messages", "sentiment.call_timeout_seconds", "sentiment.buffer_max_messages",
+  "sentiment.global_buffer_max_messages", "sentiment.context_messages", "sentiment.message_max_chars",
+]);
 
 const MESSAGE_LABELS = {
   draw_wife: "抽到老婆", draw_husband: "抽到老公", draw_member: "抽到群友",
   draw_member_mutual: "群友双向奔赴", my_status: "我的姻缘", help: "姻缘帮助", my_collection: "我的图鉴",
   status: "我的姻缘标题", collection: "我的图鉴标题",
-  force_success: "强娶成功", force_failed: "强娶失败", force_limit: "强娶次数用完", force_target_taken: "强娶目标已被娶走",
-  force_disabled: "强娶关闭", force_target_required: "强娶目标无效",
+  force_success: "强娶成功", force_failed: "强娶失败", force_limit: "强娶次数用完", force_target_taken: "强娶时对方刚被别人娶走",
+  force_disabled: "强娶关闭", force_target_required: "强娶没有 @ 目标",
+  target_is_self: "目标是自己", target_is_bot: "目标是机器人", target_ineligible: "目标暂时不能参与",
+  target_required: "没有 @ 人", target_invalid: "不能选这个人", feature_disabled: "功能已关闭",
+  quota_used_up: "次数用完（强娶、抢夺、离婚、指定）", capacity_full_single: "已有老婆/老公",
+  relation_ambiguous: "关系有多段匹配", character_ambiguous: "角色有多个匹配",
+  relation_missing: "找不到关系", character_missing: "找不到角色",
+  draw_character: "抽到老婆/老公", designated: "指定老婆/老公成功",
+  divorce_locked: "受保护关系不能离婚", gift_locked: "受保护关系不能转送", force_already_holds: "强娶的人已经是你的",
   character_info: "角色信息回复", character_info_missing: "未找到角色", character_info_ambiguous: "角色有多个匹配", group_stats: "本群统计回复",
   capacity_full: "持有名额已满", no_draw_quota: "普通抽取额度用完", no_candidate: "没有候选对象", no_candidate_member: "没有可娶的群友",
   recipient_full: "接收者持有已满", recipient_holds: "接收者已持有该对象", already_holds: "抢夺者已持有该对象", mutual_formed: "抢夺或赠送促成双向奔赴",
@@ -274,16 +333,17 @@ const MESSAGE_LABELS = {
   invite_rejected: "赠送已拒绝", invite_cancelled: "赠送已取消",
   invite_expired: "赠送邀请过期", invite_invalidated: "赠送邀请失效",
   invite_not_owned: "无权处理邀请", steal_cooldown: "抢夺冷却", steal_limit: "抢夺次数用完",
-  target_protected: "目标受保护", divorce_limit: "解除关系次数用完",
-  relationship_not_found: "关系不存在", invalid_target: "目标无效",
-  no_target_relationship: "目标没有关系", mode_disabled: "玩法已关闭",
+  target_protected: "对方被抢次数已满受保护", divorce_limit: "解除关系次数用完",
+  relationship_not_found: "没有可送出的关系", invalid_target: "目标无效（其他情况）",
+  steal_own_partner: "对方的群友就是自己", gift_to_subject: "把群友送给 ta 本人",
+  no_target_relationship: "对方没有可抢的关系", mode_disabled: "玩法已关闭",
   invalid_probability: "抢夺概率无效", invalid_timeout: "赠送超时无效",
   invite_already_pending: "已有待处理邀请", invite_limit: "待处理邀请达到上限",
-  invite_invalid: "邀请无效", unknown_result: "其他操作结果",
+  invite_invalid: "赠送邀请失效", unknown_result: "其他操作结果",
   syntax_error: "指令格式错误", operation_error: "操作错误", mode_closed: "玩法关闭",
   command_cooldown: "通用指令冷却", steal_disabled: "抢夺关闭",
-  steal_target_required: "抢夺目标无效", steal_relation_ambiguous: "抢夺关系不明确",
-  gift_disabled: "赠送关闭", gift_target_required: "赠送目标无效",
+  steal_target_required: "抢夺没有 @ 目标", steal_relation_ambiguous: "抢夺关系不明确",
+  gift_disabled: "赠送关闭", gift_target_required: "赠送没有 @ 目标",
   gift_relation_ambiguous: "赠送关系不明确", divorce_ambiguous: "离婚关系不明确",
   divorce_disabled: "解除关系关闭", divorce_relation_missing: "解除关系未找到",
   invite_multiple: "有多条待处理邀请", invite_none: "没有待处理邀请",
@@ -293,8 +353,8 @@ const MESSAGE_LABELS = {
   admin_set_wife: "管理员设置老婆成功", already_held: "管理员已持有角色",
   admin_set_denied: "设置老婆权限不足", admin_set_missing: "设置老婆未找到角色",
   admin_set_ambiguous: "设置老婆角色不明确", admin_set_unavailable: "设置老婆角色不可用",
-  steal_slot_full: "抢夺槽位已满", relationship_locked: "受保护关系不可操作",
-  steal_slot_locked: "目标关系不可被抢", capacity_full_single_wife: "已有老婆",
+  steal_slot_full: "抢夺槽位已满", relationship_locked: "自己的受保护关系不能离婚或转送",
+  steal_slot_locked: "去抢的关系受保护", capacity_full_single_wife: "已有老婆",
   capacity_full_single_husband: "已有老公", designated_wife: "指定老婆成功",
   designated_husband: "指定老公成功", designated_disabled: "指定抽取关闭",
   designated_slot_full: "指定槽位已满", no_designated_quota: "指定次数用完",
@@ -337,6 +397,7 @@ const CONFIG_LABELS = {
   divorce_enabled: "允许离婚或踹群友", divorce_limit: "离婚或踹群友次数上限",
   pool_ids: "启用的角色池", intimacy_enabled: "记录亲密度", activity_enabled: "记录活跃度",
   mention_active_points: "主动 @ 加分", mention_passive_points: "被 @ 加分",
+  reply_active_points: "回复别人加分", reply_passive_points: "被回复加分",
   poke_active_points: "主动戳一戳加分", poke_passive_points: "被戳一戳加分",
   activity_window_days: "活跃度窗口（天）", base: "基础权重",
   intimacy_decay_percent: "亲密度每日衰减（%）", intimacy_decay_idle_days: "无互动多少天后开始衰减",
@@ -373,7 +434,7 @@ function configGroup(path) {
 
 export function configIsGlobalOnly(path) {
   return path === "schema_version" || path.startsWith("access.groups.") || path === "access.extra_admin_ids" || path.startsWith("batch_import.") ||
-    path.startsWith("resources.") || path.startsWith("history.");
+    path.startsWith("resources.") || path.startsWith("history.") || AI_GLOBAL_ONLY.has(path);
 }
 
 function configLabel(path) {
@@ -381,10 +442,14 @@ function configLabel(path) {
   if (parts[0] === "reply_enabled") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}启用回复`;
   if (parts[0] === "reply_quote") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}引用消息源`;
   if (parts[0] === "reply_variants") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}其余回复`;
+  if (parts[0] === "reply_llm") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}使用 AI 生成`;
+  if (parts[0] === "reply_llm_prompt") return `${MESSAGE_LABELS[parts.at(-1)] || parts.at(-1)}的 AI 提示词`;
+  if (PATH_LABELS[path]) return PATH_LABELS[path];
   if (parts[0] === "messages") return (parts[1] === "titles" ? TITLE_LABELS : MESSAGE_LABELS)[parts.at(-1)] || parts.at(-1);
   const name = CONFIG_LABELS[parts.at(-1)] || parts.at(-1);
   if (parts[0] === "commands" && parts[1] === "keywords") return `${name}关键词`;
   if (path === "render.mode") return "默认回复形式";
+  if (path === "render.quote_default") return "回复默认引用触发消息";
   if (parts[0] === "render" && parts[1] === "types") return `${name}回复形式`;
   if (path === "access.groups.mode") return "群准入模式";
   if (path === "access.users.mode") return "用户准入模式";
@@ -396,6 +461,24 @@ function configLabel(path) {
 
 function isPoolConfig(path) {
   return path === "modes.wife.pool_ids" || path === "modes.husband.pool_ids";
+}
+
+function renderProviderPicker(card, input) {
+  const selected = input.value.split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
+  const picker = card.querySelector(".provider-picker");
+  picker.replaceChildren();
+  const known = state.llmProviders.map((item) => item.id);
+  for (const id of [...known, ...selected.filter((item) => !known.includes(item))]) {
+    const provider = state.llmProviders.find((item) => item.id === id);
+    const label = document.createElement("label"); label.className = "pool-option";
+    const check = document.createElement("input"); check.type = "checkbox"; check.value = id; check.checked = selected.includes(id); check.disabled = input.disabled;
+    const name = document.createElement("span");
+    const order = selected.indexOf(id);
+    name.textContent = `${order >= 0 ? `第 ${order + 1} 顺位 · ` : ""}${id}`;
+    const detail = document.createElement("small"); detail.textContent = provider ? provider.model || "对话模型" : "宿主中已不存在";
+    label.append(check, name, detail); picker.append(label);
+  }
+  if (!picker.children.length) { const empty = document.createElement("small"); empty.className = "config-note"; empty.textContent = "没有读取到宿主中的对话模型；请先在 AstrBot 中配置模型提供商。"; picker.append(empty); }
 }
 
 function renderPoolPicker(card, input) {
@@ -447,7 +530,34 @@ export function refreshPoolPickers() {
   }
 }
 
+// 容易混淆的回复：说明什么时候发送，避免把两条的文案写反。
+const MESSAGE_SCENES = {
+  divorce_locked: "发送时机：用户想离婚，但这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护。",
+  gift_locked: "发送时机：用户想把自己的关系送人，但这段关系是抢来、强娶、指定、别人送的或管理员设置的，本周期受保护。",
+  steal_slot_locked: "发送时机：用户用“抢老婆/抢老公/抢群友”去抢，但对方的那段关系受保护（用强娶抢群友不受此限制）。",
+  target_protected: "发送时机：对方本周期被抢的次数已达上限，暂时不能再抢 ta。",
+  no_target_relationship: "发送时机：对方在这个玩法里没有关系；{hint} 会在对方有其他玩法的关系时提示改用对应的抢夺指令。",
+  relationship_not_found: "发送时机：用户想送出关系，但自己在这个玩法里没有可送的关系。",
+  designated: "发送时机：用户用“今日老婆/今日老公 角色名”指定角色成功（不是强娶）；{role} 是老婆或老公。",
+  draw_character: "发送时机：用户抽到老婆或老公；{role} 是老婆或老公。娶群友另有一条。",
+  admin_set_wife: "发送时机：管理员用“/设置老婆 角色名”设置成功（不是强娶）。",
+  target_required: "发送时机：强娶、抢夺、赠送、查亲密度时没有 @ 任何人。",
+  target_invalid: "发送时机：@ 的人不能作为目标；{reason} 会填入原因，例如“这是你自己”“ta 是机器人”“ta 娶的就是你，不用抢”。",
+  feature_disabled: "发送时机：用户使用了被关闭的功能；{feature} 是功能名称，如强娶、抢夺、亲密度排行。",
+  quota_used_up: "发送时机：强娶、抢夺、离婚或指定的次数用完；{action} 是对应的操作。普通抽取次数用完另有一条。",
+  capacity_full_single: "发送时机：每人只能有一位老婆/老公且已经有了；{role} 是老婆或老公。",
+  force_target_taken: "发送时机：强娶时对方恰好刚被别人娶走（极少见）；对方早已被娶走时会直接转为争夺，不发这条。",
+  force_already_holds: "发送时机：强娶的人已经是你娶到的群友。",
+  relation_ambiguous: "发送时机：抢夺、赠送、离婚时匹配到多段关系，需要写明是哪一段；{candidates} 是候选列表。",
+  character_ambiguous: "发送时机：指定、查询角色信息或设置老婆时匹配到多个角色；{candidates} 是候选列表。",
+};
+
 function templateHint(path) {
+  const scene = path.startsWith("messages.") ? MESSAGE_SCENES[path.split(".").at(-1)] || "" : "";
+  return scene + templateHintBody(path);
+}
+
+function templateHintBody(path) {
   const fields = state.templateFields[path];
   const empty = path.startsWith("messages.titles.") ? "留空仅隐藏对应标题或标签。" : "可用右上角的 + 添加多条，发送时随机选一条；全部留空则不发送此消息、附图或引用。";
   if (!fields) return `最多 1000 字符；${empty}模板变量由服务端校验。使用 {{ 和 }} 表示大括号。`;
@@ -586,10 +696,15 @@ function createConfigField(path, value) {
   const globalOnly = configIsGlobalOnly(path);
   const overridden = state.scopeId !== "global" && state.overridePaths.has(path);
   let input;
-  if (isPoolConfig(path)) {
+  if (isPoolConfig(path) || path === "llm.provider_ids") {
     input = document.createElement("input");
     input.type = "hidden";
     input.value = value.join("\n");
+  } else if (path === "llm.persona_id") {
+    input = document.createElement("select");
+    input.add(new Option("请选择人格", ""));
+    for (const name of new Set([...state.llmPersonas, ...(value ? [value] : [])])) input.add(new Option(name, name));
+    input.value = value;
   } else if (isVariantPath(path)) {
     input = document.createElement("input");
     input.type = "hidden";
@@ -598,6 +713,19 @@ function createConfigField(path, value) {
     input.rows = Math.min(Math.max(value.length + 1, 2), 5);
     input.value = value.join("\n");
     input.placeholder = "每行一项";
+  } else if (PROMPT_FIELDS[path]) {
+    const [rows, maxLength, placeholder] = PROMPT_FIELDS[path];
+    input = document.createElement("textarea");
+    input.rows = rows;
+    input.maxLength = maxLength;
+    input.placeholder = path === "llm_replies.system_prompt" ? state.llmReplyPrompt || placeholder : placeholder;
+    input.value = value;
+  } else if (path.startsWith("reply_llm_prompt.")) {
+    input = document.createElement("textarea");
+    input.rows = 3;
+    input.maxLength = 500;
+    input.placeholder = "可选，例如：语气调侃但别嘲讽失败的人，可以安慰一句";
+    input.value = value;
   } else if (path.startsWith("messages.")) {
     input = document.createElement("textarea");
     input.rows = 3;
@@ -609,9 +737,9 @@ function createConfigField(path, value) {
     input.type = "checkbox";
     input.setAttribute("role", "switch");
     input.checked = value;
-  } else if (CONFIG_OPTIONS[path] || path.endsWith(".gift_mode")) {
+  } else if (optionsFor(path)) {
     input = document.createElement("select");
-    const choices = CONFIG_OPTIONS[path] || [["direct", "直接赠送"], ["confirm", "等待确认"]];
+    const choices = optionsFor(path);
     for (const [optionValue, text] of choices) input.add(new Option(text, optionValue));
     input.value = value;
   } else {
@@ -656,6 +784,43 @@ function createConfigField(path, value) {
     });
     controls.append(picker);
   }
+  if (path === "llm.provider_ids") {
+    const picker = document.createElement("div");
+    picker.className = "pool-picker provider-picker";
+    picker.setAttribute("role", "group");
+    picker.setAttribute("aria-label", configLabel(path));
+    picker.addEventListener("change", (event) => {
+      if (!event.target.matches('input[type="checkbox"]')) return;
+      // 勾选顺序即回退顺序：新勾选的排在最后，取消勾选的移除。
+      const current = input.value.split(/\r?\n/).map((id) => id.trim()).filter(Boolean);
+      const id = event.target.value;
+      const next = event.target.checked ? [...current.filter((item) => item !== id), id] : current.filter((item) => item !== id);
+      input.value = next.join("\n");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      renderProviderPicker(card, input);
+    });
+    controls.append(picker);
+  }
+  if (path === "llm_replies.system_prompt") {
+    const actions = document.createElement("div"); actions.className = "actions";
+    const fill = document.createElement("button"); fill.type = "button"; fill.className = "btn btn-ghost btn-sm"; fill.textContent = "填入内置提示词";
+    fill.addEventListener("click", () => {
+      if (!state.llmReplyPrompt) { showNotice("没有读取到内置提示词，请刷新页面后重试。", "error"); return; }
+      input.value = state.llmReplyPrompt; input.dispatchEvent(new Event("input", { bubbles: true })); input.focus();
+    });
+    const reset = document.createElement("button"); reset.type = "button"; reset.className = "btn btn-ghost btn-sm"; reset.textContent = "恢复内置（清空）";
+    reset.addEventListener("click", () => { input.value = ""; input.dispatchEvent(new Event("input", { bubbles: true })); });
+    actions.append(fill, reset); controls.append(actions);
+  }
+  if (path === "sentiment.enabled") {
+    input.addEventListener("change", async () => {
+      if (!input.checked) return;
+      const ok = await confirmAction("开启后，本群的聊天原文会发送给所选模型的提供方，用于判断谁在对谁说话以及态度，并据此加减亲密度。原文只在内存中暂存，不写入磁盘。确认开启？");
+      if (ok) return;
+      input.checked = false;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+  }
   if (state.scopeId !== "global" && !globalOnly) {
     const override = document.createElement("label");
     override.className = "config-override";
@@ -672,6 +837,7 @@ function createConfigField(path, value) {
         state.draftValues[path] = displayValue(path, configAt(state.globalConfig, path));
         writeInputValue(input, state.draftValues[path]);
         if (isPoolConfig(path)) renderPoolPicker(card, input);
+        if (path === "llm.provider_ids") renderProviderPicker(card, input);
         if (isVariantPath(path)) refreshVariantCard(card, input);
       }
       card.classList.toggle("inherited", !toggle.checked);
@@ -690,11 +856,14 @@ function createConfigField(path, value) {
   }
   writeInputValue(input, state.draftValues[path]);
   if (isPoolConfig(path)) renderPoolPicker(card, input);
+  if (path === "llm.provider_ids") renderProviderPicker(card, input);
   if (isVariantPath(path)) renderVariantEditors(card, input);
   const hint = CONFIG_HINTS[path] ||
     (path.startsWith("messages.") ? templateHint(path) :
     isVariantPath(path) ? templateHint(path.replace(/^reply_variants\./, "messages.")) :
-    path.startsWith("reply_quote.") ? "开启后，这条即时回复会引用触发消息；关闭则不引用，不改变消息文案。" :
+    path.startsWith("reply_quote.") ? "是否引用触发消息。“跟随默认”使用「配置 → 高级 → 展示与回复形式」里的默认引用设置。" :
+    path.startsWith("reply_llm.") ? "开启后由模型根据本次的人物和结果现写一条；超时、失败或达到频率上限时发送上面的预设文案。每次都会实际调用模型。" :
+    path.startsWith("reply_llm_prompt.") ? "可选，最多 500 字；只对这一类回复生效，补充在全局文风要求之后。插件已固定要求模型只写真实结果、不编数字，这里写语气和侧重点即可。" :
     path.startsWith("commands.keywords.") ? "每行一个别名，至少一项。" : "");
   if (hint) {
     const help = document.createElement("small");
@@ -983,29 +1152,56 @@ export function renderRulePreview() {
 }
 
 // 回复词按使用场景分组：同一场景的成功结果与错误提示相邻。
-const TEMPLATE_CATEGORIES = ["抽取与指定", "抢夺", "赠送", "离婚", "列表与统计", "我的姻缘与帮助", "指令与通用提示", "通知", "标题标签"];
+// 回复按指令分组；同一组里结果在前、报错在后。
+const TEMPLATE_CATEGORIES = ["抽取", "强娶", "抢夺", "赠送", "离婚", "指定与设置", "通用提示", "查询与列表", "通知", "标题标签"];
+const TEMPLATE_GROUPS = {
+  抽取: ["draw_character", "draw_member", "draw_member_mutual", "capacity_full", "capacity_full_single", "no_draw_quota", "no_candidate", "no_candidate_member"],
+  强娶: ["force_success", "force_failed", "force_already_holds", "force_target_taken"],
+  抢夺: ["stolen", "steal_failed", "mutual_formed", "steal_cooldown", "target_protected", "no_target_relationship", "steal_slot_locked", "already_holds"],
+  赠送: ["gifted", "invite_created", "gift_accepted", "invite_rejected", "invite_cancelled", "invite_invalid", "relationship_not_found", "gift_locked", "recipient_full", "recipient_holds", "invite_not_owned", "invite_already_pending", "invite_limit", "invite_multiple", "invite_none", "invite_invalid_id"],
+  离婚: ["divorced", "divorce_locked", "divorce_relation_missing"],
+  指定与设置: ["designated", "designated_occupied", "admin_set_wife", "already_held", "character_missing", "character_ambiguous", "admin_set_denied", "admin_set_unavailable"],
+  通用提示: ["target_required", "target_invalid", "feature_disabled", "quota_used_up", "relation_missing", "relation_ambiguous", "command_cooldown"],
+  查询与列表: ["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection", "list_empty", "page_out_of_range", "activity_disabled"],
+};
+const TEMPLATE_GROUP_OF = Object.fromEntries(Object.entries(TEMPLATE_GROUPS).flatMap(([group, keys]) => keys.map((key) => [key, group])));
+// 卡片排版类：文字只在纯文本模式或卡片失败时使用；与标题标签一起默认收起。
+const LAYOUT_KEYS = new Set(["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection"]);
+// 很少触发的提示：默认收起，勾选“显示少见与排版类”后列出。
+const RARE_KEYS = new Set(["force_target_taken", "already_holds", "recipient_holds", "invite_not_owned", "invite_already_pending", "invite_limit", "invite_multiple", "invite_invalid_id", "already_held", "admin_set_denied", "admin_set_unavailable", "character_ambiguous", "relation_ambiguous", "designated_occupied", "page_out_of_range", "activity_disabled", "no_candidate"]);
 
 function templateCategory(path) {
-  const key = path.split(".").at(-1);
   if (path.startsWith("messages.notifications.")) return "通知";
   if (path.startsWith("messages.titles.")) return "标题标签";
-  if (/^(my_status|help|my_collection)$/.test(key)) return "我的姻缘与帮助";
-  if (/steal|stolen|target_protected|no_target_relationship/.test(key)) return "抢夺";
-  if (/gift|invite/.test(key)) return "赠送";
-  if (/divorc/.test(key)) return "离婚";
-  if (/rank|list|affection|activity|page/.test(key)) return "列表与统计";
-  if (/draw|designated|capacity|admin_set|already_held|no_candidate|relationship_locked/.test(key)) return "抽取与指定";
-  return "指令与通用提示";
+  return TEMPLATE_GROUP_OF[path.split(".").at(-1)] || "通用提示";
 }
 
 function templateOrder(path) {
-  const section = path.split(".")[1];
-  return TEMPLATE_CATEGORIES.indexOf(templateCategory(path)) * 10 + ["results", "errors", "notifications", "titles"].indexOf(section);
+  const key = path.split(".").at(-1);
+  const group = templateCategory(path);
+  const index = (TEMPLATE_GROUPS[group] || []).indexOf(key);
+  return TEMPLATE_CATEGORIES.indexOf(group) * 1000 + (index < 0 ? 900 : index);
+}
+
+function templateIsFolded(path) {
+  const key = path.split(".").at(-1);
+  return path.startsWith("messages.titles.") || LAYOUT_KEYS.has(key) || RARE_KEYS.has(key);
+}
+
+// 与默认文案不同（含多条预设）才算“已修改”；只改开关不算。
+function templateCustomized(path) {
+  const [, section, key] = path.split(".");
+  const base = state.messageDefaults?.[section]?.[key];
+  if (base === undefined) return false;
+  const text = typeof base === "string" ? base : base.text;
+  if ((state.draftValues[path] ?? "") !== text) return true;
+  const variants = state.draftValues[variantPathOf(path)];
+  return Boolean(variants && variants !== "[]" && variants !== JSON.stringify(base.alternatives || []));
 }
 
 function renderRepliesWorkspace() {
   const view = configView("replies");
-  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><div id="reply-variant-tabs" class="variant-tabs" role="group" aria-label="同一回复的多条预设"></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
+  view.innerHTML = '<div class="reply-tabs segmented" role="group" aria-label="消息与关键词"><button type="button" id="reply-templates-tab" aria-pressed="true">回复模板</button><button type="button" id="reply-keywords-tab" aria-pressed="false">指令关键词</button></div><div id="reply-templates" class="replies-workspace"><section class="card template-directory"><div class="card-title"><div><h3>模板目录</h3><p id="template-total"></p></div><button type="button" class="btn btn-ghost btn-sm reply-directory-back" id="reply-directory-back">返回编辑</button></div><label class="field"><span>搜索模板</span><input id="template-search" type="search" placeholder="名称或文案" /></label><label class="field"><span>分类</span><select id="template-category"></select></label><div class="template-filters"><label><input type="checkbox" id="template-modified" /> 只看已修改</label><label><input type="checkbox" id="template-folded" /> 显示少见与排版类</label></div><div id="template-list" class="template-list"></div></section><div class="reply-edit-area"><section id="reply-editor-panel" class="card"><div class="card-title"><div><h3 id="template-name"></h3><p id="template-count"></p></div><div id="reply-variant-tabs" class="variant-tabs" role="group" aria-label="同一回复的多条预设"></div><button type="button" class="btn btn-ghost btn-sm reply-directory-toggle" id="reply-directory-toggle">模板目录</button></div><div id="reply-editor"></div><h4>插入变量</h4><div id="template-variables" class="variable-buttons"></div><div id="reply-quote"></div></section></div></div><section id="reply-keywords" class="card card-pad" hidden><div class="card-title"><div><h3>指令关键词</h3><p>每行一个别名，冲突由服务端检查；与回复模板共享同一配置草稿。</p></div></div><div class="config-rows"></div></section><div id="reply-field-store" hidden></div>';
   const side = sideSection("replies");
   side.innerHTML = '<div id="reply-preview-panel"><h4>消息预览</h4><p class="preview-label">使用草稿 · 模拟预览，不会实际发送</p><div class="chat-preview"><div class="chat-user">示例用户消息</div><div id="template-preview" class="chat-bubble"></div></div><p class="side-note">演示数据；实际图片、引用和消息样式以 QQ 客户端为准。</p></div>';
   sideSection("advanced").innerHTML = '<div class="notice"><p>群级覆盖只保存改动的字段；“仅全局设置”的项需切到全局配置修改。保存后立即生效，无需重载插件。</p></div>';
@@ -1018,6 +1214,7 @@ function renderRepliesWorkspace() {
   for (const category of categories) $("#template-category").add(new Option(category, category));
   $("#template-search").addEventListener("input", filterTemplates);
   $("#template-category").addEventListener("change", filterTemplates);
+  for (const id of ["template-modified", "template-folded"]) $(`#${id}`).addEventListener("change", filterTemplates);
   for (const kind of ["templates", "keywords"]) $(`#reply-${kind}-tab`).addEventListener("click", () => showReplySection(kind));
   $("#reply-directory-toggle").addEventListener("click", () => { $(".replies-workspace").dataset.directory = "true"; });
   $("#reply-directory-back").addEventListener("click", () => { $(".replies-workspace").dataset.directory = "false"; });
@@ -1044,7 +1241,7 @@ export function updateReplySelection() {
 
 function initReplyBulk() {
   const bulk = document.createElement("details"); bulk.className = "reply-bulk";
-  bulk.innerHTML = '<summary>批量调整回复</summary><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-select-replies="visible">全选当前分类</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="all">全选所有回复</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="none">清空选择</button></div><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="enable">开启回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="disable">关闭回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote">开启引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="unquote">关闭引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="inherit">选中回复恢复继承</button></div><p id="reply-selection-count" class="hint" role="status"></p>';
+  bulk.innerHTML = '<summary>批量调整回复</summary><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-select-replies="visible">全选当前分类</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="all">全选所有回复</button><button type="button" class="btn btn-ghost btn-sm" data-select-replies="none">清空选择</button></div><div class="actions"><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="enable">开启回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="disable">关闭回复</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote-default">引用跟随默认</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="quote">引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="unquote">不引用</button><button type="button" class="btn btn-ghost btn-sm" data-reply-bulk="inherit">选中回复恢复继承</button></div><p id="reply-selection-count" class="hint" role="status"></p>';
   $(".template-directory").insertBefore(bulk, $("#template-list"));
   bulk.addEventListener("click", (event) => {
     const button = event.target.closest("button"); if (!button) return;
@@ -1056,8 +1253,9 @@ function initReplyBulk() {
     }
     const action = button.dataset.replyBulk; if (!action) return;
     for (const path of state.selectedReplies) {
-      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote."]) assignDraftField(path.replace("messages.", prefix), null, true);
-      else assignDraftField(path.replace("messages.", ["enable", "disable"].includes(action) ? "reply_enabled." : "reply_quote."), ["enable", "quote"].includes(action));
+      if (action === "inherit") for (const prefix of ["messages.", "reply_variants.", "reply_enabled.", "reply_quote.", "reply_llm.", "reply_llm_prompt."]) assignDraftField(path.replace("messages.", prefix), null, true);
+      else if (["enable", "disable"].includes(action)) assignDraftField(path.replace("messages.", "reply_enabled."), action === "enable");
+      else if (path.startsWith("messages.results.") || path.startsWith("messages.errors.")) assignDraftField(path.replace("messages.", "reply_quote."), { quote: "on", unquote: "off" }[action] || "default");
     }
     renderTemplatePreview(); updateReplySelection();
   });
@@ -1074,9 +1272,16 @@ function filterTemplates() {
   const search = $("#template-search").value.trim().toLowerCase();
   const category = $("#template-category").value;
   const paths = [...fieldCards.keys()].filter((path) => path.startsWith("messages."));
-  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category) && `${path} ${configLabel(path)} ${state.draftValues[path]} ${state.draftValues[variantPathOf(path)] || ""}`.toLowerCase().includes(search))
+  const onlyModified = $("#template-modified").checked;
+  // 搜索、选了具体分类或只看已修改时不再收起，避免找不到。
+  const showFolded = $("#template-folded").checked || Boolean(search) || category !== "全部" || onlyModified;
+  const visible = paths.filter((path) => (category === "全部" || templateCategory(path) === category)
+    && (showFolded || !templateIsFolded(path) || path === state.selectedTemplate)
+    && (!onlyModified || templateCustomized(path))
+    && `${path} ${configLabel(path)} ${state.draftValues[path]} ${state.draftValues[variantPathOf(path)] || ""}`.toLowerCase().includes(search))
     .sort((left, right) => templateOrder(left) - templateOrder(right));
-  $("#template-total").textContent = `显示 ${visible.length} / 共 ${paths.length} 条`;
+  const folded = paths.filter((path) => templateIsFolded(path)).length;
+  $("#template-total").textContent = `显示 ${visible.length} / 共 ${paths.length} 条` + (showFolded ? "" : `（${folded} 条少见与排版类已收起）`);
   for (const path of visible) {
     const button = document.createElement("button"); button.type = "button"; button.dataset.templatePath = path;
     button.className = "template-item";
@@ -1084,7 +1289,8 @@ function filterTemplates() {
     button.setAttribute("aria-pressed", String(path === state.selectedTemplate));
     const name = document.createElement("strong"); name.textContent = configLabel(path);
     const kind = { results: "结果", errors: "错误", notifications: "通知", titles: "标签" }[path.split(".")[1]] || "";
-    const group = document.createElement("small"); group.textContent = `${templateCategory(path)} · ${kind}`;
+    const usage = state.messageUsage?.[path];
+    const group = document.createElement("small"); group.textContent = [templateCategory(path), kind, templateCustomized(path) ? "已改" : "", usage ? `近 7 天 ${usage} 次` : ""].filter(Boolean).join(" · ");
     button.append(name, group); button.addEventListener("click", () => selectTemplate(path));
     const row = document.createElement("div"); row.className = "template-row";
     if (fieldCards.has(path.replace("messages.", "reply_enabled."))) {
@@ -1105,10 +1311,11 @@ function selectTemplate(path) {
   for (const id of ["reply-editor", "reply-quote"]) for (const card of [...$("#" + id).children]) store.append(card);
   $("#reply-editor").append(fieldCards.get(path));
   if (variantParts(path)) $("#reply-editor").append(variantParts(path).card);
-  for (const prefix of ["reply_enabled.", "reply_quote."]) {
+  for (const prefix of ["reply_enabled.", "reply_quote.", "reply_llm.", "reply_llm_prompt."]) {
     const optionPath = path.replace(/^messages\./, prefix);
     if (fieldCards.has(optionPath)) $("#reply-quote").append(fieldCards.get(optionPath));
   }
+  if (fieldCards.has(path.replace(/^messages\./, "reply_llm."))) $("#reply-quote").append(llmPreviewBox(path));
   $("#template-name").textContent = configLabel(path);
   const variables = $("#template-variables"); variables.replaceChildren();
   for (const variable of state.templateFields[path]?.allowed || []) {
@@ -1122,6 +1329,28 @@ function selectTemplate(path) {
   if (!variables.children.length) variables.textContent = "本条没有可插入变量。";
   for (const button of document.querySelectorAll("[data-template-path]")) button.setAttribute("aria-pressed", String(button.dataset.templatePath === path));
   showVariant(activeVariant);
+}
+
+// AI 文案试生成：使用当前草稿和示例人物实际调用一次模型，结果只显示在页面上。
+function llmPreviewBox(path) {
+  const box = document.createElement("div"); box.className = "llm-preview";
+  const button = document.createElement("button"); button.type = "button"; button.className = "btn btn-ghost btn-sm"; button.textContent = "试生成一条";
+  const result = document.createElement("p"); result.className = "hint"; result.setAttribute("role", "status");
+  result.textContent = "使用草稿配置和示例人物，结果只显示在这里，不发送到群。";
+  button.addEventListener("click", async () => {
+    if (!await confirmAction("试生成会实际调用一次模型，可能产生费用。继续？")) return;
+    let draft;
+    try { ({ draft } = serializeDraft(state.savedConfig, state.globalConfig, state.draftValues, state.overridePaths, state.scopeId !== "global", FLOAT_CONFIG_PATHS)); }
+    catch (error) { result.textContent = error.message || "草稿有误，请先修正。"; return; }
+    button.disabled = true; button.textContent = "生成中…";
+    try {
+      const response = await apiPost("llm/preview", { key: path.split(".").at(-1), scope_id: state.scopeId, draft: fromUiConfig(draft) });
+      result.textContent = `生成结果：${response.data.text}`;
+    } catch (error) { result.textContent = error.message || "生成失败，群里会改发预设文案。"; }
+    finally { button.disabled = false; button.textContent = "试生成一条"; }
+  });
+  box.append(button, result);
+  return box;
 }
 
 export function renderTemplatePreview() {
@@ -1141,7 +1370,8 @@ export function renderTemplatePreview() {
       const others = !disabled && variants && [state.draftValues[path], ...[...variants.editors.children].map((editor) => editor.value)].some((item) => item.trim());
       host.textContent = path.startsWith("messages.titles.") ? "空文字，隐藏对应标题或标签" : others ? "这一条留空，不参与随机" : "此回复不会发送消息、附图或引用"; return;
     }
-    if (state.draftValues[path.replace(/^messages\./, "reply_quote.")]) {
+    const quoteChoice = state.draftValues[path.replace(/^messages\./, "reply_quote.")];
+    if (quoteChoice === "on" || (quoteChoice === "default" && state.draftValues["render.quote_default"] === true)) {
       const quote = document.createElement("blockquote"); quote.textContent = "引用：示例用户消息"; host.append(quote);
     }
     for (const part of parts) {
@@ -1158,6 +1388,7 @@ const ADVANCED_GROUPS = [
   ["commands", "指令", ["commands"]],
   ["stats", "统计与权重", ["statistics", "weights"]],
   ["display", "展示与回复形式", ["render", "display"]],
+  ["ai", "AI 功能", ["llm", "llm_replies", "sentiment"]],
   ["system", "运行与存储", ["members", "history", "resources", "batch_import"]],
 ];
 
@@ -1209,6 +1440,8 @@ function renderAdvancedWorkspace() {
   const trigger = compoundField("触发方式", "群消息以哪些形式触发指令；全部关闭时只能通过额外前缀触发。", TRIGGER_PATHS);
   subsections.get("commands").prepend(trigger);
   subsections.get("render").append(renderFormField());
+  // 默认引用是回复形式里唯一单独显示的开关。
+  if (fieldCards.has("render.quote_default")) subsections.get("render").append(fieldCards.get("render.quote_default"));
   for (const [, rows] of subsections) if (!rows.children.length) rows.parentElement.remove();
   if (!ADVANCED_GROUPS.some(([id]) => id === state.configGroup)) state.configGroup = ADVANCED_GROUPS[0][0];
   selectConfigGroup(state.configGroup);

@@ -14,6 +14,7 @@ from astrbot.api import logger
 
 from .avatar_cache import AvatarCache
 from .cards import CardRow, CardService, data_uri, render_mode
+from .message_merge import MESSAGE_ALIASES, SYSTEM_MESSAGES
 from .message_templates import (
     IMAGE_TOKEN,
     MESSAGE_CONTEXT,
@@ -44,6 +45,15 @@ class ReplyBuilder:
         self.storage = storage
         self.cards = cards
         self.avatar_cache = avatar_cache
+        # 由运行时注入；为 None 时所有回复使用预设文案。
+        self.llm_writer: Any = None
+
+    async def rewrite(self, text: str) -> str:
+        """开启了 LLM 文案的回复改用模型生成；未开启或失败时原样返回。"""
+
+        if self.llm_writer is None or not getattr(text, "llm", None):
+            return text
+        return await self.llm_writer.rewrite(text)
 
     async def reply_with_card(
         self,
@@ -147,11 +157,15 @@ class ReplyBuilder:
                 self.relationship_display, str(relation_id)
             )
             if relation:
-                set_message_values(subject_name=relation["name"])
+                set_message_values(
+                    subject_name=relation["name"],
+                    subject_id=str(relation["subject_id"]),
+                    subject_kind=relation["subject_kind"],
+                )
         if data.get("candidate"):
             set_message_values(subject_name=data["candidate"]["name"])
-        text = self._format_result(
-            code, data, mode, config, accept_keyword=accept_keyword
+        text = await self.rewrite(
+            self._format_result(code, data, mode, config, accept_keyword=accept_keyword)
         )
         if code == "CAPACITY_FULL":
             relationships = data.get("relationships", ())
@@ -259,15 +273,18 @@ class ReplyBuilder:
         facts.extend({"text": fact, "tone": "pink"} for fact in data.get("facts", ()))
         message = text.replace(IMAGE_TOKEN, "").strip()
         subject_name = str(item["name"])
+        # 模型生成的文案整句放在卡片正文，标签行只显示来源。
+        generated = bool(getattr(text, "generated", False))
         portrait = await asyncio.to_thread(data_uri, image, 720 if not member else 360)
         try:
             path = await self.cards.render_template(
                 "draw.html",
                 {
-                    "kicker": message.replace(subject_name, "").strip(" ：:，,")
-                    or source,
+                    "kicker": source
+                    if generated
+                    else message.replace(subject_name, "").strip(" ：:，,") or source,
                     "subject_name": subject_name,
-                    "message": "",
+                    "message": message if generated else "",
                     "image": "" if member else portrait,
                     "avatar": portrait if member else "",
                     "initial": subject_name[:1] or "?",
@@ -388,7 +405,11 @@ class ReplyBuilder:
         key = code.lower()
         if code == "NO_CANDIDATE" and mode == "member":
             key = "no_candidate_member"
-        if key in config["messages"]["results"]:
+        if (
+            key in config["messages"]["results"]
+            or ("results", key) in MESSAGE_ALIASES
+            or f"results.{key}" in SYSTEM_MESSAGES
+        ):
             available_at = data.get("available_at")
             return render_message(
                 config,

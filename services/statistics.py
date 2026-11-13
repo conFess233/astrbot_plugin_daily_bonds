@@ -38,24 +38,35 @@ class StatisticsService:
         passive_points: int,
         now: int,
         timezone: str = "Asia/Shanghai",
+        replied_id: str | None = None,
+        reply_active_points: int = 0,
+        reply_passive_points: int = 0,
     ) -> bool:
-        """记录一条真人群消息及本次原始 At 段；重放不重复计分。"""
+        """记录一条真人群消息及本次 @ 与回复对象；重放不重复计分。
+
+        同一人既被 @ 又被回复时只按 @ 计一次（QQ 回复常自动附带 @）。
+        """
 
         if not sender_id or sender_id not in eligible_user_ids or sender_id in bot_ids:
             return False
         ZoneInfo(timezone)  # 保留 UTC 秒时间戳，查询时按生效时区计算自然日。
-        targets = tuple(
-            sorted(
-                {
-                    str(user_id)
-                    for user_id in mentioned_ids
-                    if user_id
-                    and user_id != sender_id
-                    and user_id in eligible_user_ids
-                    and user_id not in bot_ids
-                }
+
+        def valid(user_id: str | None) -> bool:
+            return bool(
+                user_id
+                and user_id != sender_id
+                and user_id in eligible_user_ids
+                and user_id not in bot_ids
             )
-        )
+
+        points = {
+            str(user_id): (active_points, passive_points)
+            for user_id in mentioned_ids
+            if valid(str(user_id))
+        }
+        if replied_id and valid(replied_id) and replied_id not in points:
+            points[replied_id] = (reply_active_points, reply_passive_points)
+        targets = tuple((user_id, *points[user_id]) for user_id in sorted(points))
         key, digest = _event_identity(raw_event, "message", now)
         return self._apply(
             scope_id=scope_id,
@@ -66,8 +77,6 @@ class StatisticsService:
             targets=targets,
             activity=activity_enabled,
             intimacy=intimacy_enabled,
-            active_points=active_points,
-            passive_points=passive_points,
         )
 
     def record_poke(
@@ -111,11 +120,9 @@ class StatisticsService:
             payload_hash=digest,
             now=now,
             sender_id=source_id,
-            targets=(target_id,),
+            targets=((target_id, active_points, passive_points),),
             activity=False,
             intimacy=intimacy,
-            active_points=active_points,
-            passive_points=passive_points,
             poke_activity=activity_enabled,
         )
 
@@ -249,11 +256,9 @@ class StatisticsService:
         payload_hash: str,
         now: int,
         sender_id: str,
-        targets: Sequence[str],
+        targets: Sequence[tuple[str, int, int]],
         activity: bool,
         intimacy: bool,
-        active_points: int,
-        passive_points: int,
         poke_activity: bool = False,
     ) -> bool:
         try:
@@ -289,7 +294,7 @@ class StatisticsService:
                         (scope_id, sender_id, now),
                     )
                 if intimacy:
-                    for target_id in targets:
+                    for target_id, active_points, passive_points in targets:
                         _add_score(
                             db, scope_id, sender_id, target_id, active_points, now
                         )

@@ -313,12 +313,15 @@ class FeatureHandler:
         candidates = await asyncio.to_thread(self.status.character_candidates, config)
         matches = rules.match_candidates(candidates, values["command"].argument)
         if not matches:
-            return render_message(config, "errors", "character_info_missing")
+            return render_message(
+                config, "errors", "character_missing", name=values["command"].argument
+            )
         if len(matches) > 1:
             return render_message(
                 config,
                 "errors",
-                "character_info_ambiguous",
+                "character_ambiguous",
+                name=values["command"].argument,
                 candidates=rules.candidate_choices(matches),
             )
         info = await asyncio.to_thread(

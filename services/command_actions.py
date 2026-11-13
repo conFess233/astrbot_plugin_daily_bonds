@@ -24,6 +24,8 @@ from .message_templates import (
 )
 from .storage import SQLiteStorage
 
+_MODE_LABELS = {"wife": "老婆", "husband": "老公", "member": "群友"}
+
 
 class ActionHandler:
     """抽取以外的关系操作（抢夺、赠送、离婚）与查询指令分发。"""
@@ -43,6 +45,66 @@ class ActionHandler:
         self.replies = replies
         self.listing = listing
         self.features = features
+
+    def _other_mode_hint(
+        self, values: Mapping[str, Any], mode: str, target_id: str
+    ) -> str:
+        """对方在别的玩法里有可抢的关系时，提示改用对应的抢夺指令。"""
+
+        config = values["config"]
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT DISTINCT mode FROM relationships
+                   WHERE scope_id=? AND period_id=? AND owner_id=? AND state='active'
+                   AND slot_kind='normal' AND mode<>?""",
+                (values["scope_id"], values["period_id"], target_id, mode),
+            ).fetchall()
+        keywords = [
+            config["commands"]["keywords"][f"steal_{row['mode']}"][0]
+            for row in rows
+            if config["modes"][row["mode"]]["enabled"]
+            and config["modes"][row["mode"]]["steal_enabled"]
+        ]
+        if not keywords:
+            return ""
+        return "可以试试" + "或".join(f"“{keyword}”" for keyword in keywords) + "。"
+
+    async def _target_problem(
+        self, values: Mapping[str, Any], target_id: str
+    ) -> str | None:
+        """强娶、抢夺、赠送的目标不合规时返回对应提示的文案键。"""
+
+        if target_id == values["actor_id"]:
+            return "target_is_self"
+        if target_id in values["eligible"]:
+            return None
+        if target_id in values["config"]["access"]["extra_bot_ids"]:
+            return "target_is_bot"
+        is_bot = await asyncio.to_thread(
+            self._known_bot, int(values["scope_id"]), target_id
+        )
+        return "target_is_bot" if is_bot else "target_ineligible"
+
+    def _member_holder(
+        self, scope_id: int, period_id: str, subject_id: str
+    ) -> str | None:
+        """当前娶了这位群友的人；没人娶时返回 None。"""
+
+        with self.storage.read() as db:
+            row = db.execute(
+                """SELECT owner_id FROM relationships WHERE scope_id=? AND period_id=?
+                   AND mode='member' AND subject_id=? AND state='active' LIMIT 1""",
+                (scope_id, period_id, subject_id),
+            ).fetchone()
+        return str(row["owner_id"]) if row else None
+
+    def _known_bot(self, scope_id: int, user_id: str) -> bool:
+        with self.storage.read() as db:
+            row = db.execute(
+                "SELECT is_known_bot FROM members WHERE scope_id=? AND user_id=?",
+                (scope_id, user_id),
+            ).fetchone()
+        return bool(row and row["is_known_bot"])
 
     async def _steal_probability(
         self,
@@ -108,17 +170,33 @@ class ActionHandler:
             sender_name=names.get(actor_id, "群友"),
             recipient_name=names.get(target_id, "群友"),
             target_name=names.get(target_id, "群友"),
+            role=_MODE_LABELS[mode],
+            hint="",
         )
         if command.action == "force_member":
             if not mode_config["force_limit"]:
                 return render_message(config, "errors", "force_disabled")
-            if (
-                not target_id
-                or target_id == actor_id
-                or target_id not in values["eligible"]
-            ):
+            if not target_id:
                 return render_message(config, "errors", "force_target_required")
+            problem = await self._target_problem(values, target_id)
+            if problem:
+                return render_message(config, "errors", problem)
             set_message_values(subject_name=names.get(target_id, "群友"))
+            probability = await self._steal_probability(
+                values["scope_id"], actor_id, target_id, mode_config, "force"
+            )
+            # 对方已被别人娶走时转为争夺：成功率减去持有者按同一公式算出的成功率。
+            holder_id = await asyncio.to_thread(
+                self._member_holder, values["scope_id"], values["period_id"], target_id
+            )
+            holder_probabilities = {}
+            if holder_id and holder_id != actor_id:
+                defender = await self._steal_probability(
+                    values["scope_id"], holder_id, target_id, mode_config, "force"
+                )
+                holder_probabilities[holder_id] = rules.contested_probability(
+                    probability, defender
+                )
             result = await asyncio.to_thread(
                 self.gameplay.force_marry,
                 scope_id=values["scope_id"],
@@ -127,9 +205,8 @@ class ActionHandler:
                 target_id=target_id,
                 capacity=mode_config["capacity"],
                 limit=mode_config["force_limit"],
-                probability=await self._steal_probability(
-                    values["scope_id"], actor_id, target_id, mode_config, "force"
-                ),
+                probability=probability,
+                holder_probabilities=holder_probabilities,
                 event_key=values["event_key"],
                 payload_hash=values["payload_hash"],
                 config_revision=values["revision"],
@@ -139,6 +216,9 @@ class ActionHandler:
                 set_message_values(
                     owner_name=names.get(str(result.data["owner_id"]), "群友")
                 )
+            if result.code == "ALREADY_HOLDS":
+                # 结果码与抢夺共用，文案按强娶单独设置。
+                return render_message(config, "results", "force_already_holds")
             reply = await self.replies.result_reply(
                 result.code, result.data, mode, config
             )
@@ -148,8 +228,11 @@ class ActionHandler:
         if command.action.startswith("steal_"):
             if not mode_config["steal_enabled"]:
                 return render_message(config, "errors", "steal_disabled")
-            if not target_id or target_id not in values["eligible"]:
+            if not target_id:
                 return render_message(config, "errors", "steal_target_required")
+            problem = await self._target_problem(values, target_id)
+            if problem:
+                return render_message(config, "errors", problem)
             relation_id, matches = await asyncio.to_thread(
                 self._resolve_relation,
                 values["scope_id"],
@@ -195,6 +278,12 @@ class ActionHandler:
                 config_revision=values["revision"],
                 now=values["now"],
             )
+            if result.code == "NO_TARGET_RELATIONSHIP":
+                set_message_values(
+                    hint=await asyncio.to_thread(
+                        self._other_mode_hint, values, mode, target_id
+                    )
+                )
             reply = await self.replies.result_reply(
                 result.code, result.data, mode, values["config"]
             )
@@ -210,8 +299,11 @@ class ActionHandler:
         }:
             if not mode_config["gift_enabled"]:
                 return render_message(config, "errors", "gift_disabled")
-            if not target_id or target_id not in values["eligible"]:
+            if not target_id:
                 return render_message(config, "errors", "gift_target_required")
+            problem = await self._target_problem(values, target_id)
+            if problem:
+                return render_message(config, "errors", problem)
             relation_id, matches = await asyncio.to_thread(
                 self._resolve_relation,
                 values["scope_id"],
@@ -254,6 +346,8 @@ class ActionHandler:
                 config_revision=values["revision"],
                 now=values["now"],
             )
+            if result.code == "RELATIONSHIP_LOCKED":
+                return render_message(config, "results", "gift_locked")
             accept_keyword = values["config"]["commands"]["keywords"]["gift_accept"][0]
             reply = await self.replies.result_reply(
                 result.code,
@@ -290,7 +384,7 @@ class ActionHandler:
             if not matches:
                 return render_message(config, "errors", "divorce_relation_missing")
             if len(matches) > 1:
-                labels = {"wife": "老婆", "husband": "老公", "member": "群友"}
+                labels = _MODE_LABELS
                 candidates = "\n".join(
                     f"- {labels[item['mode']]}：{item['name']}"
                     + (
@@ -300,16 +394,12 @@ class ActionHandler:
                     )
                     for item in matches
                 )
-                prefix = render_message(config, "errors", "divorce_ambiguous")
-                if not prefix.strip():
-                    return prefix
-                return MessageText(
-                    f"{prefix}\n{candidates}",
-                    quote_source=getattr(prefix, "quote_source", False),
+                return render_message(
+                    config, "errors", "relation_ambiguous", candidates=candidates
                 )
             set_message_values(subject_name=matches[0]["name"])
             if matches[0]["slot_kind"] != "normal":
-                return render_message(config, "results", "relationship_locked")
+                return render_message(config, "results", "divorce_locked")
             mode = str(matches[0]["mode"])
             relation_id = str(matches[0]["id"])
             mode_config = config["modes"][mode]
@@ -414,12 +504,14 @@ class ActionHandler:
         ):
             return reply
         names = MESSAGE_CONTEXT.get().get("member_names", {})
-        notice = render_message(
-            values["config"],
-            "results",
-            "mutual_formed",
-            owner_name=names.get(owner_id, "群友"),
-            subject_name=names.get(subject_id, "群友"),
+        notice = await self.replies.rewrite(
+            render_message(
+                values["config"],
+                "results",
+                "mutual_formed",
+                owner_name=names.get(owner_id, "群友"),
+                subject_name=names.get(subject_id, "群友"),
+            )
         )
         if not notice.strip():
             return reply

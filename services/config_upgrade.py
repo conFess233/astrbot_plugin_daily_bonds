@@ -12,6 +12,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from .message_merge import OLD_DEFAULTS, PATH_LABELS, merge_messages
+
 SCHEMA_VERSION = 2
 _DEFAULTS_PATH = (
     Path(__file__).resolve().parents[1]
@@ -74,10 +76,16 @@ _REMOVED_MESSAGES = {
     "notifications.member_redraw",
 }
 # 0.2.2 的默认文案：删除补抽并统一术语后改写；自定义文案保留。
-SUPERSEDED_MESSAGES = {
+SUPERSEDED_MESSAGES: dict[str, str | tuple[str, ...]] = {
     "results.capacity_full": "持有名额已满：{names}。可以先发送“离婚”解除一段普通关系。",
-    "results.relationship_locked": "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
-    "results.steal_slot_locked": "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
+    "results.relationship_locked": (
+        "抢来的和指定的关系当天受保护，不能主动解除或赠送。",
+        "抢来的和指定的关系本周期受保护，不能主动解除或赠送。",
+    ),
+    "results.steal_slot_locked": (
+        "对方这段关系是抢来的或指定的，当天受保护，不能抢夺。",
+        "对方这段关系是抢来的或指定的，本周期受保护，不能抢夺。",
+    ),
     "results.capacity_full_single_wife": "你今日已有老婆{names}啦，{reset_at} 重置后再来吧。",
     "results.capacity_full_single_husband": "你今日已有老公{names}啦，{reset_at} 重置后再来吧。",
     "results.no_draw_quota": "今天的普通抽取次数已用完，{reset_at} 重置；离婚可获得一次补抽资格。",
@@ -86,9 +94,18 @@ SUPERSEDED_MESSAGES = {
     "results.invite_expired": "赠送邀请已过期",
     "results.invite_invalidated": "赠送邀请已失效",
     "results.invite_not_owned": "你无权处理这条邀请",
-    "results.target_protected": "该持有者本周期已受抢夺保护",
-    "results.invalid_target": "目标无效",
-    "results.no_target_relationship": "目标没有可抢夺的关系",
+    "results.target_protected": (
+        "该持有者本周期已受抢夺保护",
+        "该持有者本周期已受抢夺保护。",
+    ),
+    "results.invalid_target": (
+        "目标无效",
+        "目标无效。",
+    ),
+    "results.no_target_relationship": (
+        "目标没有可抢夺的关系",
+        "目标没有可抢夺的关系。",
+    ),
     "results.mode_disabled": "这个玩法当前已关闭",
     "results.invalid_probability": "抢夺概率配置无效",
     "results.invalid_timeout": "赠送超时配置无效",
@@ -102,7 +119,37 @@ SUPERSEDED_MESSAGES = {
     "titles.rank_group_intimacy": "{群名}的亲密度排行",
     "titles.rank_activity": "{群名}的活跃度排行",
     "titles.query_affection": "{name}与{target_name}的好感度",
+    # 0.3.0 的默认文案：误导或缺少引导，0.3.1 改写。
+    "results.relationship_not_found": "没有找到可处理的关系；发送“我的姻缘”查看当前关系。",
+    "errors.divorce_relation_missing": "没有找到匹配的当前关系。",
+    # 0.3.2：强娶已被娶走的人改为争夺，这条只在并发时出现。
+    "results.force_target_taken": "{subject_name}已经被{owner_name}娶走了，不能强娶；可以试试抢夺。",
+    "errors.steal_relation_missing": "该持有者没有匹配的关系，请检查名称或 #ID。",
 }
+
+
+# 以前的默认配置值；已保存配置里仍是旧默认值时换成当前默认值，自定义值保留。
+SUPERSEDED_VALUES: dict[str, tuple[Any, ...]] = {
+    # 0.3.0：每批 50 条在 5 秒超时下经常作废，降为 20 条。
+    "sentiment.batch_max_messages": (50,),
+}
+
+
+def refresh_superseded_values(value: dict[str, Any]) -> bool:
+    """就地把仍是旧默认值的配置项换成当前默认值；返回是否有改动。"""
+
+    defaults = _defaults()
+    changed = False
+    for path, olds in SUPERSEDED_VALUES.items():
+        section, key = path.split(".", 1)
+        current = value.get(section)
+        if not isinstance(current, dict) or key not in current:
+            continue
+        default = defaults[section][key]
+        if current[key] in olds and current[key] != default:
+            current[key] = default
+            changed = True
+    return changed
 
 
 def _defaults() -> dict[str, Any]:
@@ -241,6 +288,17 @@ def upgrade_config(
     ):
         notes.append("文案、启用与引用合并为每条文案一个对象。")
 
+    # 0.4.0 合并、拆分了部分文案条目；旧配置直接转换成新的条目。
+    notes += merge_messages(
+        result,
+        {"legacy": LEGACY_MESSAGES, "superseded": SUPERSEDED_MESSAGES},
+        PATH_LABELS,
+    )
+    # 引用开关改为 default / on / off；旧配置只做类型转换，化简交给迁移 023。
+    for section in ("results", "errors"):
+        for item in ((result.get("messages") or {}).get(section) or {}).values():
+            if isinstance(item, dict) and isinstance(item.get("quote"), bool):
+                item["quote"] = "on" if item["quote"] else "off"
     if not sparse or "schema_version" in result:
         result["schema_version"] = SCHEMA_VERSION
     return result, notes
@@ -277,11 +335,18 @@ def refresh_superseded_messages(value: dict[str, Any]) -> bool:
         if not isinstance(entries, dict):
             continue
         entry = entries.get(key)
-        current = defaults[section][key]
-        if isinstance(entry, dict) and entry.get("text") == old:
-            entry["text"] = current["text"]
-            changed = True
-        elif entry == old:
+        current = defaults[section].get(key)
+        if current is None:
+            # 0.4.0 合并或移除的条目：先换成它最后的默认文案，交给迁移 022 处理。
+            if path not in OLD_DEFAULTS:
+                continue
+            current = {"text": OLD_DEFAULTS[path]}
+        olds = (old,) if isinstance(old, str) else old
+        if isinstance(entry, dict) and entry.get("text") in olds:
+            if entry["text"] != current["text"]:
+                entry["text"] = current["text"]
+                changed = True
+        elif isinstance(entry, str) and entry in olds:
             entries[key] = current
             changed = True
     for section in [name for name, entries in messages.items() if entries == {}]:
@@ -289,3 +354,49 @@ def refresh_superseded_messages(value: dict[str, Any]) -> bool:
     if messages == {}:
         del value["messages"]
     return changed
+
+
+def convert_quotes(
+    value: dict[str, Any], global_default: bool | None = None
+) -> tuple[bool | None, list[str]]:
+    """0.4.0：每条回复的引用由布尔值改为 default / on / off。
+
+    global_default 为 None 表示这是全局配置：按多数设置 render.quote_default，
+    与之相同的条目改为跟随默认。群级覆盖传入全局的默认值，同样化简。
+    返回全局默认值（群级覆盖原样返回传入值）与说明。
+    """
+
+    messages = value.get("messages")
+    entries = [
+        entry
+        for section in ("results", "errors")
+        for entry in (messages.get(section) or {}).values()
+        if isinstance(messages, dict) and isinstance(entry, dict) and "quote" in entry
+    ] if isinstance(messages, dict) else []
+    for entry in entries:
+        if isinstance(entry["quote"], bool):
+            entry["quote"] = "on" if entry["quote"] else "off"
+    if not entries:
+        return global_default, []
+    notes: list[str] = []
+    default = global_default
+    if default is None:
+        on = sum(entry["quote"] == "on" for entry in entries)
+        off = sum(entry["quote"] == "off" for entry in entries)
+        default = on > off
+        render = value.setdefault("render", {})
+        if isinstance(render, dict):
+            render["quote_default"] = default
+    same = "on" if default else "off"
+    changed = 0
+    for entry in entries:
+        if entry["quote"] == same:
+            entry["quote"] = "default"
+            changed += 1
+    own = sum(entry["quote"] != "default" for entry in entries)
+    if changed:
+        notes.append(
+            f"引用改为统一的默认设置（{'引用' if default else '不引用'}），"
+            f"{changed} 条改为跟随默认，{own} 条保留单独设置。"
+        )
+    return (global_default if global_default is not None else default), notes

@@ -20,12 +20,14 @@ from .services.command_replies import RuntimeReply
 from .services.command_runtime import CommandRuntime
 from .services.gameplay import GameplayService
 from .services.host_config import import_legacy_host_settings
+from .services.llm import LLMService
 from .services.message_chain import bypass_host_quote, reply_chain
 from .services.message_templates import IMAGE_TOKEN
 from .services.notifications import NotificationService
 from .services.onebot import OneBotAdapter
 from .services.outgoing_images import prepare_outgoing_image
 from .services.retention import RetentionService
+from .services.sentiment import SentimentService
 from .services.statistics import StatisticsService
 from .services.storage import SQLiteStorage
 from .services.web_api import WebManager
@@ -47,6 +49,9 @@ class DailyBondsPlugin(Star):
         self._runtime: CommandRuntime | None = None
         self._maintenance_task: asyncio.Task[None] | None = None
         self._web_manager: WebManager | None = None
+        self._llm: LLMService | None = None
+        self._sentiment: SentimentService | None = None
+        self._sentiment_task: asyncio.Task[None] | None = None
 
     async def initialize(self) -> None:
         """建立插件数据目录、验证数据库並确保全局默认配置。"""
@@ -79,6 +84,9 @@ class DailyBondsPlugin(Star):
                     "今日姻缘：%d 条通知在上次重载时发送中断，结果未知，不再重发。",
                     interrupted,
                 )
+            llm = LLMService(self.context)
+            sentiment = SentimentService(storage, llm)
+            self._llm, self._sentiment = llm, sentiment
             self._runtime = CommandRuntime(
                 context=self.context,
                 storage=storage,
@@ -87,9 +95,17 @@ class DailyBondsPlugin(Star):
                 gameplay=GameplayService(storage),
                 statistics=StatisticsService(storage),
                 render_html=self.html_render,
+                llm=llm,
+                sentiment=sentiment,
             )
             web_manager.runtime_reset = self._runtime.reset
             web_manager.runtime = self._runtime
+            web_manager.llm = llm
+            web_manager.config_saved = sentiment.revalidate
+            self._sentiment_task = asyncio.create_task(
+                self._sentiment_loop(sentiment, llm),
+                name="daily-bonds-sentiment",
+            )
             self._maintenance_task = asyncio.create_task(
                 self._maintenance_loop(notifications, retention),
                 name="daily-bonds-maintenance",
@@ -161,8 +177,20 @@ class DailyBondsPlugin(Star):
         )
 
     async def terminate(self) -> None:
-        """停止种子素材下载并关闭数据库连接。"""
+        """停止后台任务、清空内存缓冲，最后关闭数据库连接。"""
 
+        # 先断开消息处理与模型调用，旧实例在重载后不再被引用或接收新消息。
+        self._runtime = None
+        sentiment, self._sentiment = self._sentiment, None
+        llm, self._llm = self._llm, None
+        if sentiment is not None:
+            sentiment.close()
+        if llm is not None:
+            llm.close()
+        worker, self._sentiment_task = self._sentiment_task, None
+        if worker is not None:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
         task, self._catalog_task = self._catalog_task, None
         if task is not None:
             task.cancel()
@@ -200,6 +228,21 @@ class DailyBondsPlugin(Star):
             raise
         except Exception:  # noqa: BLE001 - 后台任务边界：记录后继续运行
             logger.exception("今日姻缘：内置素材下载任务失败，可在后续启动时重试。")
+
+    async def _sentiment_loop(
+        self, sentiment: SentimentService, llm: LLMService
+    ) -> None:
+        """常驻评估任务：每分钟检查各群是否需要评估，并清理过期的调用计数。"""
+
+        while True:
+            await asyncio.sleep(60)
+            try:
+                llm.prune()
+                await sentiment.tick()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - 后台任务边界：记录后继续运行
+                logger.exception("今日姻缘：好感度评估周期失败，将稍后重试。")
 
     async def _maintenance_loop(
         self, notifications: NotificationService, retention: RetentionService
