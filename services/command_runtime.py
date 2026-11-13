@@ -35,7 +35,7 @@ from .message_templates import (
     render_message,
     set_message_values,
 )
-from .onebot import OneBotAdapter, mentioned_user_ids
+from .onebot import OneBotAdapter, mentioned_user_ids, replied_user_id
 from .statistics import StatisticsService, event_key_for
 from .storage import SQLiteStorage
 
@@ -286,6 +286,11 @@ class CommandRuntime:
                     timezone=config["reset"]["timezone"],
                     passive_points=config["statistics"]["mention_passive_points"],
                     now=raw_event.observed_at,
+                    replied_id=None
+                    if command is not None or syntax_error is not None
+                    else replied_user_id(event),
+                    reply_active_points=config["statistics"]["reply_active_points"],
+                    reply_passive_points=config["statistics"]["reply_passive_points"],
                 )
             except StorageError:
                 # 统计失败只丢这一条计分，不影响后面的指令。

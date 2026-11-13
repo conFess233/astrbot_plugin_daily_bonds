@@ -259,6 +259,22 @@ class OneBotAdapter:
         )
 
 
+def replied_user_id(event: Any) -> str | None:
+    """被回复消息的发送者；取自宿主已取回的 Reply 组件，取不到时返回 None。
+
+    OneBot 原始 reply 段只有消息 ID，宿主适配器会调用 get_msg 补全发送者。
+    """
+
+    message_object = getattr(event, "message_obj", None)
+    for component in getattr(message_object, "message", None) or ():
+        if type(component).__name__ != "Reply":
+            continue
+        sender_id = getattr(component, "sender_id", None)
+        value = str(sender_id) if sender_id is not None else ""
+        return value if value.isdecimal() and value != "0" else None
+    return None
+
+
 def mentioned_user_ids(segments: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
     """提取本次原始消息中的普通 @，忽略 @全体与非法 ID。"""
 

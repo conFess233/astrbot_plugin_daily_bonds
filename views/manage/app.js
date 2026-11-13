@@ -222,6 +222,8 @@ export const CONFIG_HINTS = {
   "weights.base": "娶群友时每位候选人的权重 = min(最大权重, 基础权重 + 你对对方的亲密度 × 每点亲密度增加权重) × 活跃系数。",
   "weights.activity_floor": "(0,1]；活跃系数 = 此值 + (1 − 此值) × 对方在活跃度窗口内的活跃天数 ÷ 窗口天数，窗口内每天都活跃时为 1。",
   "display.rank_merge_rows": "1～100；列表每张卡片最多显示的行数，排行每张最多 50 行（5 列）；超出时分成多张。",
+  "statistics.reply_active_points": "回复某人的消息时给回复者加的分；同一条消息里也 @ 了对方时只按 @ 计。0 关闭。",
+  "statistics.reply_passive_points": "被回复的人加的分。依赖 AstrBot 取回被回复的原消息，取不到时不计分。",
   "render.mode": "卡片由 AstrBot 的 t2i 服务渲染，会把群名片、头像和角色图发送到该服务；选择纯文本则不发送。渲染失败时自动改发文字。",
   ...Object.fromEntries(["draw", "status", "help", "list", "rank", "affection", "collection"].map((kind) =>
     [`render.types.${kind}`, "跟随默认形式，或为这一类回复单独选择卡片或纯文本。"])),

@@ -183,6 +183,8 @@
     "activity_enabled": true,
     "mention_active_points": 2,
     "mention_passive_points": 1,
+    "reply_active_points": 2,
+    "reply_passive_points": 1,
     "poke_active_points": 2,
     "poke_passive_points": 1,
     "activity_window_days": 7,

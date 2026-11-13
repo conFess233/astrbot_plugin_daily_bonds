@@ -169,6 +169,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "commands.cooldown_seconds": (0, 86400),
         "statistics.mention_active_points": (0, 100000),
         "statistics.mention_passive_points": (0, 100000),
+        "statistics.reply_active_points": (0, 100000),
+        "statistics.reply_passive_points": (0, 100000),
         "statistics.poke_active_points": (0, 100000),
         "statistics.poke_passive_points": (0, 100000),
         "statistics.activity_window_days": (1, 365),

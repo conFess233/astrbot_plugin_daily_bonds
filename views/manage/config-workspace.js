@@ -337,6 +337,7 @@ const CONFIG_LABELS = {
   divorce_enabled: "允许离婚或踹群友", divorce_limit: "离婚或踹群友次数上限",
   pool_ids: "启用的角色池", intimacy_enabled: "记录亲密度", activity_enabled: "记录活跃度",
   mention_active_points: "主动 @ 加分", mention_passive_points: "被 @ 加分",
+  reply_active_points: "回复别人加分", reply_passive_points: "被回复加分",
   poke_active_points: "主动戳一戳加分", poke_passive_points: "被戳一戳加分",
   activity_window_days: "活跃度窗口（天）", base: "基础权重",
   intimacy_decay_percent: "亲密度每日衰减（%）", intimacy_decay_idle_days: "无互动多少天后开始衰减",
