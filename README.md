@@ -7,7 +7,7 @@
 <p align="center">不止有老公/老婆，还有香香软软的群友😋</p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.0-blue" alt="版本 0.4.0"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.5.0-blue" alt="版本 0.5.0"></a>
   <a href="./metadata.yaml"><img src="https://img.shields.io/badge/AstrBot-%3E%3D4.29.0-blue" alt="AstrBot 4.29.0 及以上"></a>
   <a href="#limits"><img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证"></a>
@@ -236,7 +236,7 @@ python -m pip install -r requirements.txt
 | `modes.member.force_limit`                                        | `1`                                  | 每周期强娶次数，范围 `0～100`，`0` 关闭强娶。                                                    |
 | `modes.member.force_probability`                                  | `0.2`                                | 强娶基础成功率，管理页按百分比显示。                                                             |
 | `modes.member.force_intimacy_bonus` / `force_probability_max`     | `0.001` / `0.8`                      | 每点亲密度增加的成功率，以及加成后的上限；`0` 关闭加成。                                         |
-| `modes.member.force_pity_step`                                    | `0.05`                               | 对同一个人每连续强娶失败一次增加的成功率，成功后清零；`0` 关闭。 |
+| `modes.member.force_pity_step`                                    | `0.05`                               | 对同一个人每连续强娶失败一次增加的成功率，成功后清零；`0` 关闭。                                 |
 | `modes.<玩法>.gift_mode`                                          | `direct`                             | `direct` 直接赠送；`confirm` 需要接收者确认。                                                    |
 | `reset.timezone` / `reset.time`                                   | `Asia/Shanghai` / `00:00`            | 周期的时区和重置时间。                                                                           |
 | `commands.cooldown_seconds`                                       | `3`                                  | 通用指令冷却，`0` 关闭。                                                                         |
@@ -246,7 +246,7 @@ python -m pip install -r requirements.txt
 | `statistics.intimacy_decay_percent`                               | `0`                                  | 亲密度每日衰减百分比，范围 `0～100`，`0` 关闭。                                                  |
 | `statistics.intimacy_decay_idle_days`                             | `7`                                  | 多少天没有新互动的亲密度才衰减，`0` 表示全部衰减。                                               |
 | `statistics.reply_active_points` / `reply_passive_points`         | `2` / `1`                            | 回复别人、被回复各加的亲密度，`0` 关闭回复计分。                                                 |
-| `weights.curve` / `weights.log_full_points`                       | `log` / `2000`                       | 娶群友亲密度权重曲线：`log` 对数或 `linear` 线性；对数曲线下达到最大权重的亲密度。 |
+| `weights.curve` / `weights.log_full_points`                       | `log` / `2000`                       | 娶群友亲密度权重曲线：`log` 对数或 `linear` 线性；对数曲线下达到最大权重的亲密度。               |
 | `llm.provider_mode` / `llm.provider_ids`                          | `follow` / `[]`                      | AI 功能的模型：跟随会话，或指定最多 5 个模型按顺序回退。                                         |
 | `llm.total_timeout_seconds` / `llm.call_timeout_seconds`          | `8` / `5`                            | 每条回复最多等待时间与单个模型超时（仅全局）。                                                   |
 | `llm.group_calls_per_minute`                                      | `10`                                 | 每群每分钟模型调用上限，AI 文案与好感度评估合计。                                                |
@@ -259,7 +259,7 @@ python -m pip install -r requirements.txt
 | `sentiment.extra_prompt`                                          | `""`                                 | 本群语境说明，最多 1000 字，附加在评估提示词中。                                                 |
 | `sentiment.batch_max_messages` / `sentiment.call_timeout_seconds` | `20` / `45`                          | 积累多少条立即评估；每批等待单个模型的秒数（均仅全局）。                                         |
 | `display.page_size` / `display.rank_merge_rows`                   | `10` / `50`                          | 列表每页条数；每张卡片最多行数（排行最多 50 行，5 列）。                                         |
-| `display.force_rank_enabled`                                      | `true`                               | 是否开放 `被强娶排行`。 |
+| `display.force_rank_enabled`                                      | `true`                               | 是否开放 `被强娶排行`。                                                                          |
 | `history.retention_days`                                          | `30`                                 | 历史保留天数，也决定连续天数的上限。                                                             |
 
 `<玩法>` 为 `wife`、`husband` 或 `member`。完整字段与默认值见 [默认配置](./resources/defaults/default-config.json)，管理页对每个字段给出范围说明。
