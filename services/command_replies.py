@@ -237,6 +237,7 @@ class ReplyBuilder:
             "DESIGNATED_DRAWN",
             "STEAL_FAILED",
             "STOLEN",
+            "FORCED",
             "FORCE_FAILED",
             "DIVORCED",
             "GIFTED",
