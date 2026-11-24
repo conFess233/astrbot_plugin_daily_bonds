@@ -234,12 +234,6 @@ class BatchRoutes:
             if not isinstance(payload, dict):
                 raise InvalidInputError("默认检测设置必须是 JSON 对象。")
             data = await asyncio.to_thread(self._save_batch_defaults, payload, actor)
-            if not data.pop("host_synced"):
-                return self._error(
-                    "BATCH_DEFAULTS_SYNC_FAILED",
-                    "默认设置已写入运行库，但宿主同步失败；请重试本次保存。",
-                    503,
-                )
             return json_response({"ok": True, "data": data})
         except (ValueError, TypeError, ConfigurationError) as exc:
             return self._error("BATCH_DEFAULTS_INVALID", str(exc), 400)
