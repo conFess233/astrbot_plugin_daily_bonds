@@ -1504,7 +1504,7 @@ function revealField(path) {
     if (path.startsWith("commands.keywords.")) showReplySection("keywords");
     else {
       showReplySection("templates");
-      selectTemplate(path.replace(/^reply_(?:quote|enabled|variants)\./, "messages."));
+      selectTemplate(path.replace(REPLY_PATH, "messages."));
       // 定位文案时回到第 1 条（错误提示显示在那里），定位其余回复时切到第 2 条。
       showVariant(isVariantPath(path) ? 1 : 0);
     }
