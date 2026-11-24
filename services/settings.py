@@ -201,6 +201,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "display.page_size": (1, 100),
         "display.rank_merge_rows": (1, 100),
         "members.cache_ttl_seconds": (0, 86400),
+        "weights.log_full_points": (1, 1000000),
         "history.retention_days": (1, 3650),
     }
     for path, (minimum, maximum) in ranges.items():
@@ -213,6 +214,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
     ):
         _finite_number(config, path)
     weights = config["weights"]
+    if weights["curve"] not in {"log", "linear"}:
+        raise ConfigurationError("weights.curve 必须是 log 或 linear")
     if not 0 < weights["base"] <= weights["maximum"] <= 1_000_000:
         raise ConfigurationError("weights 必须满足 0 < base <= maximum <= 1000000")
     if not 0 <= weights["per_intimacy_point"] <= 1_000_000:

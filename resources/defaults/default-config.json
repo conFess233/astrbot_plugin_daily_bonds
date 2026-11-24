@@ -195,6 +195,8 @@
     "base": 1.0,
     "per_intimacy_point": 0.01,
     "maximum": 5.0,
+    "curve": "log",
+    "log_full_points": 2000,
     "activity_floor": 0.2
   },
   "display": {

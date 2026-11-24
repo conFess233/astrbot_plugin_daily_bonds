@@ -59,6 +59,8 @@ function fieldConditions(path) {
   }
   // AI 好感度评估关闭时，其余评估参数收起。
   if (path.startsWith("sentiment.") && path !== "sentiment.enabled") return [["sentiment.enabled", () => value("sentiment.enabled") !== false, "AI 好感度评估未开启"]];
+  if (path === "weights.per_intimacy_point") return [["weights.curve", () => value("weights.curve") === "linear", "对数曲线下不使用"]];
+  if (path === "weights.log_full_points") return [["weights.curve", () => value("weights.curve") === "log", "线性曲线下不使用"]];
   return simple ? [[simple[0], () => simple[1](value(simple[0])), ""]] : [];
 }
 
@@ -402,6 +404,7 @@ const CONFIG_LABELS = {
   activity_window_days: "活跃度窗口（天）", base: "基础权重",
   intimacy_decay_percent: "亲密度每日衰减（%）", intimacy_decay_idle_days: "无互动多少天后开始衰减",
   per_intimacy_point: "每点亲密度增加权重", maximum: "最大权重",
+  curve: "亲密度权重曲线", log_full_points: "达到最大权重的亲密度",
   activity_floor: "零活跃天数权重系数",
   pagination_enabled: "启用分页", page_size: "每页条数",
   intimacy_rank_enabled: "显示亲密度排行",
