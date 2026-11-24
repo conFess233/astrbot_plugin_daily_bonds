@@ -175,7 +175,8 @@
       "force_limit": 1,
       "force_probability": 0.2,
       "force_intimacy_bonus": 0.001,
-      "force_probability_max": 0.8
+      "force_probability_max": 0.8,
+      "force_pity_step": 0.05
     }
   },
   "statistics": {

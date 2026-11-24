@@ -392,7 +392,7 @@ const CONFIG_LABELS = {
   types: "按类型设置", draw: "抽取结果", status: "我的姻缘", help: "姻缘帮助", list: "关系列表",
   rank: "排行", affection: "亲密度查询", collection: "我的图鉴",
   steal_attempt_limit: "抢夺尝试次数上限", steal_cooldown_seconds: "抢夺冷却（秒）",
-  force_limit: "每周期强娶次数", force_probability: "强娶成功率（%）", force_intimacy_bonus: "每点亲密度增加成功率", force_probability_max: "亲密度加成后的成功率上限",
+  force_limit: "每周期强娶次数", force_probability: "强娶成功率（%）", force_intimacy_bonus: "每点亲密度增加成功率", force_probability_max: "亲密度加成后的成功率上限", force_pity_step: "失败保底每次增加成功率（%）",
   force_member: "强娶", character_info: "角色信息", group_stats: "本群统计",
   steal_probability: "抢夺成功率（%）", stolen_limit: "被抢次数上限",
   gift_enabled: "允许赠送", gift_mode: "赠送方式", gift_timeout_seconds: "赠送确认超时（秒）",
@@ -970,7 +970,7 @@ const MODE_NAMES = { wife: "今日老婆", husband: "今日老公", member: "娶
 const COMMON_MODE_KEYS = ["capacity", "steal_enabled", "steal_probability", "steal_attempt_limit"];
 
 // 统一数值时不跟随的字段：玩法开关与角色池各玩法独立。
-const PER_MODE_KEYS = new Set(["enabled", "pool_ids", "force_limit", "force_probability", "force_intimacy_bonus", "force_probability_max"]);
+const PER_MODE_KEYS = new Set(["enabled", "pool_ids", "force_limit", "force_probability", "force_intimacy_bonus", "force_probability_max", "force_pity_step"]);
 
 const MODE_ROWS = {
   enabled: ["玩法启用", "控制该玩法是否可用"],
@@ -1143,7 +1143,10 @@ export function renderRulePreview() {
     const designated = value(`modes.${mode}.designated_limit`);
     if (designated !== undefined) parts.push(Number(designated) ? `可指定 ${designated} 次` : "不可指定");
     const forceLimit = value(`modes.${mode}.force_limit`);
-    if (forceLimit !== undefined) parts.push(Number(forceLimit) ? `可强娶 ${forceLimit} 次，基础成功率 ${value(`modes.${mode}.force_probability`)}%` : "不可强娶");
+    if (forceLimit !== undefined) {
+      const pityStep = value(`modes.${mode}.force_pity_step`);
+      parts.push(Number(forceLimit) ? `可强娶 ${forceLimit} 次，基础成功率 ${value(`modes.${mode}.force_probability`)}%${Number(pityStep) ? `，连续失败每次 +${pityStep}%` : ""}` : "不可强娶");
+    }
     if (value(`modes.${mode}.steal_enabled`)) {
       const attempts = Number(value(`modes.${mode}.steal_attempt_limit`));
       parts.push(`${attempts ? `抢夺 ${attempts} 次` : "抢夺不限次数"}，成功率 ${value(`modes.${mode}.steal_probability`)}%`);

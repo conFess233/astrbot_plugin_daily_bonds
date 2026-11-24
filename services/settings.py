@@ -264,6 +264,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
                 "force_probability",
                 "force_intimacy_bonus",
                 "force_probability_max",
+                "force_pity_step",
             ):
                 _finite_number(config, f"modes.member.{field}")
                 if not 0 <= current[field] <= 1:

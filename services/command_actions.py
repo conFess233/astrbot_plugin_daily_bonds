@@ -182,10 +182,32 @@ class ActionHandler:
             if problem:
                 return render_message(config, "errors", problem)
             set_message_values(subject_name=names.get(target_id, "群友"))
-            probability = await self._steal_probability(
+            base_probability = await self._steal_probability(
                 values["scope_id"], actor_id, target_id, mode_config, "force"
             )
+            step = float(mode_config["force_pity_step"])
+            failures = (
+                await asyncio.to_thread(
+                    self.status.force_failures,
+                    scope_id=values["scope_id"],
+                    actor_id=actor_id,
+                    target_id=target_id,
+                )
+                if step > 0
+                else 0
+            )
+            probability = rules.force_pity_probability(
+                base_probability,
+                failures,
+                step,
+                float(mode_config["force_probability_max"]),
+            )
+            bonus = probability - base_probability
+            set_message_values(
+                pity_bonus=f"+{round(bonus * 100)}%" if bonus > 0 else ""
+            )
             # 对方已被别人娶走时转为争夺：成功率减去持有者按同一公式算出的成功率。
+            # 失败保底只加在发起者一方。
             holder_id = await asyncio.to_thread(
                 self._member_holder, values["scope_id"], values["period_id"], target_id
             )
@@ -207,6 +229,7 @@ class ActionHandler:
                 limit=mode_config["force_limit"],
                 probability=probability,
                 holder_probabilities=holder_probabilities,
+                pity_failures=failures,
                 event_key=values["event_key"],
                 payload_hash=values["payload_hash"],
                 config_revision=values["revision"],

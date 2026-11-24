@@ -200,6 +200,24 @@ class StatusService:
             ).fetchone()
         return int(row[0]) if row else 0
 
+    def force_failures(self, *, scope_id: int, actor_id: str, target_id: str) -> int:
+        """统计发起者对同一目标自上次强娶成功以来的连续失败次数。"""
+
+        with self.storage.read() as db:
+            row = db.execute(
+                """SELECT COUNT(*) FROM operation_log
+                   WHERE scope_id=? AND kind='force' AND actor_id=? AND result_code='FORCE_FAILED'
+                     AND json_extract(data_json,'$.candidate.subject_id')=?
+                     AND created_at > COALESCE(
+                         (SELECT MAX(created_at) FROM operation_log
+                          WHERE scope_id=? AND kind='force' AND actor_id=? AND result_code='FORCED'
+                            AND json_extract(data_json,'$.candidate.subject_id')=?),
+                         0
+                     )""",
+                (scope_id, actor_id, target_id, scope_id, actor_id, target_id),
+            ).fetchone()
+        return int(row[0]) if row else 0
+
     def character_candidates(self, config: Mapping[str, Any]) -> list[Candidate]:
         """本群启用的角色池里所有未删除的角色，停用的也能查询。"""
 

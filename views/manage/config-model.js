@@ -1,6 +1,6 @@
 // 管理页按百分比显示、配置里存 0～1 的字段。
 export function isPercentPath(path) {
-  return path.endsWith(".steal_probability") || path.endsWith(".force_probability");
+  return path.endsWith(".steal_probability") || path.endsWith(".force_probability") || path.endsWith(".force_pity_step");
 }
 
 // 回复模板相关的叶子路径：文案、启用、引用与同一条回复的其余预设。

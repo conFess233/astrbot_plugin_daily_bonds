@@ -67,6 +67,7 @@ FIELD_DESCRIPTIONS = {
     "active_days": "统计窗口内有发言的天数",
     "forward_score": "发起者对目标群员的亲密度",
     "reverse_score": "目标群员对发起者的亲密度",
+    "pity_bonus": "本次强娶的失败保底加成，如“+15%”，没有加成时为空",
 }
 # 合并后的条目使用的变量在缺少值时的兜底。
 _VARIABLE_DEFAULTS = {
@@ -77,6 +78,7 @@ _VARIABLE_DEFAULTS = {
     "reason": "这个指令不能对 ta 使用",
     "candidates": "",
     "name": "",
+    "pity_bonus": "",
 }
 
 MESSAGE_CONTEXT: ContextVar[Mapping[str, Any]] = ContextVar(
@@ -125,6 +127,8 @@ EXTRA_FIELDS = {
     "rank_group_intimacy": {"group_name", "群名"},
     "query_affection": {"name", "target_name", "forward_score", "reverse_score"},
     "group_stats": {"group_name", "群名", "days"},
+    "force_success": {"pity_bonus"},
+    "force_failed": {"pity_bonus"},
 }
 _REQUIRED = {
     "messages.results.draw_character": {"name"},

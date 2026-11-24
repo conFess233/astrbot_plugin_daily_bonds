@@ -228,6 +228,7 @@ export const CONFIG_HINTS = {
   "modes.member.force_probability": "单次强娶的基础成功率。",
   "modes.member.force_intimacy_bonus": "0～1；成功率 = 基础成功率 + 你对对方的亲密度 × 此值。默认 0.001，即 100 点亲密度加 10%。0 关闭加成。",
   "modes.member.force_probability_max": "0～1；只限制加成后的成功率，基础成功率更高时以基础成功率为准。",
+  "modes.member.force_pity_step": "对同一个人每连续强娶失败一次，下次成功率增加此值；成功娶到后清零，跨天累计（受历史保留天数限制）。加成后不超过「亲密度加成后的成功率上限」。0 关闭。文案可用 {pity_bonus} 显示本次加成。",
   "statistics.intimacy_decay_percent": "0～100；0 关闭。每天一次按比例扣减（向下取整，每次至少减 1 分），减到 0 的记录删除。影响排行、抢夺加成和娶群友权重。",
   "statistics.intimacy_decay_idle_days": "0～365；只衰减这么多天内没有新互动（@ 或戳一戳）的记录，0 表示全部衰减。",
   "weights.base": "娶群友时每位候选人的权重 = 按「亲密度权重曲线」由你对对方的亲密度算出的值（在基础权重与最大权重之间）× 活跃系数；亲密度为 0 时等于此值。",
