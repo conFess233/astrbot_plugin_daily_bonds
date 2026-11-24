@@ -7,7 +7,7 @@
 <p align="center">不止有老公/老婆，还有香香软软的群友😋</p>
 
 <p align="center">
-  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.0-blue" alt="版本 0.4.0"></a>
+  <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.5.0-blue" alt="版本 0.5.0"></a>
   <a href="./metadata.yaml"><img src="https://img.shields.io/badge/AstrBot-%3E%3D4.29.0-blue" alt="AstrBot 4.29.0 及以上"></a>
   <a href="#limits"><img src="https://img.shields.io/badge/adapter-aiocqhttp-blue" alt="aiocqhttp 适配器"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green" alt="AGPL-3.0 许可证"></a>
@@ -92,6 +92,7 @@ python -m pip install -r requirements.txt
 | `亲密度排行`                                              | 全群亲密度：同一对群友的双向记录合并为一行，按双向总分展示前 50 对，触发者所在的组合高亮。                                                                                        |
 | `我的亲密度排行 [页码]`                                   | 你对群友的亲密度，从高到低分页列出。                                                                                                                                              |
 | `活跃度排行 [页码]`                                       | 统计窗口内的消息数和活跃天数。                                                                                                                                                    |
+| `被强娶排行 [页码]`（`强娶排行`）                         | 历史保留天数内每位群友被强娶的次数和其中成功的次数，按被强娶次数排序。                                                                                                            |
 | `查询好感度 @用户`                                        | 查询你与对方两个方向的累计亲密度。                                                                                                                                                |
 | `/设置老婆 <角色名、别名或#ID>`                           | 仅 Bot 管理员或配置的额外管理员可用，直接为自己设置今日老婆，匹配规则与指定角色相同。不消耗次数、可超过持有上限；这段关系不受保护，可以被抢、赠送和离婚，来源显示「管理员设置」。 |
 
@@ -122,6 +123,7 @@ python -m pip install -r requirements.txt
 - **指定**：默认每周期 1 次，`0` 表示关闭。默认要求角色独占，关闭后允许多人共享同一角色。
 - **抢夺**：默认成功率 30%，每周期 3 次，冷却 60 秒，每人每周期最多被抢走 1 次。可开启亲密度加成。
 - **强娶**：只有娶群友玩法有。默认基础成功率 20%，亲密度越高越容易成功。不占普通抽取次数，要有空余持有名额；得到的关系本周期受保护，来源显示「强娶」。对方已被人娶走时转为争夺：不论那段关系怎么来的（包括被强娶、受保护的）都可以抢，成功率 = 你的强娶成功率 − 持有者按同一公式算出的强娶成功率，最低 5%；消耗 1 次强娶次数，成功后关系算强娶来的，原持有者返还一次抽取。`抢群友` 指令仍受保护规则限制。
+- **强娶失败保底**：对同一个人每连续强娶失败一次，下次成功率加 5%（`force_pity_step`），成功娶到后清零；跨天累计，只统计历史保留天数内的记录，加成后同样不超过上限 80%。争夺时只加在发起者一方。文案可用 `{pity_bonus}` 显示本次加成。
 - **娶群友**：候选人须是当前在群、未被占用、且在活跃度窗口内活跃过或与群友有亲密度记录的成员；关闭活跃度统计后不再要求候选人近期活跃。你对对方的亲密度越高、对方越活跃，越容易抽中。
 - **双向奔赴**：你娶到的群友也娶了你时，会收到专属回复；抢夺或赠送促成时也会提示，`我的姻缘` 和群友列表会标记。
 
@@ -141,22 +143,25 @@ python -m pip install -r requirements.txt
 成功率 = 基础成功率 + 你对持有者的亲密度 × 加成系数
 ```
 
-**强娶成功率**（默认每点亲密度加 0.1%，加成后最高 80%）：
+**强娶成功率**（默认每点亲密度加 0.1%，连续失败每次加 5%，加成后最高 80%）：
 
 ```text
-成功率 = 基础成功率 + 你对对方的亲密度 × 加成
+成功率 = 基础成功率 + 你对对方的亲密度 × 加成 + 对 ta 的连续失败次数 × 保底加成
 ```
 
 **娶群友权重**：
 
 ```text
-权重 = min(最大权重, 基础权重 + 你对对方的亲密度 × 每点亲密度增加权重) × 活跃系数
+权重 = 亲密度权重 × 活跃系数
+亲密度权重（对数，默认）= 基础权重 + (最大权重 − 基础权重) × min(1, ln(1 + 亲密度) ÷ ln(1 + 达到最大权重的亲密度))
+亲密度权重（线性）= min(最大权重, 基础权重 + 亲密度 × 每点亲密度增加权重)
 活跃系数 = 零活跃天数系数 + (1 − 零活跃天数系数) × 对方在窗口内的活跃天数 ÷ 窗口天数
 ```
 
 - 亲密度只看你对对方这一方向。
 - 活跃天数按自然日计，发言或主动戳一戳都算，窗口内每天都活跃时系数为 1。
-- 默认值下，亲密度 400 及以上达到最大权重 5，从未活跃的成员权重乘以 0.2。
+- 默认使用对数曲线：亲密度 0、100、400、1000、2000 对应权重 1、3.43、4.15、4.64、5，低分段涨得快、高分段仍有区分；改为线性时亲密度 400 及以上就达到最大权重 5。
+- 从未活跃的成员权重乘以 0.2。
 
 **亲密度衰减**：扣减时向下取整，每次至少减 1 分，减到 0 的记录删除。插件停机多日后，下次清理时按经过的天数一次补齐。
 
@@ -231,6 +236,7 @@ python -m pip install -r requirements.txt
 | `modes.member.force_limit`                                        | `1`                                  | 每周期强娶次数，范围 `0～100`，`0` 关闭强娶。                                                    |
 | `modes.member.force_probability`                                  | `0.2`                                | 强娶基础成功率，管理页按百分比显示。                                                             |
 | `modes.member.force_intimacy_bonus` / `force_probability_max`     | `0.001` / `0.8`                      | 每点亲密度增加的成功率，以及加成后的上限；`0` 关闭加成。                                         |
+| `modes.member.force_pity_step`                                    | `0.05`                               | 对同一个人每连续强娶失败一次增加的成功率，成功后清零；`0` 关闭。                                 |
 | `modes.<玩法>.gift_mode`                                          | `direct`                             | `direct` 直接赠送；`confirm` 需要接收者确认。                                                    |
 | `reset.timezone` / `reset.time`                                   | `Asia/Shanghai` / `00:00`            | 周期的时区和重置时间。                                                                           |
 | `commands.cooldown_seconds`                                       | `3`                                  | 通用指令冷却，`0` 关闭。                                                                         |
@@ -240,6 +246,7 @@ python -m pip install -r requirements.txt
 | `statistics.intimacy_decay_percent`                               | `0`                                  | 亲密度每日衰减百分比，范围 `0～100`，`0` 关闭。                                                  |
 | `statistics.intimacy_decay_idle_days`                             | `7`                                  | 多少天没有新互动的亲密度才衰减，`0` 表示全部衰减。                                               |
 | `statistics.reply_active_points` / `reply_passive_points`         | `2` / `1`                            | 回复别人、被回复各加的亲密度，`0` 关闭回复计分。                                                 |
+| `weights.curve` / `weights.log_full_points`                       | `log` / `2000`                       | 娶群友亲密度权重曲线：`log` 对数或 `linear` 线性；对数曲线下达到最大权重的亲密度。               |
 | `llm.provider_mode` / `llm.provider_ids`                          | `follow` / `[]`                      | AI 功能的模型：跟随会话，或指定最多 5 个模型按顺序回退。                                         |
 | `llm.total_timeout_seconds` / `llm.call_timeout_seconds`          | `8` / `5`                            | 每条回复最多等待时间与单个模型超时（仅全局）。                                                   |
 | `llm.group_calls_per_minute`                                      | `10`                                 | 每群每分钟模型调用上限，AI 文案与好感度评估合计。                                                |
@@ -252,6 +259,7 @@ python -m pip install -r requirements.txt
 | `sentiment.extra_prompt`                                          | `""`                                 | 本群语境说明，最多 1000 字，附加在评估提示词中。                                                 |
 | `sentiment.batch_max_messages` / `sentiment.call_timeout_seconds` | `20` / `45`                          | 积累多少条立即评估；每批等待单个模型的秒数（均仅全局）。                                         |
 | `display.page_size` / `display.rank_merge_rows`                   | `10` / `50`                          | 列表每页条数；每张卡片最多行数（排行最多 50 行，5 列）。                                         |
+| `display.force_rank_enabled`                                      | `true`                               | 是否开放 `被强娶排行`。                                                                          |
 | `history.retention_days`                                          | `30`                                 | 历史保留天数，也决定连续天数的上限。                                                             |
 
 `<玩法>` 为 `wife`、`husband` 或 `member`。完整字段与默认值见 [默认配置](./resources/defaults/default-config.json)，管理页对每个字段给出范围说明。

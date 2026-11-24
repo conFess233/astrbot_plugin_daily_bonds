@@ -719,6 +719,7 @@ class GameplayService(GiftMixin):
         limit: int,
         probability: float,
         holder_probabilities: Mapping[str, float] | None = None,
+        pity_failures: int = 0,
         event_key: str | None = None,
         payload_hash: str = "",
         config_revision: str = "",
@@ -729,6 +730,7 @@ class GameplayService(GiftMixin):
         对方已被人娶走时转为争夺：用 holder_probabilities 中该持有者对应的
         成功率，无视对方关系的保护，成功后从持有者手里抢走（持有者返还一次
         抽取）。强娶得到的关系同抢来的一样本周期受保护，只能再被强娶抢走。
+        pity_failures 记录本次计算成功率时已累计的连续失败保底次数。
         """
 
         operation_id = str(uuid.uuid4())
@@ -806,6 +808,7 @@ class GameplayService(GiftMixin):
                     {
                         "candidate": _candidate_dict(picked),
                         "probability": probability,
+                        "pity_failures": pity_failures,
                         **({"owner_id": holder_id} if contested else {}),
                     },
                 )
@@ -832,6 +835,7 @@ class GameplayService(GiftMixin):
                         "candidate": _candidate_dict(picked),
                         "owner_id": holder_id,
                         "probability": probability,
+                        "pity_failures": pity_failures,
                     },
                 )
             relationship_id = self.storage.create_relationship(
@@ -855,6 +859,7 @@ class GameplayService(GiftMixin):
                 {
                     "relationship_id": relationship_id,
                     "candidate": _candidate_dict(picked),
+                    "pity_failures": pity_failures,
                 },
             )
 

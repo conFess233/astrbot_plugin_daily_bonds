@@ -7,6 +7,7 @@ LLM 文案与好感度评估共用这一层。请求独立于主聊天：不带�
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
@@ -16,6 +17,37 @@ from astrbot.api import logger
 
 T = TypeVar("T")
 _WINDOW_SECONDS = 60.0
+# 调用失败的模型暂时排到最后：连续失败按 60、120、240… 秒递增，最长 10 分钟；
+# 配额或限流错误（429）至少 5 分钟，避免每次都先等它重试、超时再换下一个。
+_FAILURE_BASE_SECONDS = 60.0
+_FAILURE_MAX_SECONDS = 600.0
+_RATE_LIMIT_SECONDS = 300.0
+_RATE_LIMIT_PATTERN = re.compile(
+    r"429|RESOURCE_EXHAUSTED|rate.?limit|quota|too many requests", re.IGNORECASE
+)
+# 错误详情写日志前去掉可能出现的密钥，并截断长度。
+_SECRET_PATTERN = re.compile(
+    r"((?:api[_-]?)?key=|bearer\s+|authorization:\s*)[^\s&'\",]+|sk-[A-Za-z0-9_-]{8,}",
+    re.IGNORECASE,
+)
+_DETAIL_MAX_CHARS = 160
+
+
+def _redacted(value: object) -> str:
+    """压成一行、去掉可能出现的密钥并截断，用于把错误说明写进日志。"""
+
+    text = " ".join(str(value).split())
+    text = _SECRET_PATTERN.sub(lambda match: (match.group(1) or "") + "***", text)
+    if len(text) > _DETAIL_MAX_CHARS:
+        text = text[: _DETAIL_MAX_CHARS - 1] + "…"
+    return text
+
+
+def _error_detail(exc: BaseException) -> str:
+    """异常类型加脱敏后的说明，便于从日志判断是限流、鉴权还是服务端错误。"""
+
+    text = _redacted(exc)
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
 
 
 class LLMService:
@@ -33,12 +65,15 @@ class LLMService:
         # 后台评估单独一个名额排队，不占聊天回复的并发。
         self._background = asyncio.Semaphore(1)
         self._closed = False
+        # provider → (连续失败次数, 冷却截止时间)；成功一次即清除。
+        self._failures: dict[str, tuple[int, float]] = {}
 
     def close(self) -> None:
         """停用时拒绝新调用并清空计数；在途调用由调用方取消。"""
 
         self._closed = True
         self._calls.clear()
+        self._failures.clear()
 
     def has_quota(self, scope_id: int, per_minute: int) -> bool:
         """本群当前是否还有调用额度（不占用）。"""
@@ -77,6 +112,32 @@ class LLMService:
 
     def tracked_scopes(self) -> int:
         return len(self._calls)
+
+    def _ordered(self, providers: list[str]) -> list[str]:
+        """冷却中的模型排到最后，仍保留尝试机会：全部冷却时照原顺序依次尝试。"""
+
+        now = self._clock()
+        cooling = {
+            provider
+            for provider in providers
+            if (state := self._failures.get(provider)) is not None and state[1] > now
+        }
+        if not cooling:
+            return providers
+        return [item for item in providers if item not in cooling] + [
+            item for item in providers if item in cooling
+        ]
+
+    def _record_failure(self, provider_id: str, *, rate_limited: bool) -> float:
+        count = self._failures.get(provider_id, (0, 0.0))[0] + 1
+        seconds = min(_FAILURE_MAX_SECONDS, _FAILURE_BASE_SECONDS * 2 ** (count - 1))
+        if rate_limited:
+            seconds = max(seconds, _RATE_LIMIT_SECONDS)
+        self._failures[provider_id] = (count, self._clock() + seconds)
+        return seconds
+
+    def _record_success(self, provider_id: str) -> None:
+        self._failures.pop(provider_id, None)
 
     def _limiter(self, size: int) -> asyncio.Semaphore:
         # 配置改变并发数时换新信号量；旧信号量上的在途调用照常结束。
@@ -122,7 +183,7 @@ class LLMService:
                 return None
             loop = asyncio.get_running_loop()
             started_at = loop.time()
-            providers = await self._provider_ids(umo, settings)
+            providers = self._ordered(await self._provider_ids(umo, settings))
             if timeout_seconds is None:
                 per_call = float(settings["call_timeout_seconds"])
                 deadline = started_at + float(settings["total_timeout_seconds"])
@@ -153,22 +214,42 @@ class LLMService:
                         timeout=min(per_call, remaining),
                     )
                 except TimeoutError:
+                    cooldown = self._record_failure(provider_id, rate_limited=False)
                     logger.warning(
-                        "今日姻缘：模型 %s 调用超时（%.0f 秒），尝试下一个。",
+                        "今日姻缘：模型 %s 调用超时（%.0f 秒），%.0f 秒内排到最后，尝试下一个。",
                         provider_id,
                         loop.time() - started,
+                        cooldown,
                     )
                     continue
                 except Exception as exc:  # noqa: BLE001 - provider 边界：换下一个
-                    logger.warning(
-                        "今日姻缘：模型 %s 调用失败，原因=%s。",
+                    detail = _error_detail(exc)
+                    cooldown = self._record_failure(
                         provider_id,
-                        type(exc).__name__,
+                        rate_limited=bool(_RATE_LIMIT_PATTERN.search(detail)),
+                    )
+                    logger.warning(
+                        "今日姻缘：模型 %s 调用失败，原因=%s；%.0f 秒内排到最后。",
+                        provider_id,
+                        detail,
+                        cooldown,
                     )
                     continue
                 if getattr(response, "role", "assistant") == "err":
-                    logger.warning("今日姻缘：模型 %s 返回错误。", provider_id)
+                    detail = _redacted(getattr(response, "completion_text", "") or "")
+                    cooldown = self._record_failure(
+                        provider_id,
+                        rate_limited=bool(_RATE_LIMIT_PATTERN.search(detail)),
+                    )
+                    logger.warning(
+                        "今日姻缘：模型 %s 返回错误（%s），%.0f 秒内排到最后。",
+                        provider_id,
+                        detail or "无详情",
+                        cooldown,
+                    )
                     continue
+                # 能正常返回就说明模型可用，输出不合格不算调用失败。
+                self._record_success(provider_id)
                 result = accept(str(getattr(response, "completion_text", "") or ""))
                 if result is None:
                     logger.warning(

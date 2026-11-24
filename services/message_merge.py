@@ -44,6 +44,7 @@ MERGES: dict[str, list[tuple[str, dict[str, str]]]] = {
         ("results.mode_disabled", {"feature": "赠送"}),
         ("errors.rank_intimacy_disabled", {"feature": "亲密度排行"}),
         ("errors.rank_activity_disabled", {"feature": "活跃度排行"}),
+        ("errors.rank_force_disabled", {"feature": "被强娶排行"}),
     ],
     "results.quota_used_up": [
         ("results.force_limit", {"action": "强娶"}),

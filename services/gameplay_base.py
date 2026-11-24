@@ -126,7 +126,7 @@ class GameplayBase:
         owner_id: str,
         intimacy: dict[str, int],
         activity: dict[str, int],
-        weights: dict[str, float],
+        weights: dict[str, Any],
         activity_window_days: int,
     ) -> Candidate:
         if mode != "member" or len(candidates) == 1:
@@ -135,19 +135,30 @@ class GameplayBase:
         per_intimacy = float(weights.get("per_intimacy_point", 0.01))
         maximum = float(weights.get("maximum", 5.0))
         floor = float(weights.get("activity_floor", 0.2))
+        curve = weights.get("curve", "linear")
         target = [candidate.subject_id for candidate in candidates]
         intimacy_points = [max(0, int(intimacy.get(user_id, 0))) for user_id in target]
         activity_counts = [max(0, int(activity.get(user_id, 0))) for user_id in target]
-        baseline = [
-            min(
-                maximum,
+        if curve == "log":
+            full_points = max(1, int(weights.get("log_full_points", 2000)))
+            baseline = [
                 base
-                + min(max(0.0, (maximum - base) / per_intimacy), points) * per_intimacy,
-            )
-            if per_intimacy
-            else base
-            for points in intimacy_points
-        ]
+                + (maximum - base)
+                * min(1.0, math.log1p(points) / math.log1p(full_points))
+                for points in intimacy_points
+            ]
+        else:
+            baseline = [
+                min(
+                    maximum,
+                    base
+                    + min(max(0.0, (maximum - base) / per_intimacy), points)
+                    * per_intimacy,
+                )
+                if per_intimacy
+                else base
+                for points in intimacy_points
+            ]
         activity_factor = [
             floor + (1.0 - floor) * min(count / max(1, activity_window_days), 1.0)
             for count in activity_counts

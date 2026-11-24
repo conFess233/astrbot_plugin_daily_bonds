@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .avatar_cache import _prune_files
+from .backup_archive import prune_backups
 from .storage import SQLiteStorage
 
 # 分批删除每批的行数：单批足够快，不会长时间占用写锁。
@@ -180,6 +181,11 @@ class RetentionService:
         deleted["avatar_cache"] = _prune_files(
             self.data_root / "avatars",
             int(global_config["resources"]["avatar_cache_max_entries"]),
+        )
+        # 升级前自动备份的数据库不经过手动备份流程，每日在这里按保留份数清理。
+        deleted["backups"] = prune_backups(
+            self.data_root / "backups",
+            int(global_config["resources"]["backup_keep_count"]),
         )
         self.storage.optimize()
         return deleted

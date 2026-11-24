@@ -59,6 +59,8 @@ function fieldConditions(path) {
   }
   // AI 好感度评估关闭时，其余评估参数收起。
   if (path.startsWith("sentiment.") && path !== "sentiment.enabled") return [["sentiment.enabled", () => value("sentiment.enabled") !== false, "AI 好感度评估未开启"]];
+  if (path === "weights.per_intimacy_point") return [["weights.curve", () => value("weights.curve") === "linear", "对数曲线下不使用"]];
+  if (path === "weights.log_full_points") return [["weights.curve", () => value("weights.curve") === "log", "线性曲线下不使用"]];
   return simple ? [[simple[0], () => simple[1](value(simple[0])), ""]] : [];
 }
 
@@ -348,7 +350,7 @@ const MESSAGE_LABELS = {
   divorce_disabled: "解除关系关闭", divorce_relation_missing: "解除关系未找到",
   invite_multiple: "有多条待处理邀请", invite_none: "没有待处理邀请",
   invite_invalid_id: "邀请编号无效", rank_intimacy_disabled: "亲密度排行关闭",
-  rank_activity_disabled: "活跃度排行关闭", activity_disabled: "活跃度统计关闭",
+  rank_activity_disabled: "活跃度排行关闭", rank_force_disabled: "被强娶排行关闭", activity_disabled: "活跃度统计关闭",
   page_out_of_range: "页码超出范围", list_empty: "关系列表为空",
   admin_set_wife: "管理员设置老婆成功", already_held: "管理员已持有角色",
   admin_set_denied: "设置老婆权限不足", admin_set_missing: "设置老婆未找到角色",
@@ -361,7 +363,7 @@ const MESSAGE_LABELS = {
   designated_occupied: "指定角色已被持有", designated_missing: "未找到指定角色",
   designated_ambiguous: "指定角色有多个匹配", affection_target_required: "亲密度查询目标无效",
   list_wife: "老婆列表回复", list_husband: "老公列表回复", list_member: "群友列表回复",
-  rank_intimacy: "全群亲密度排行回复", rank_my_intimacy: "我的亲密度排行回复", rank_activity: "活跃度排行回复", query_affection: "亲密度查询回复",
+  rank_intimacy: "全群亲密度排行回复", rank_my_intimacy: "我的亲密度排行回复", rank_activity: "活跃度排行回复", rank_force: "被强娶排行回复", query_affection: "亲密度查询回复",
   member_reconcile: "成员资格变化通知", member_removed: "群友离开说明", invite_relationship_changed: "关系变动导致邀请失效",
   owner_ineligible: "持有人失去资格说明", participant_ineligible: "赠送参与者失去资格说明",
 };
@@ -369,9 +371,9 @@ const MESSAGE_LABELS = {
 const TITLE_LABELS = {
   list_wife: "老婆列表标题", list_husband: "老公列表标题", list_member: "群友列表标题",
   existing: "已有关系标题", rank_intimacy: "我的亲密度排行标题",
-  rank_group_intimacy: "全群亲密度排行标题", rank_activity: "活跃度排行标题",
+  rank_group_intimacy: "全群亲密度排行标题", rank_activity: "活跃度排行标题", rank_force: "被强娶排行标题",
   query_affection: "亲密度查询标题", page: "分页标题", empty: "空榜文案",
-  rank_summary: "排行摘要", intimacy_value: "亲密度数值标签", activity_value: "活跃度数值标签",
+  rank_summary: "排行摘要", intimacy_value: "亲密度数值标签", activity_value: "活跃度数值标签", force_value: "被强娶次数",
   affection_value: "有向亲密度标签", normal_slot: "抽取来源标签", gift_slot: "赠送来源标签", steal_slot: "抢夺来源标签", admin_slot: "管理员设置来源标签", force_slot: "强娶来源标签", mutual: "双向奔赴标签",
   designated_slot: "指定槽位标签", wife: "老婆玩法名称", husband: "老公玩法名称", member: "群友玩法名称",
 };
@@ -390,7 +392,7 @@ const CONFIG_LABELS = {
   types: "按类型设置", draw: "抽取结果", status: "我的姻缘", help: "姻缘帮助", list: "关系列表",
   rank: "排行", affection: "亲密度查询", collection: "我的图鉴",
   steal_attempt_limit: "抢夺尝试次数上限", steal_cooldown_seconds: "抢夺冷却（秒）",
-  force_limit: "每周期强娶次数", force_probability: "强娶成功率（%）", force_intimacy_bonus: "每点亲密度增加成功率", force_probability_max: "亲密度加成后的成功率上限",
+  force_limit: "每周期强娶次数", force_probability: "强娶成功率（%）", force_intimacy_bonus: "每点亲密度增加成功率", force_probability_max: "亲密度加成后的成功率上限", force_pity_step: "失败保底每次增加成功率（%）",
   force_member: "强娶", character_info: "角色信息", group_stats: "本群统计",
   steal_probability: "抢夺成功率（%）", stolen_limit: "被抢次数上限",
   gift_enabled: "允许赠送", gift_mode: "赠送方式", gift_timeout_seconds: "赠送确认超时（秒）",
@@ -402,10 +404,11 @@ const CONFIG_LABELS = {
   activity_window_days: "活跃度窗口（天）", base: "基础权重",
   intimacy_decay_percent: "亲密度每日衰减（%）", intimacy_decay_idle_days: "无互动多少天后开始衰减",
   per_intimacy_point: "每点亲密度增加权重", maximum: "最大权重",
+  curve: "亲密度权重曲线", log_full_points: "达到最大权重的亲密度",
   activity_floor: "零活跃天数权重系数",
   pagination_enabled: "启用分页", page_size: "每页条数",
   intimacy_rank_enabled: "显示亲密度排行",
-  activity_rank_enabled: "显示活跃度排行", cache_ttl_seconds: "缓存时间（秒）",
+  activity_rank_enabled: "显示活跃度排行", force_rank_enabled: "开启被强娶排行", cache_ttl_seconds: "缓存时间（秒）",
   retention_days: "历史保留天数", http_timeout_seconds: "HTTP 超时（秒）",
   image_max_bytes: "单图大小上限（字节）", image_max_pixels: "单图像素上限",
   import_max_bytes: "导入包大小上限（字节）", import_max_entries: "导入条目上限",
@@ -420,7 +423,7 @@ const CONFIG_LABELS = {
   gift_wife: "送老婆", gift_husband: "送老公", gift_member: "送群友",
   divorce_character: "离婚", divorce_wife: "离婚老婆", divorce_husband: "离婚老公",
   divorce_member: "踹群友", list_characters: "老婆列表", list_husband: "老公列表", list_members: "群友列表",
-  rank_intimacy: "亲密度排行（全群）", rank_my_intimacy: "我的亲密度排行", rank_activity: "活跃度排行",
+  rank_intimacy: "亲密度排行（全群）", rank_my_intimacy: "我的亲密度排行", rank_activity: "活跃度排行", rank_force: "被强娶排行",
   gift_accept: "接受赠送", gift_reject: "拒绝赠送", gift_cancel: "取消赠送", query_affection: "亲密度查询",
   my_status: "我的姻缘", my_collection: "我的图鉴",
 };
@@ -967,7 +970,7 @@ const MODE_NAMES = { wife: "今日老婆", husband: "今日老公", member: "娶
 const COMMON_MODE_KEYS = ["capacity", "steal_enabled", "steal_probability", "steal_attempt_limit"];
 
 // 统一数值时不跟随的字段：玩法开关与角色池各玩法独立。
-const PER_MODE_KEYS = new Set(["enabled", "pool_ids", "force_limit", "force_probability", "force_intimacy_bonus", "force_probability_max"]);
+const PER_MODE_KEYS = new Set(["enabled", "pool_ids", "force_limit", "force_probability", "force_intimacy_bonus", "force_probability_max", "force_pity_step"]);
 
 const MODE_ROWS = {
   enabled: ["玩法启用", "控制该玩法是否可用"],
@@ -1140,7 +1143,10 @@ export function renderRulePreview() {
     const designated = value(`modes.${mode}.designated_limit`);
     if (designated !== undefined) parts.push(Number(designated) ? `可指定 ${designated} 次` : "不可指定");
     const forceLimit = value(`modes.${mode}.force_limit`);
-    if (forceLimit !== undefined) parts.push(Number(forceLimit) ? `可强娶 ${forceLimit} 次，基础成功率 ${value(`modes.${mode}.force_probability`)}%` : "不可强娶");
+    if (forceLimit !== undefined) {
+      const pityStep = value(`modes.${mode}.force_pity_step`);
+      parts.push(Number(forceLimit) ? `可强娶 ${forceLimit} 次，基础成功率 ${value(`modes.${mode}.force_probability`)}%${Number(pityStep) ? `，连续失败每次 +${pityStep}%` : ""}` : "不可强娶");
+    }
     if (value(`modes.${mode}.steal_enabled`)) {
       const attempts = Number(value(`modes.${mode}.steal_attempt_limit`));
       parts.push(`${attempts ? `抢夺 ${attempts} 次` : "抢夺不限次数"}，成功率 ${value(`modes.${mode}.steal_probability`)}%`);
@@ -1162,11 +1168,11 @@ const TEMPLATE_GROUPS = {
   离婚: ["divorced", "divorce_locked", "divorce_relation_missing"],
   指定与设置: ["designated", "designated_occupied", "admin_set_wife", "already_held", "character_missing", "character_ambiguous", "admin_set_denied", "admin_set_unavailable"],
   通用提示: ["target_required", "target_invalid", "feature_disabled", "quota_used_up", "relation_missing", "relation_ambiguous", "command_cooldown"],
-  查询与列表: ["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection", "list_empty", "page_out_of_range", "activity_disabled"],
+  查询与列表: ["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "rank_force", "query_affection", "list_empty", "page_out_of_range", "activity_disabled"],
 };
 const TEMPLATE_GROUP_OF = Object.fromEntries(Object.entries(TEMPLATE_GROUPS).flatMap(([group, keys]) => keys.map((key) => [key, group])));
 // 卡片排版类：文字只在纯文本模式或卡片失败时使用；与标题标签一起默认收起。
-const LAYOUT_KEYS = new Set(["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection"]);
+const LAYOUT_KEYS = new Set(["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "rank_force", "query_affection"]);
 // 很少触发的提示：默认收起，勾选“显示少见与排版类”后列出。
 const RARE_KEYS = new Set(["force_target_taken", "already_holds", "recipient_holds", "invite_not_owned", "invite_already_pending", "invite_limit", "invite_multiple", "invite_invalid_id", "already_held", "admin_set_denied", "admin_set_unavailable", "character_ambiguous", "relation_ambiguous", "designated_occupied", "page_out_of_range", "activity_disabled", "no_candidate"]);
 
@@ -1504,7 +1510,7 @@ function revealField(path) {
     if (path.startsWith("commands.keywords.")) showReplySection("keywords");
     else {
       showReplySection("templates");
-      selectTemplate(path.replace(/^reply_(?:quote|enabled|variants)\./, "messages."));
+      selectTemplate(path.replace(REPLY_PATH, "messages."));
       // 定位文案时回到第 1 条（错误提示显示在那里），定位其余回复时切到第 2 条。
       showVariant(isVariantPath(path) ? 1 : 0);
     }

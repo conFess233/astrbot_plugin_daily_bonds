@@ -42,6 +42,23 @@ def steal_probability(
     return min(1.0, max(0.0, min(boosted, max(maximum, base))))
 
 
+def force_pity_probability(
+    probability: float, failures: int, step: float, maximum: float
+) -> float:
+    """在强娶成功率上叠加连续失败保底。
+
+    每次连续失败增加 `step`，加成后不超过 `maximum`；基础成功率（含亲密度加成）
+    本身高于上限时保持原值。
+    """
+
+    if step <= 0 or failures <= 0:
+        return probability
+    return min(
+        1.0,
+        max(probability, min(probability + step * failures, max(maximum, probability))),
+    )
+
+
 CONTEST_FLOOR = 0.05
 
 

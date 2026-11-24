@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, Sequence, Set as AbstractSet
 from datetime import datetime, time, timedelta
 from itertools import pairwise
 from typing import Any
@@ -246,6 +246,33 @@ class StatisticsService:
                 row["source_id"] in eligible_user_ids
                 and row["target_id"] in eligible_user_ids
             )
+        ]
+
+    def force_rows(
+        self, scope_id: int, *, eligible_user_ids: AbstractSet[str] | None = None
+    ) -> list[dict[str, Any]]:
+        """统计操作记录保留期内合格成员的被强娶总次数与成功次数。"""
+
+        with self.storage.read() as db:
+            rows = db.execute(
+                """SELECT json_extract(data_json,'$.candidate.subject_id') AS user_id,
+                          COUNT(*) AS times,
+                          SUM(CASE WHEN result_code='FORCED' THEN 1 ELSE 0 END) AS successes
+                   FROM operation_log
+                   WHERE scope_id=? AND kind='force' AND result_code IN ('FORCED','FORCE_FAILED')
+                     AND json_extract(data_json,'$.candidate.subject_id') IS NOT NULL
+                   GROUP BY user_id
+                   ORDER BY times DESC,successes DESC,user_id""",
+                (scope_id,),
+            ).fetchall()
+        return [
+            {
+                "user_id": str(row["user_id"]),
+                "times": int(row["times"]),
+                "successes": int(row["successes"] or 0),
+            }
+            for row in rows
+            if eligible_user_ids is None or str(row["user_id"]) in eligible_user_ids
         ]
 
     def _apply(

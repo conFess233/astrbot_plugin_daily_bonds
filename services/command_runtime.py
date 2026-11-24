@@ -55,6 +55,7 @@ MODE_CLOSED_ALLOWED = frozenset(
         "rank_intimacy",
         "rank_my_intimacy",
         "rank_activity",
+        "rank_force",
         "query_affection",
         "divorce_character",
         "divorce_wife",
@@ -407,7 +408,7 @@ class CommandRuntime:
                     group_id=scope.group_id,
                     group_name=await self.adapter.group_name(scope)
                     if command.action
-                    in {"rank_intimacy", "rank_activity", "group_stats"}
+                    in {"rank_intimacy", "rank_activity", "rank_force", "group_stats"}
                     else "",
                     config=config,
                     revision=revision,
@@ -787,6 +788,7 @@ def _action_mode(action: str) -> str | None:
         "rank_intimacy",
         "rank_my_intimacy",
         "rank_activity",
+        "rank_force",
         "query_affection",
         "gift_accept",
         "gift_reject",

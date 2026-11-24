@@ -85,6 +85,10 @@
       "rank_activity": [
         "活跃度排行"
       ],
+      "rank_force": [
+        "被强娶排行",
+        "强娶排行"
+      ],
       "gift_accept": [
         "接受赠送"
       ],
@@ -175,7 +179,8 @@
       "force_limit": 1,
       "force_probability": 0.2,
       "force_intimacy_bonus": 0.001,
-      "force_probability_max": 0.8
+      "force_probability_max": 0.8,
+      "force_pity_step": 0.05
     }
   },
   "statistics": {
@@ -195,6 +200,8 @@
     "base": 1.0,
     "per_intimacy_point": 0.01,
     "maximum": 5.0,
+    "curve": "log",
+    "log_full_points": 2000,
     "activity_floor": 0.2
   },
   "display": {
@@ -202,6 +209,7 @@
     "page_size": 10,
     "intimacy_rank_enabled": true,
     "activity_rank_enabled": true,
+    "force_rank_enabled": true,
     "rank_merge_rows": 50
   },
   "members": {
@@ -481,6 +489,12 @@
         "enabled": true,
         "quote": "default"
       },
+      "rank_force": {
+        "text": "{image}",
+        "alternatives": [],
+        "enabled": true,
+        "quote": "default"
+      },
       "query_affection": {
         "text": "{image}",
         "alternatives": [],
@@ -690,12 +704,14 @@
       "rank_intimacy": "{name}与群友的亲密度排行",
       "rank_group_intimacy": "{group_name}的亲密度排行",
       "rank_activity": "{group_name}的活跃度排行",
+      "rank_force": "{group_name}近 {days} 天被强娶排行",
       "query_affection": "{name}与{target_name}的亲密度",
       "page": "{title} 第 {page}/{pages} 页",
       "empty": "暂无记录。",
       "rank_summary": "{title}（共 {count}）",
       "intimacy_value": "亲密度：{score}",
       "activity_value": "消息数：{messages} · 活跃天数：{active_days}",
+      "force_value": "被强娶 {times} 次 · 成功 {successes} 次",
       "affection_value": "{name} → {target_name}：{score}",
       "normal_slot": "抽取",
       "gift_slot": "来自{owner_name}的赠送",

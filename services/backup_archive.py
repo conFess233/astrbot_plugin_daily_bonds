@@ -152,3 +152,27 @@ def text(value: Any, label: str, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise ValueError(f"{label} is empty or too long")
     return value.strip()
+
+
+# 备份目录中各类文件分别按修改时间保留最新的若干份：完整备份 ZIP，
+# 以及升级或导入前自动生成的单独数据库（迁移页可用来回退）。
+_BACKUP_PATTERNS = ("*.zip", "pre-migration-*.sqlite3", "pre-import-*.sqlite3")
+
+
+def prune_backups(backups_root: Path, keep_count: int) -> int:
+    """按类别各保留最新 keep_count 份备份，返回删除的文件数。"""
+
+    keep_count = min(100, max(1, int(keep_count)))
+    if not backups_root.is_dir():
+        return 0
+    removed = 0
+    for pattern in _BACKUP_PATTERNS:
+        files = sorted(
+            (path for path in backups_root.glob(pattern) if path.is_file()),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        )
+        for path in files[keep_count:]:
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed

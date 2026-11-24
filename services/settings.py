@@ -82,6 +82,7 @@ _ACTIONS = (
     "rank_intimacy",
     "rank_my_intimacy",
     "rank_activity",
+    "rank_force",
     "gift_accept",
     "gift_reject",
     "gift_cancel",
@@ -150,6 +151,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "display.pagination_enabled",
         "display.intimacy_rank_enabled",
         "display.activity_rank_enabled",
+        "display.force_rank_enabled",
     ):
         _boolean(config, path)
 
@@ -201,6 +203,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "display.page_size": (1, 100),
         "display.rank_merge_rows": (1, 100),
         "members.cache_ttl_seconds": (0, 86400),
+        "weights.log_full_points": (1, 1000000),
         "history.retention_days": (1, 3650),
     }
     for path, (minimum, maximum) in ranges.items():
@@ -213,6 +216,8 @@ def validate_config(config: Mapping[str, Any]) -> None:
     ):
         _finite_number(config, path)
     weights = config["weights"]
+    if weights["curve"] not in {"log", "linear"}:
+        raise ConfigurationError("weights.curve 必须是 log 或 linear")
     if not 0 < weights["base"] <= weights["maximum"] <= 1_000_000:
         raise ConfigurationError("weights 必须满足 0 < base <= maximum <= 1000000")
     if not 0 <= weights["per_intimacy_point"] <= 1_000_000:
@@ -261,6 +266,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
                 "force_probability",
                 "force_intimacy_bonus",
                 "force_probability_max",
+                "force_pity_step",
             ):
                 _finite_number(config, f"modes.member.{field}")
                 if not 0 <= current[field] <= 1:

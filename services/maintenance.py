@@ -898,11 +898,4 @@ class MaintenanceService:
         return Path(name)
 
     def _prune_backups(self, keep_count: int) -> None:
-        keep_count = min(100, max(1, int(keep_count)))
-        backups = sorted(
-            (path for path in self.backups_root.glob("*.zip") if path.is_file()),
-            key=lambda item: item.stat().st_mtime,
-            reverse=True,
-        )
-        for path in backups[keep_count:]:
-            path.unlink(missing_ok=True)
+        backup_archive.prune_backups(self.backups_root, keep_count)
