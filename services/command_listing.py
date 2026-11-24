@@ -38,15 +38,22 @@ class ListingHandler:
         config = values["config"]
         action = values["command"].action
         intimacy = action in {"rank_intimacy", "rank_my_intimacy"}
-        if not config["display"][
-            "intimacy_rank_enabled" if intimacy else "activity_rank_enabled"
-        ]:
-            return render_message(
-                config,
-                "errors",
-                "rank_intimacy_disabled" if intimacy else "rank_activity_disabled",
+        force = action == "rank_force"
+        if intimacy:
+            enabled_key, disabled_key = (
+                "intimacy_rank_enabled",
+                "rank_intimacy_disabled",
             )
-        if not intimacy and not config["statistics"]["activity_enabled"]:
+        elif force:
+            enabled_key, disabled_key = "force_rank_enabled", "rank_force_disabled"
+        else:
+            enabled_key, disabled_key = (
+                "activity_rank_enabled",
+                "rank_activity_disabled",
+            )
+        if not config["display"][enabled_key]:
+            return render_message(config, "errors", disabled_key)
+        if not intimacy and not force and not config["statistics"]["activity_enabled"]:
             return render_message(config, "errors", "activity_disabled")
         names = self.replies.member_names(values["scope_id"])
         # 亲密度排行展示全群（双向合并），我的亲密度排行只列出触发者给群友的分值。
@@ -65,6 +72,20 @@ class ListingHandler:
                 "titles",
                 "rank_group_intimacy" if global_directed else "rank_intimacy",
                 name=names.get(values["actor_id"], "群友"),
+                group_name=values.get("group_name", "本群"),
+            )
+        elif force:
+            rows = self.statistics.force_rows(
+                values["scope_id"], eligible_user_ids=values["eligible"]
+            )
+            ranked = [
+                (row["user_id"], "", row["times"], row["successes"]) for row in rows
+            ]
+            title = render_message(
+                config,
+                "titles",
+                "rank_force",
+                days=config["history"]["retention_days"],
                 group_name=values.get("group_name", "本群"),
             )
         else:
@@ -127,7 +148,11 @@ class ListingHandler:
         personal = key == "rank_my_intimacy"
         if personal:
             ids.add(values["actor_id"])
-        group_id = values.get("group_id", "") if key == "rank_activity" else ""
+        group_id = (
+            values.get("group_id", "")
+            if key in {"rank_activity", "rank_force"}
+            else ""
+        )
         avatars = await self.replies.avatars(
             list(ids), config, group_ids=[group_id] if group_id else ()
         )
@@ -138,6 +163,11 @@ class ListingHandler:
             if personal:
                 subject = names.get(target, "群友")
                 detail = render_message(config, "titles", "intimacy_value", score=score)
+            elif key == "rank_force":
+                subject = names.get(source, "群友")
+                detail = render_message(
+                    config, "titles", "force_value", times=score, successes=days
+                )
             else:
                 subject = names.get(source, "群友")
                 detail = render_message(
@@ -158,6 +188,11 @@ class ListingHandler:
             )
         lines_text = "\n".join(lines) or render_message(config, "titles", "empty")
         fallback = f"{summary}\n{lines_text}"
+        days_value = (
+            config["history"]["retention_days"]
+            if key == "rank_force"
+            else config["statistics"]["activity_window_days"]
+        )
         text = render_message(
             config,
             "results",
@@ -166,14 +201,14 @@ class ListingHandler:
             count=len(ranked),
             lines=lines_text,
             group_name=values.get("group_name", "本群"),
-            days=config["statistics"]["activity_window_days"],
+            days=days_value,
         )
         options = {
             "ranking": True,
             "subtitle": f"共 {len(ranked)} 条记录"
             + (f" · 第 {page}/{pages} 页" if pagination else ""),
-            "range_label": f"统计范围：{config['statistics']['activity_window_days']} 天"
-            if key == "rank_activity"
+            "range_label": f"统计范围：{days_value} 天"
+            if key in {"rank_activity", "rank_force"}
             else "统计范围：累计",
             "max_rows": config["display"]["rank_merge_rows"],
             "empty_text": render_message(config, "titles", "empty"),

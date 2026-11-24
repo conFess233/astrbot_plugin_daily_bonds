@@ -207,6 +207,11 @@ class FeatureHandler:
             general.extend([first("rank_intimacy"), first("rank_my_intimacy")])
         if config["display"]["activity_rank_enabled"]:
             general.append(first("rank_activity"))
+        if (
+            config["display"]["force_rank_enabled"]
+            and config["modes"]["member"]["force_limit"] > 0
+        ):
+            general.append(first("rank_force"))
         general.append(f"{first('query_affection')} @群友")
         if any(
             config["modes"][mode]["gift_enabled"]

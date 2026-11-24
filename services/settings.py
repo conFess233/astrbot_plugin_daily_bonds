@@ -82,6 +82,7 @@ _ACTIONS = (
     "rank_intimacy",
     "rank_my_intimacy",
     "rank_activity",
+    "rank_force",
     "gift_accept",
     "gift_reject",
     "gift_cancel",
@@ -150,6 +151,7 @@ def validate_config(config: Mapping[str, Any]) -> None:
         "display.pagination_enabled",
         "display.intimacy_rank_enabled",
         "display.activity_rank_enabled",
+        "display.force_rank_enabled",
     ):
         _boolean(config, path)
 

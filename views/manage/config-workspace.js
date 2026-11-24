@@ -350,7 +350,7 @@ const MESSAGE_LABELS = {
   divorce_disabled: "解除关系关闭", divorce_relation_missing: "解除关系未找到",
   invite_multiple: "有多条待处理邀请", invite_none: "没有待处理邀请",
   invite_invalid_id: "邀请编号无效", rank_intimacy_disabled: "亲密度排行关闭",
-  rank_activity_disabled: "活跃度排行关闭", activity_disabled: "活跃度统计关闭",
+  rank_activity_disabled: "活跃度排行关闭", rank_force_disabled: "被强娶排行关闭", activity_disabled: "活跃度统计关闭",
   page_out_of_range: "页码超出范围", list_empty: "关系列表为空",
   admin_set_wife: "管理员设置老婆成功", already_held: "管理员已持有角色",
   admin_set_denied: "设置老婆权限不足", admin_set_missing: "设置老婆未找到角色",
@@ -363,7 +363,7 @@ const MESSAGE_LABELS = {
   designated_occupied: "指定角色已被持有", designated_missing: "未找到指定角色",
   designated_ambiguous: "指定角色有多个匹配", affection_target_required: "亲密度查询目标无效",
   list_wife: "老婆列表回复", list_husband: "老公列表回复", list_member: "群友列表回复",
-  rank_intimacy: "全群亲密度排行回复", rank_my_intimacy: "我的亲密度排行回复", rank_activity: "活跃度排行回复", query_affection: "亲密度查询回复",
+  rank_intimacy: "全群亲密度排行回复", rank_my_intimacy: "我的亲密度排行回复", rank_activity: "活跃度排行回复", rank_force: "被强娶排行回复", query_affection: "亲密度查询回复",
   member_reconcile: "成员资格变化通知", member_removed: "群友离开说明", invite_relationship_changed: "关系变动导致邀请失效",
   owner_ineligible: "持有人失去资格说明", participant_ineligible: "赠送参与者失去资格说明",
 };
@@ -371,9 +371,9 @@ const MESSAGE_LABELS = {
 const TITLE_LABELS = {
   list_wife: "老婆列表标题", list_husband: "老公列表标题", list_member: "群友列表标题",
   existing: "已有关系标题", rank_intimacy: "我的亲密度排行标题",
-  rank_group_intimacy: "全群亲密度排行标题", rank_activity: "活跃度排行标题",
+  rank_group_intimacy: "全群亲密度排行标题", rank_activity: "活跃度排行标题", rank_force: "被强娶排行标题",
   query_affection: "亲密度查询标题", page: "分页标题", empty: "空榜文案",
-  rank_summary: "排行摘要", intimacy_value: "亲密度数值标签", activity_value: "活跃度数值标签",
+  rank_summary: "排行摘要", intimacy_value: "亲密度数值标签", activity_value: "活跃度数值标签", force_value: "被强娶次数",
   affection_value: "有向亲密度标签", normal_slot: "抽取来源标签", gift_slot: "赠送来源标签", steal_slot: "抢夺来源标签", admin_slot: "管理员设置来源标签", force_slot: "强娶来源标签", mutual: "双向奔赴标签",
   designated_slot: "指定槽位标签", wife: "老婆玩法名称", husband: "老公玩法名称", member: "群友玩法名称",
 };
@@ -408,7 +408,7 @@ const CONFIG_LABELS = {
   activity_floor: "零活跃天数权重系数",
   pagination_enabled: "启用分页", page_size: "每页条数",
   intimacy_rank_enabled: "显示亲密度排行",
-  activity_rank_enabled: "显示活跃度排行", cache_ttl_seconds: "缓存时间（秒）",
+  activity_rank_enabled: "显示活跃度排行", force_rank_enabled: "开启被强娶排行", cache_ttl_seconds: "缓存时间（秒）",
   retention_days: "历史保留天数", http_timeout_seconds: "HTTP 超时（秒）",
   image_max_bytes: "单图大小上限（字节）", image_max_pixels: "单图像素上限",
   import_max_bytes: "导入包大小上限（字节）", import_max_entries: "导入条目上限",
@@ -423,7 +423,7 @@ const CONFIG_LABELS = {
   gift_wife: "送老婆", gift_husband: "送老公", gift_member: "送群友",
   divorce_character: "离婚", divorce_wife: "离婚老婆", divorce_husband: "离婚老公",
   divorce_member: "踹群友", list_characters: "老婆列表", list_husband: "老公列表", list_members: "群友列表",
-  rank_intimacy: "亲密度排行（全群）", rank_my_intimacy: "我的亲密度排行", rank_activity: "活跃度排行",
+  rank_intimacy: "亲密度排行（全群）", rank_my_intimacy: "我的亲密度排行", rank_activity: "活跃度排行", rank_force: "被强娶排行",
   gift_accept: "接受赠送", gift_reject: "拒绝赠送", gift_cancel: "取消赠送", query_affection: "亲密度查询",
   my_status: "我的姻缘", my_collection: "我的图鉴",
 };
@@ -1168,11 +1168,11 @@ const TEMPLATE_GROUPS = {
   离婚: ["divorced", "divorce_locked", "divorce_relation_missing"],
   指定与设置: ["designated", "designated_occupied", "admin_set_wife", "already_held", "character_missing", "character_ambiguous", "admin_set_denied", "admin_set_unavailable"],
   通用提示: ["target_required", "target_invalid", "feature_disabled", "quota_used_up", "relation_missing", "relation_ambiguous", "command_cooldown"],
-  查询与列表: ["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection", "list_empty", "page_out_of_range", "activity_disabled"],
+  查询与列表: ["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "rank_force", "query_affection", "list_empty", "page_out_of_range", "activity_disabled"],
 };
 const TEMPLATE_GROUP_OF = Object.fromEntries(Object.entries(TEMPLATE_GROUPS).flatMap(([group, keys]) => keys.map((key) => [key, group])));
 // 卡片排版类：文字只在纯文本模式或卡片失败时使用；与标题标签一起默认收起。
-const LAYOUT_KEYS = new Set(["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "query_affection"]);
+const LAYOUT_KEYS = new Set(["my_status", "help", "my_collection", "character_info", "group_stats", "list_wife", "list_husband", "list_member", "rank_intimacy", "rank_my_intimacy", "rank_activity", "rank_force", "query_affection"]);
 // 很少触发的提示：默认收起，勾选“显示少见与排版类”后列出。
 const RARE_KEYS = new Set(["force_target_taken", "already_holds", "recipient_holds", "invite_not_owned", "invite_already_pending", "invite_limit", "invite_multiple", "invite_invalid_id", "already_held", "admin_set_denied", "admin_set_unavailable", "character_ambiguous", "relation_ambiguous", "designated_occupied", "page_out_of_range", "activity_disabled", "no_candidate"]);
 

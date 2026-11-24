@@ -143,7 +143,12 @@ class ActionHandler:
                 values["config"]["resources"],
                 values["config"],
             )
-        if command.action in {"rank_intimacy", "rank_my_intimacy", "rank_activity"}:
+        if command.action in {
+            "rank_intimacy",
+            "rank_my_intimacy",
+            "rank_activity",
+            "rank_force",
+        }:
             return await self.listing.rank(values)
         if command.action == "query_affection":
             return await self.listing.affection(values)
