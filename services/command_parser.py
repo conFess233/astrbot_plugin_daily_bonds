@@ -98,7 +98,9 @@ def parse_command(
     if parts and parts[0].kind == "at" and parts[0].value not in bot_ids:
         leading_target = parts.pop(0).value
         _trim_leading_text(parts)
-    if not allow_bare and not _was_prefixed(segments, bot_ids, prefix_set):
+    if not allow_bare and not _was_triggered(
+        segments, bot_ids, prefix_set, allow_leading_bot_mention
+    ):
         return None
 
     rendered = "".join(_render(part) for part in parts).strip()
@@ -189,15 +191,20 @@ def _trim_leading_text(parts: list[_Part]) -> None:
         parts.pop(0)
 
 
-def _was_prefixed(
+def _was_triggered(
     segments: Sequence[Mapping[str, Any]],
     bot_ids: set[str] | frozenset[str],
     prefixes: Sequence[str],
+    allow_leading_bot_mention: bool,
 ) -> bool:
+    """关闭裸关键词时，消息须以 @机器人（已允许时）或命令前缀开头。"""
+
     parts = _parts(segments)
     while parts and parts[0].kind == "reply":
         parts.pop(0)
     if parts and parts[0].kind == "at" and parts[0].value in bot_ids:
+        if allow_leading_bot_mention:
+            return True
         parts.pop(0)
         _trim_leading_text(parts)
     return bool(
